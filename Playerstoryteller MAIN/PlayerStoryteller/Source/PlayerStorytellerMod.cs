@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Verse;
+using RimWorld;
 using UnityEngine;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -8,6 +10,44 @@ using System.Text;
 
 namespace PlayerStoryteller
 {
+    [StaticConstructorOnStartup]
+    public static class PlayerStorytellerBootstrap
+    {
+        static PlayerStorytellerBootstrap()
+        {
+            Log.Message("[Player Storyteller] Bootstrap initialized");
+
+            // Register the GameComponent when a game is loaded or started
+            LongEventHandler.ExecuteWhenFinished(delegate
+            {
+                if (Current.Game != null)
+                {
+                    EnsureGameComponentExists();
+                }
+            });
+        }
+
+        public static void EnsureGameComponentExists()
+        {
+            try
+            {
+                if (Current.Game == null) return;
+
+                var existingComponent = Current.Game.GetComponent<PlayerStorytellerGameComponent>();
+                if (existingComponent == null)
+                {
+                    var component = new PlayerStorytellerGameComponent(Current.Game);
+                    Current.Game.components.Add(component);
+                    Log.Message("[Player Storyteller] GameComponent registered");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error ensuring GameComponent: {ex.Message}");
+            }
+        }
+    }
+
     public class PlayerStorytellerMod : Mod
     {
         public static PlayerStorytellerSettings settings;
@@ -18,7 +58,7 @@ namespace PlayerStoryteller
             settings = GetSettings<PlayerStorytellerSettings>();
             httpClient = new HttpClient();
 
-            Log.Message("Player Storyteller Mod initialized");
+            Log.Message("[Player Storyteller] Mod initialized");
         }
 
         public override string SettingsCategory()
@@ -28,6 +68,9 @@ namespace PlayerStoryteller
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
+            // Ensure GameComponent is registered when settings are opened
+            PlayerStorytellerBootstrap.EnsureGameComponentExists();
+
             Listing_Standard listingStandard = new Listing_Standard();
             listingStandard.Begin(inRect);
 

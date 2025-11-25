@@ -23,11 +23,22 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Store active game sessions
 const gameSessions = new Map();
-// sessionId -> { screenshot: Buffer, gameState: Object, lastUpdate: Date, players: [] }
+// sessionId -> { screenshot: Buffer, gameState: Object, lastUpdate: Date, lastHeartbeat: Date, players: [] }
 
 // Store connected viewers
 const viewers = new Map();
 // socketId -> { selectedGame: sessionId }
+
+// Helper function to broadcast viewer count updates
+function broadcastViewerCount(sessionId) {
+    const session = gameSessions.get(sessionId);
+    if (session) {
+        io.emit('viewer-count-update', {
+            sessionId,
+            viewerCount: session.players.length
+        });
+    }
+}
 
 // API Routes
 
@@ -37,19 +48,24 @@ app.post('/api/screenshot', (req, res) => {
         const sessionId = req.headers['session-id'] || 'default-session';
         const screenshot = req.body;
 
+        const now = new Date();
+
         // Initialize session if it doesn't exist
         if (!gameSessions.has(sessionId)) {
+            console.log(`New game session started: ${sessionId}`);
             gameSessions.set(sessionId, {
                 screenshot: null,
                 gameState: {},
-                lastUpdate: new Date(),
+                lastUpdate: now,
+                lastHeartbeat: now,
                 players: []
             });
         }
 
         const session = gameSessions.get(sessionId);
         session.screenshot = screenshot;
-        session.lastUpdate = new Date();
+        session.lastUpdate = now;
+        session.lastHeartbeat = now;
 
         // Broadcast to all connected viewers watching this session
         io.emit('screenshot-update', {
@@ -71,18 +87,23 @@ app.post('/api/gamestate', (req, res) => {
         const sessionId = req.headers['session-id'] || 'default-session';
         const gameState = req.body;
 
+        const now = new Date();
+
         if (!gameSessions.has(sessionId)) {
+            console.log(`New game session started: ${sessionId}`);
             gameSessions.set(sessionId, {
                 screenshot: null,
                 gameState: {},
-                lastUpdate: new Date(),
+                lastUpdate: now,
+                lastHeartbeat: now,
                 players: []
             });
         }
 
         const session = gameSessions.get(sessionId);
         session.gameState = gameState;
-        session.lastUpdate = new Date();
+        session.lastUpdate = now;
+        session.lastHeartbeat = now;
 
         // Broadcast game state to viewers
         io.emit('gamestate-update', {
@@ -155,11 +176,30 @@ io.on('connection', (socket) => {
 
     // Handle viewer selecting a game session
     socket.on('select-session', (sessionId) => {
+        // Remove from previous session if any
+        const previousViewer = viewers.get(socket.id);
+        if (previousViewer && previousViewer.selectedGame) {
+            const previousSession = gameSessions.get(previousViewer.selectedGame);
+            if (previousSession) {
+                previousSession.players = previousSession.players.filter(id => id !== socket.id);
+                broadcastViewerCount(previousViewer.selectedGame);
+                console.log(`Viewer ${socket.id} left session: ${previousViewer.selectedGame}`);
+            }
+        }
+
+        // Add to new session
         viewers.set(socket.id, { selectedGame: sessionId });
 
         if (gameSessions.has(sessionId)) {
             const session = gameSessions.get(sessionId);
-            session.players.push(socket.id);
+
+            // Only add if not already in the list
+            if (!session.players.includes(socket.id)) {
+                session.players.push(socket.id);
+            }
+
+            broadcastViewerCount(sessionId);
+            console.log(`Viewer ${socket.id} joined session: ${sessionId} (${session.players.length} viewers)`);
 
             // Send current state
             if (session.screenshot) {
@@ -187,24 +227,43 @@ io.on('connection', (socket) => {
         if (viewer && viewer.selectedGame) {
             const session = gameSessions.get(viewer.selectedGame);
             if (session) {
+                const previousCount = session.players.length;
                 session.players = session.players.filter(id => id !== socket.id);
+
+                if (previousCount !== session.players.length) {
+                    broadcastViewerCount(viewer.selectedGame);
+                    console.log(`Viewer ${socket.id} disconnected from session: ${viewer.selectedGame} (${session.players.length} viewers remaining)`);
+                }
             }
         }
         viewers.delete(socket.id);
     });
 });
 
-// Clean up old sessions (older than 5 minutes)
+// Clean up inactive game sessions
+// A game is considered inactive if it hasn't sent any updates in 30 seconds
 setInterval(() => {
     const now = new Date();
     for (const [sessionId, session] of gameSessions.entries()) {
-        const timeDiff = (now - session.lastUpdate) / 1000 / 60; // minutes
-        if (timeDiff > 5) {
-            console.log(`Removing inactive session: ${sessionId}`);
+        const timeDiff = (now - session.lastHeartbeat) / 1000; // seconds
+        if (timeDiff > 30) {
+            console.log(`Removing inactive game session: ${sessionId} (no updates for ${Math.round(timeDiff)}s)`);
+
+            // Notify all viewers that this session ended
+            io.emit('session-ended', {
+                sessionId,
+                timestamp: now
+            });
+
+            // Remove all players from this session
+            session.players.forEach(playerId => {
+                viewers.delete(playerId);
+            });
+
             gameSessions.delete(sessionId);
         }
     }
-}, 60000); // Check every minute
+}, 10000); // Check every 10 seconds
 
 server.listen(PORT, () => {
     console.log(`Player Storyteller Server running on port ${PORT}`);
