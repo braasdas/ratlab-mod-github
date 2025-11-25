@@ -96,9 +96,11 @@ REM Copy Assemblies folder
 echo - Copying Assemblies folder...
 xcopy /E /I /Y "%SOURCE_DIR%\Assemblies" "%RIMWORLD_MODS%\%MOD_NAME%\Assemblies" >nul
 
-REM Copy Defs folder
-echo - Copying Defs folder...
-xcopy /E /I /Y "%SOURCE_DIR%\Defs" "%RIMWORLD_MODS%\%MOD_NAME%\Defs" >nul
+REM Copy Defs folder if it exists
+if exist "%SOURCE_DIR%\Defs" (
+    echo - Copying Defs folder...
+    xcopy /E /I /Y "%SOURCE_DIR%\Defs" "%RIMWORLD_MODS%\%MOD_NAME%\Defs" >nul
+)
 
 REM Copy Textures folder if it exists
 if exist "%SOURCE_DIR%\Textures" (
@@ -119,8 +121,6 @@ echo   ├── About\
 echo   │   └── About.xml
 echo   ├── Assemblies\
 echo   │   └── PlayerStoryteller.dll
-echo   ├── Defs\
-echo   │   └── MapComponentDef.xml
 echo   └── Textures\
 echo.
 echo You can now:
