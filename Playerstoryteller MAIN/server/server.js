@@ -18,8 +18,7 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.raw({ type: 'image/png', limit: '50mb' }));
-app.use(express.raw({ type: 'image/jpeg', limit: '50mb' }));
+app.use(express.raw({ type: ['image/png', 'image/jpeg'], limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Store active game sessions
@@ -49,6 +48,12 @@ app.post('/api/screenshot', (req, res) => {
         const sessionId = req.headers['session-id'] || 'default-session';
         const screenshot = req.body;
 
+        // Validate screenshot data
+        if (!screenshot || !Buffer.isBuffer(screenshot)) {
+            console.error('Invalid screenshot data received:', typeof screenshot);
+            return res.status(400).json({ error: 'Invalid screenshot data' });
+        }
+
         const now = new Date();
 
         // Initialize session if it doesn't exist
@@ -68,10 +73,15 @@ app.post('/api/screenshot', (req, res) => {
         session.lastUpdate = now;
         session.lastHeartbeat = now;
 
+        // Convert to base64 string
+        const screenshotBase64 = screenshot.toString('base64');
+
+        console.log(`Screenshot received: ${sessionId}, ${screenshot.length} bytes, ${screenshotBase64.length} base64 chars`);
+
         // Broadcast to all connected viewers watching this session
         io.emit('screenshot-update', {
             sessionId,
-            screenshot: screenshot.toString('base64'),
+            screenshot: screenshotBase64,
             timestamp: session.lastUpdate
         });
 

@@ -37,7 +37,7 @@ socket.on('sessions-list', (data) => {
 
 socket.on('screenshot-update', (data) => {
     if (currentSession && data.sessionId === currentSession) {
-        gameScreenshot.src = `data:image/png;base64,${data.screenshot}`;
+        gameScreenshot.src = `data:image/jpeg;base64,${data.screenshot}`;
         const now = new Date(data.timestamp);
         lastUpdate.textContent = `Last update: ${now.toLocaleTimeString()}`;
     }
