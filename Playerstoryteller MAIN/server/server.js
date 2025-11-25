@@ -169,6 +169,27 @@ app.post('/api/action', (req, res) => {
     }
 });
 
+// Network speed test endpoint
+app.post('/api/speedtest', (req, res) => {
+    try {
+        const testData = req.body;
+        const dataSize = Buffer.byteLength(JSON.stringify(testData));
+
+        console.log(`Speed test: received ${dataSize} bytes`);
+
+        // Echo back the data with server timestamp
+        res.json({
+            success: true,
+            receivedSize: dataSize,
+            serverTime: new Date().getTime(),
+            echo: testData
+        });
+    } catch (error) {
+        console.error('Error handling speed test:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Socket.IO for real-time communication
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
