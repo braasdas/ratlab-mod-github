@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+    <name>Player Storyteller</name>
+    <author>Your Name</author>
+    <packageId>playerStoryteller.mod</packageId>
+    <supportedVersions>
+        <li>1.4</li>
+        <li>1.5</li>
+    </supportedVersions>
+    <description>A multiplayer storyteller mod that allows players to control events in RimWorld games. Powered by RIMAPI.</description>
+    <modDependencies>
+        <li>
+            <packageId>RIMAPI.mod</packageId>
+            <displayName>RIMAPI</displayName>
+            <steamWorkshopUrl>steam://url/CommunityFilePage/0000000000</steamWorkshopUrl>
+        </li>
+    </modDependencies>
+    <loadAfter>
+        <li>RIMAPI.mod</li>
+    </loadAfter>
+</ModMetaData>
