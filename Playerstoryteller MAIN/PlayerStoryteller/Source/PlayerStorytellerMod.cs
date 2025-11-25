@@ -188,16 +188,16 @@ namespace PlayerStoryteller
     public class PlayerStorytellerSettings : ModSettings
     {
         public string serverUrl = "http://localhost:3000";
-        public float updateInterval = 1.0f;
-        public float resolutionScale = 0.5f;
-        public int screenshotQuality = 75;
+        public float updateInterval = 0.5f;
+        public float resolutionScale = 0.75f;
+        public int screenshotQuality = 85;
 
         public override void ExposeData()
         {
             Scribe_Values.Look(ref serverUrl, "serverUrl", "http://localhost:3000");
-            Scribe_Values.Look(ref updateInterval, "updateInterval", 1.0f);
-            Scribe_Values.Look(ref resolutionScale, "resolutionScale", 0.5f);
-            Scribe_Values.Look(ref screenshotQuality, "screenshotQuality", 75);
+            Scribe_Values.Look(ref updateInterval, "updateInterval", 0.5f);
+            Scribe_Values.Look(ref resolutionScale, "resolutionScale", 0.75f);
+            Scribe_Values.Look(ref screenshotQuality, "screenshotQuality", 85);
             base.ExposeData();
         }
     }
