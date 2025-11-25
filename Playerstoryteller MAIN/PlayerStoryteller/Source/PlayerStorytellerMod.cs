@@ -45,19 +45,33 @@ namespace PlayerStoryteller
         {
             try
             {
+                if (string.IsNullOrEmpty(settings.serverUrl))
+                {
+                    Log.Warning("[Player Storyteller] Server URL not configured");
+                    return;
+                }
+
                 var content = new ByteArrayContent(screenshotData);
                 content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
 
-                var response = await httpClient.PostAsync($"{settings.serverUrl}/api/screenshot", content);
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.serverUrl}/api/screenshot");
+                request.Content = content;
+                request.Headers.Add("session-id", GetSessionId());
 
-                if (!response.IsSuccessStatusCode)
+                var response = await httpClient.SendAsync(request);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    Log.Warning($"Failed to send screenshot: {response.StatusCode}");
+                    Log.Message($"[Player Storyteller] Screenshot sent successfully");
+                }
+                else
+                {
+                    Log.Warning($"[Player Storyteller] Failed to send screenshot: {response.StatusCode}");
                 }
             }
             catch (Exception ex)
             {
-                Log.Error($"Error sending screenshot: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error sending screenshot: {ex.Message}");
             }
         }
 
@@ -65,18 +79,43 @@ namespace PlayerStoryteller
         {
             try
             {
-                var content = new StringContent(gameStateJson, Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync($"{settings.serverUrl}/api/gamestate", content);
-
-                if (!response.IsSuccessStatusCode)
+                if (string.IsNullOrEmpty(settings.serverUrl))
                 {
-                    Log.Warning($"Failed to send game state: {response.StatusCode}");
+                    Log.Warning("[Player Storyteller] Server URL not configured");
+                    return;
+                }
+
+                var content = new StringContent(gameStateJson, Encoding.UTF8, "application/json");
+
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.serverUrl}/api/gamestate");
+                request.Content = content;
+                request.Headers.Add("session-id", GetSessionId());
+
+                var response = await httpClient.SendAsync(request);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Log.Message($"[Player Storyteller] Game state sent successfully");
+                }
+                else
+                {
+                    Log.Warning($"[Player Storyteller] Failed to send game state: {response.StatusCode}");
                 }
             }
             catch (Exception ex)
             {
-                Log.Error($"Error sending game state: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error sending game state: {ex.Message}");
             }
+        }
+
+        private static string GetSessionId()
+        {
+            // Use the world seed as a unique session identifier
+            if (Current.Game != null && Current.Game.World != null)
+            {
+                return Current.Game.World.info.seedString;
+            }
+            return "default-session";
         }
     }
 

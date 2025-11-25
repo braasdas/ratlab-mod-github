@@ -11,41 +11,35 @@ namespace PlayerStoryteller
         {
             try
             {
-                // Get the current map camera
-                var camera = Find.Camera;
-                if (camera == null)
-                {
-                    Log.Warning("Camera not found");
-                    return null;
-                }
+                // Capture the current screen
+                int width = Screen.width;
+                int height = Screen.height;
 
-                // Create a render texture
-                int width = 1920;
-                int height = 1080;
-                RenderTexture rt = new RenderTexture(width, height, 24);
-                camera.targetTexture = rt;
-
-                // Render the camera
+                // Create a new texture to read the screen pixels into
                 Texture2D screenshot = new Texture2D(width, height, TextureFormat.RGB24, false);
-                camera.Render();
-                RenderTexture.active = rt;
+
+                // Read the screen pixels into the texture
                 screenshot.ReadPixels(new Rect(0, 0, width, height), 0, 0);
                 screenshot.Apply();
 
-                // Clean up
-                camera.targetTexture = null;
-                RenderTexture.active = null;
-                UnityEngine.Object.Destroy(rt);
-
                 // Convert to PNG bytes
-                byte[] bytes = screenshot.EncodeToPNG();
+                byte[] bytes = ImageConversion.EncodeToPNG(screenshot);
+
+                // Clean up
                 UnityEngine.Object.Destroy(screenshot);
 
+                if (bytes == null || bytes.Length == 0)
+                {
+                    Log.Warning("[Player Storyteller] Screenshot captured but PNG encoding failed");
+                    return null;
+                }
+
+                Log.Message($"[Player Storyteller] Screenshot captured: {bytes.Length} bytes");
                 return bytes;
             }
             catch (Exception ex)
             {
-                Log.Error($"Error capturing screenshot: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error capturing screenshot: {ex.Message}\n{ex.StackTrace}");
                 return null;
             }
         }

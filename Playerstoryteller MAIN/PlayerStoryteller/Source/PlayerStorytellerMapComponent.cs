@@ -63,20 +63,28 @@ namespace PlayerStoryteller
         {
             try
             {
+                Log.Message("[Player Storyteller] SendUpdate triggered");
+
                 // Capture screenshot
                 byte[] screenshot = ScreenshotManager.CaptureMapScreenshot();
                 if (screenshot != null)
                 {
+                    Log.Message($"[Player Storyteller] Sending screenshot to server ({screenshot.Length} bytes)");
                     await PlayerStorytellerMod.SendScreenshotToServer(screenshot);
+                }
+                else
+                {
+                    Log.Warning("[Player Storyteller] Screenshot capture returned null");
                 }
 
                 // Send game state
                 string gameState = GetGameStateJson();
+                Log.Message($"[Player Storyteller] Sending game state: {gameState}");
                 await PlayerStorytellerMod.SendGameStateToServer(gameState);
             }
             catch (Exception ex)
             {
-                Log.Error($"Error in SendUpdate: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in SendUpdate: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
