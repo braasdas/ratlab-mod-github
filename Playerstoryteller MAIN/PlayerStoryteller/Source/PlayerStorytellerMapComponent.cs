@@ -40,7 +40,10 @@ namespace PlayerStoryteller
 
         private void UpdateTicksPerUpdate()
         {
-            ticksPerUpdate = PlayerStorytellerMod.settings.updateInterval * 60; // 60 ticks per second in RimWorld
+            // 60 ticks per second in RimWorld
+            ticksPerUpdate = (int)(PlayerStorytellerMod.settings.updateInterval * 60f);
+            // Minimum of 6 ticks (0.1 seconds)
+            if (ticksPerUpdate < 6) ticksPerUpdate = 6;
         }
 
         public override void MapComponentTick()

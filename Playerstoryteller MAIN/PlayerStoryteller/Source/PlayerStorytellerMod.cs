@@ -77,8 +77,31 @@ namespace PlayerStoryteller
             listingStandard.Label("Server URL:");
             settings.serverUrl = listingStandard.TextEntry(settings.serverUrl);
 
-            listingStandard.Label("Update Interval (seconds):");
-            settings.updateInterval = (int)listingStandard.Slider(settings.updateInterval, 1f, 10f);
+            listingStandard.Gap(12f);
+
+            // Update interval slider with current FPS display
+            float fps = 1f / settings.updateInterval;
+            listingStandard.Label($"Update Interval: {settings.updateInterval:F2}s (~{fps:F1} FPS)");
+            settings.updateInterval = listingStandard.Slider(settings.updateInterval, 0.1f, 5f);
+
+            listingStandard.Gap(12f);
+
+            // Resolution scale slider
+            listingStandard.Label($"Screenshot Resolution Scale: {settings.resolutionScale:F2}x ({(int)(Screen.width * settings.resolutionScale)}x{(int)(Screen.height * settings.resolutionScale)})");
+            settings.resolutionScale = listingStandard.Slider(settings.resolutionScale, 0.25f, 1.0f);
+
+            listingStandard.Gap(12f);
+
+            // JPEG quality slider
+            listingStandard.Label($"Screenshot Quality: {settings.screenshotQuality}%");
+            settings.screenshotQuality = (int)listingStandard.Slider(settings.screenshotQuality, 10f, 100f);
+
+            listingStandard.Gap(12f);
+
+            // Info text
+            Text.Font = GameFont.Tiny;
+            listingStandard.Label("Lower resolution and quality = higher FPS and lower bandwidth");
+            Text.Font = GameFont.Small;
 
             listingStandard.End();
             base.DoSettingsWindowContents(inRect);
@@ -95,7 +118,7 @@ namespace PlayerStoryteller
                 }
 
                 var content = new ByteArrayContent(screenshotData);
-                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
 
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.serverUrl}/api/screenshot");
                 request.Content = content;
@@ -165,12 +188,16 @@ namespace PlayerStoryteller
     public class PlayerStorytellerSettings : ModSettings
     {
         public string serverUrl = "http://localhost:3000";
-        public int updateInterval = 1;
+        public float updateInterval = 1.0f;
+        public float resolutionScale = 0.5f;
+        public int screenshotQuality = 75;
 
         public override void ExposeData()
         {
             Scribe_Values.Look(ref serverUrl, "serverUrl", "http://localhost:3000");
-            Scribe_Values.Look(ref updateInterval, "updateInterval", 1);
+            Scribe_Values.Look(ref updateInterval, "updateInterval", 1.0f);
+            Scribe_Values.Look(ref resolutionScale, "resolutionScale", 0.5f);
+            Scribe_Values.Look(ref screenshotQuality, "screenshotQuality", 75);
             base.ExposeData();
         }
     }

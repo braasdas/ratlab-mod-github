@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.raw({ type: 'image/png', limit: '50mb' }));
+app.use(express.raw({ type: 'image/jpeg', limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Store active game sessions
