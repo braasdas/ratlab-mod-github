@@ -1,12 +1,33 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Verse;
 using RimWorld;
 using UnityEngine;
 
 namespace PlayerStoryteller
 {
+    [Serializable]
+    public class ColonistData
+    {
+        public string name;
+        public float health;
+        public float mood;
+        public int x;
+        public int z;
+    }
+
+    [Serializable]
+    public class GameStateData
+    {
+        public string mapName;
+        public int colonistCount;
+        public List<ColonistData> colonists;
+        public float wealth;
+        public int time;
+    }
+
     public class PlayerStorytellerMapComponent : MapComponent
     {
         private int tickCounter = 0;
@@ -63,24 +84,29 @@ namespace PlayerStoryteller
         {
             try
             {
-                var colonists = map.mapPawns.FreeColonists.Select(p => new
+                var colonistsList = new List<ColonistData>();
+                foreach (var pawn in map.mapPawns.FreeColonists)
                 {
-                    name = p.Name?.ToStringShort,
-                    health = p.health.summaryHealth.SummaryHealthPercent,
-                    mood = p.needs?.mood?.CurLevel ?? 0f,
-                    position = new { x = p.Position.x, z = p.Position.z }
-                }).ToList();
+                    colonistsList.Add(new ColonistData
+                    {
+                        name = pawn.Name?.ToStringShort ?? "Unknown",
+                        health = pawn.health.summaryHealth.SummaryHealthPercent,
+                        mood = pawn.needs?.mood?.CurLevel ?? 0f,
+                        x = pawn.Position.x,
+                        z = pawn.Position.z
+                    });
+                }
 
-                var gameState = new
+                var gameState = new GameStateData
                 {
                     mapName = map.info?.parent?.Label ?? "Unknown",
                     colonistCount = map.mapPawns.FreeColonistsCount,
-                    colonists = colonists,
+                    colonists = colonistsList,
                     wealth = map.wealthWatcher.WealthTotal,
                     time = Find.TickManager.TicksGame
                 };
 
-                return Newtonsoft.Json.JsonConvert.SerializeObject(gameState);
+                return JsonUtility.ToJson(gameState);
             }
             catch (Exception ex)
             {
