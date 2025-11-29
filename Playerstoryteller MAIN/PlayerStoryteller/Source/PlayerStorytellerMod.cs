@@ -33,7 +33,7 @@ namespace PlayerStoryteller
 
         public override string SettingsCategory()
         {
-            return "Player Storyteller";
+            return "Rat Lab";
         }
 
         private bool isRunningSpeedTest = false;
