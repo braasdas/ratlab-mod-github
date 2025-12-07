@@ -36,7 +36,7 @@ function validateActionData(action, data) {
     return { valid: true };
 }
 
-module.exports = (io) => {
+module.exports = (io, definitionManager) => {
 
     // Health check
     router.get('/health', (req, res) => {
@@ -47,6 +47,19 @@ module.exports = (io) => {
             activeSessions: sessionStore.gameSessions.size,
             connectedViewers: sessionStore.viewers.size
         });
+    });
+
+    // Get Definitions (Proxy to Game API via DefinitionManager)
+    router.get('/api/definitions/:sessionId', async (req, res) => {
+        // We accept sessionId to potentially allow session-specific mods in future,
+        // but for now it's global based on the host's mod list.
+        if (!definitionManager) {
+            return res.status(503).json({ error: 'Definition service unavailable' });
+        }
+        
+        // Trigger a fresh fetch if cache is old (handled internally by manager)
+        const defs = await definitionManager.fetchDefinitions();
+        res.json(defs);
     });
 
     // Receive combined update from RimWorld mod (HTTP POST fallback)

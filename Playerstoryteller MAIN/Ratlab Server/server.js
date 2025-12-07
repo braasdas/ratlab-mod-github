@@ -10,6 +10,7 @@ const startModServer = require('./src/services/modServer');
 const setupSocketIO = require('./src/services/socketio');
 const setupStreamService = require('./src/services/streamer');
 const economyManager = require('./src/services/economyManager');
+const definitionManager = require('./src/services/DefinitionManager');
 const createApp = require('./src/app');
 
 // 1. Create the HTTP Server (without Express attached yet)
@@ -28,7 +29,7 @@ const io = socketIO(appServer, {
 const app = createApp();
 
 // 4. Attach Routes (Now that we have IO)
-const apiRoutes = require('./src/routes/api')(io);
+const apiRoutes = require('./src/routes/api')(io, definitionManager);
 const settingsRoutes = require('./src/routes/settings')(io);
 app.use('/', apiRoutes);
 app.use('/', settingsRoutes);
@@ -50,6 +51,7 @@ appServer.on('request', (req, res) => {
 setupSocketIO(io);
 const streamWss = setupStreamService();
 economyManager.start(io);
+definitionManager.fetchDefinitions(); // Initial fetch attempt
 
 // 7. Upgrade Handling (WebSocket Streams)
 appServer.on('upgrade', (request, socket, head) => {
