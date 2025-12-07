@@ -84,6 +84,45 @@
         </div>
     </div>
 
+    <!-- CONTENT BROWSER MODAL (Dynamic Content) -->
+    <div id="content-browser-modal" class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 hidden">
+        <div class="bg-rat-panel border border-rat-border rounded-lg w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
+            <!-- Header -->
+            <div class="p-6 border-b border-rat-border flex justify-between items-center bg-rat-dark">
+                <div>
+                    <h2 id="browser-title" class="font-mono text-xl text-rat-green uppercase tracking-wider">EVENT DIRECTOR</h2>
+                    <p class="text-xs text-rat-text-dim mt-1">Select a definition from the active mod list</p>
+                </div>
+                <button onclick="closeContentBrowser()" class="text-rat-text-dim hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Toolbar -->
+            <div class="p-4 border-b border-rat-border flex gap-4 bg-rat-panel">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-search absolute left-3 top-3 text-rat-text-dim text-xs"></i>
+                    <input type="text" id="browser-search" placeholder="Search definitions..." class="w-full bg-rat-black border border-rat-border rounded pl-10 pr-4 py-2 text-sm text-white focus:border-rat-green outline-none font-mono">
+                </div>
+                <select id="browser-filter" class="bg-rat-black border border-rat-border rounded px-4 py-2 text-sm text-white outline-none font-mono focus:border-rat-green">
+                    <option value="all">ALL CATEGORIES</option>
+                    <!-- Populated dynamically -->
+                </select>
+            </div>
+
+            <!-- Content Grid -->
+            <div id="browser-grid" class="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 custom-scrollbar bg-rat-black/50">
+                <!-- Items injected here -->
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 border-t border-rat-border bg-rat-dark flex justify-between items-center">
+                <span id="browser-count" class="text-xs font-mono text-rat-text-dim">0 ITEMS FOUND</span>
+                <button class="bg-rat-border text-rat-text-dim px-4 py-2 rounded text-xs font-mono hover:bg-white hover:text-black transition-colors" onclick="closeContentBrowser()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
     <!-- DASHBOARD UI (Hidden by default) -->
     <div id="dashboard-ui" class="flex flex-col h-full hidden">
         
@@ -119,6 +158,19 @@
                     <button class="nav-btn w-full text-left py-3 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-rat-green flex items-center gap-3 font-mono text-sm border-l-2 border-transparent" data-view="queue">
                         <i class="fa-solid fa-list-check w-5 text-center"></i> Queue
                     </button>
+                    
+                    <div class="pt-4 mt-4 border-t border-rat-border">
+                        <p class="px-4 text-[10px] font-mono text-rat-text-dim uppercase mb-2">Dynamic Tools</p>
+                        <button onclick="openContentBrowser('weather')" class="w-full text-left py-2 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-white flex items-center gap-3 font-mono text-xs transition-colors">
+                            <i class="fa-solid fa-cloud-bolt w-5 text-center text-rat-yellow"></i> Weather Machine
+                        </button>
+                        <button onclick="openContentBrowser('events')" class="w-full text-left py-2 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-white flex items-center gap-3 font-mono text-xs transition-colors">
+                            <i class="fa-solid fa-bullhorn w-5 text-center text-rat-red"></i> Event Director
+                        </button>
+                        <button onclick="openContentBrowser('animals')" class="w-full text-left py-2 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-white flex items-center gap-3 font-mono text-xs transition-colors">
+                            <i class="fa-solid fa-paw w-5 text-center text-rat-green"></i> Spawner
+                        </button>
+                    </div>
                 </nav>
                 <div class="p-4 border-t border-rat-border">
                      <button id="save-changes-btn" class="w-full bg-rat-green text-black font-bold font-mono py-2 rounded hover:bg-white transition-colors uppercase text-sm">

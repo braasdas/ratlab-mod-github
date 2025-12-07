@@ -403,6 +403,165 @@ async function saveSettings() {
     return res.ok;
 }
 
+// CONTENT BROWSER LOGIC
+
+let definitions = null;
+
+async function openContentBrowser(category) {
+    const modal = document.getElementById('content-browser-modal');
+    const title = document.getElementById('browser-title');
+    const grid = document.getElementById('browser-grid');
+    const filterSelect = document.getElementById('browser-filter');
+    const searchInput = document.getElementById('browser-search');
+    
+    // Reset state
+    grid.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">Fetching telemetry...</p>';
+    filterSelect.innerHTML = '<option value="all">ALL CATEGORIES</option>';
+    searchInput.value = '';
+    
+    modal.classList.remove('hidden');
+
+    // Fetch definitions if not cached
+    if (!definitions) {
+        try {
+            const res = await fetch(`/api/definitions/${sessionId}`);
+            if (res.ok) {
+                definitions = await res.json();
+            } else {
+                throw new Error('API Error');
+            }
+        } catch (e) {
+            grid.innerHTML = '<p class="text-rat-red font-mono col-span-full text-center py-10">Failed to load game data. Ensure game is running.</p>';
+            return;
+        }
+    }
+
+    // Render logic based on category
+    let items = [];
+    let filters = [];
+
+    if (category === 'weather') {
+        title.textContent = 'WEATHER CONTROL';
+        // Map API data to render format
+        items = (definitions.weather || []).map(w => ({
+            id: w.defName,
+            label: w.label,
+            desc: w.description,
+            type: 'weather',
+            cost: 500 // Default cost
+        }));
+    } else if (category === 'events') {
+        title.textContent = 'EVENT DIRECTOR';
+        items = (definitions.incidents || []).map(i => ({
+            id: i.defName,
+            label: i.label,
+            desc: i.category, // Show category as description
+            type: 'event',
+            category: i.category,
+            cost: 1000 // Default
+        }));
+        
+        // Populate filters
+        filters = [...new Set(items.map(i => i.category))];
+    } else if (category === 'animals') {
+        title.textContent = 'ANIMAL SPAWNER';
+        items = (definitions.animals || []).map(a => ({
+            id: a.defName,
+            label: a.label,
+            desc: a.race,
+            type: 'animal',
+            cost: Math.max(100, Math.floor((a.combatPower || 10) * 2)) // Dynamic pricing
+        }));
+    }
+
+    // Populate Filter Dropdown
+    if (filters.length > 0) {
+        filters.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.textContent = f;
+            filterSelect.appendChild(opt);
+        });
+        filterSelect.disabled = false;
+    } else {
+        filterSelect.disabled = true;
+    }
+
+    // Initial Render
+    renderBrowserItems(items, grid);
+
+    // Search Handler
+    searchInput.oninput = (e) => {
+        const query = e.target.value.toLowerCase();
+        const cat = filterSelect.value;
+        const filtered = items.filter(i => 
+            (cat === 'all' || i.category === cat) &&
+            (i.label.toLowerCase().includes(query) || i.id.toLowerCase().includes(query))
+        );
+        renderBrowserItems(filtered, grid);
+    };
+
+    // Filter Handler
+    filterSelect.onchange = (e) => {
+        searchInput.dispatchEvent(new Event('input')); // Trigger search to re-filter
+    };
+}
+
+function renderBrowserItems(items, container) {
+    document.getElementById('browser-count').textContent = `${items.length} ITEMS FOUND`;
+    
+    if (items.length === 0) {
+        container.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">No matching definitions found.</p>';
+        return;
+    }
+
+    container.innerHTML = items.map(item => `
+        <div class="bg-rat-panel border border-rat-border rounded p-4 hover:border-rat-green transition-colors group relative cursor-pointer" onclick="selectBrowserItem('${item.id}', '${item.type}', ${item.cost}, '${item.label.replace(/'/g, "\\'")}')">
+            <h3 class="font-mono text-rat-green text-lg truncate group-hover:text-white">${item.label}</h3>
+            <p class="text-xs text-rat-text-dim font-mono truncate mb-2">${item.desc || item.id}</p>
+            <div class="flex justify-between items-center mt-2 border-t border-rat-border pt-2">
+                <span class="text-xs text-rat-yellow font-mono font-bold">${item.cost}c</span>
+                <span class="text-[10px] text-rat-text-dim font-mono uppercase bg-rat-dark px-2 rounded border border-rat-border">${item.type}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function closeContentBrowser() {
+    document.getElementById('content-browser-modal').classList.add('hidden');
+}
+
+// Handle selection (For now, just log or add to queue as a test)
+async function selectBrowserItem(id, type, cost, label) {
+    if(!confirm(`Trigger "${label}" for ${cost} coins?`)) return;
+
+    // Construct payload based on type
+    let action = '';
+    let data = '';
+
+    if (type === 'weather') {
+        action = 'change_weather_dynamic'; // Need to support this in backend/mod
+        data = id;
+    } else if (type === 'event') {
+        action = 'trigger_incident_dynamic';
+        data = id;
+    } else if (type === 'animal') {
+        action = 'spawn_pawn_dynamic';
+        data = id;
+    }
+
+    // Since we don't have dynamic endpoints fully wired in Mod C# yet, 
+    // we can't execute this. But this proves the UI works.
+    console.log(`[Browser] Selected: ${action} -> ${data}`);
+    alert(`Command sent: ${action} (${data})`);
+    closeContentBrowser();
+}
+
+// Expose global
+window.openContentBrowser = openContentBrowser;
+window.closeContentBrowser = closeContentBrowser;
+window.selectBrowserItem = selectBrowserItem;
+
 // --- RENDER & LOGIC ---
 
 function renderSettings() {
@@ -571,6 +730,7 @@ function renderActionToggles() {
 
         // Event Listener for Master Toggle
         masterToggleContainer.querySelector('input').addEventListener('change', (e) => {
+            e.stopPropagation(); // Prevent accordion toggle
             const isChecked = e.target.checked;
             const subToggles = section.querySelectorAll('.action-toggle');
             subToggles.forEach(toggle => {
