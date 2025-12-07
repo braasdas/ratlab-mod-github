@@ -105,6 +105,34 @@ namespace PlayerStoryteller
 
             listingStandard.Gap(12f);
 
+            // Interaction Password
+            listingStandard.Label("Interaction Password (Optional):");
+            string passwordDisplay = string.IsNullOrEmpty(settings.interactionPassword) ? "None Set" : new string('•', 8);
+            
+            Rect passRect = listingStandard.GetRect(30f);
+            Rect passTextRect = new Rect(passRect.x, passRect.y, passRect.width - 110f, passRect.height);
+            Rect passBtnRect = new Rect(passRect.width - 110f, passRect.y, 110f, passRect.height);
+
+            if (Widgets.ButtonText(passTextRect, passwordDisplay))
+            {
+                Find.WindowStack.Add(new Dialog_Input("Set Interaction Password", "Enter new password:", (newPass) => 
+                {
+                    settings.interactionPassword = newPass;
+                    settings.Write();
+                }));
+            }
+            if (Widgets.ButtonText(passBtnRect, "Clear"))
+            {
+                settings.interactionPassword = "";
+                settings.Write();
+                Messages.Message("Interaction password cleared.", MessageTypeDefOf.PositiveEvent);
+            }
+            Text.Font = GameFont.Tiny;
+            listingStandard.Label("If set, viewers must enter this to perform actions.");
+            Text.Font = GameFont.Small;
+
+            listingStandard.Gap(12f);
+
             // Server URL Config
             listingStandard.Label("Server URL:");
             settings.serverUrl = listingStandard.TextEntry(settings.serverUrl);
