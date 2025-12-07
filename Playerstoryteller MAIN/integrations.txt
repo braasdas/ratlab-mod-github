@@ -1,0 +1,100 @@
+# RATLAB - FUTURE DEVELOPMENT ROADMAP
+Generated: 2025-12-06
+Status: Active
+
+================================================================================
+## EXECUTIVE SUMMARY
+================================================================================
+
+**Mission**: Transform RatLab from a static command dashboard into a fully interactive,
+dynamic ecosystem where viewers don't just watch, but *inhabit* the colony.
+
+**Current State**:
+- **Streaming Architecture**: COMPLETE (Sidecar/WSS)
+- **Queue System**: COMPLETE
+- **Economy**: COMPLETE
+- **Colonist Adoption**: IN PROGRESS (Basic logic done, UI pending)
+
+**Next Major Goal**: **THE DYNAMIC UPDATE**
+Move away from hardcoded buttons/events towards a system that dynamically discovers
+content from the user's mod list.
+
+================================================================================
+## PHASE 1: DYNAMIC CONTENT DISCOVERY (Next Priority)
+================================================================================
+**Concept**: Instead of hardcoding "Spawn Raid" or "Clear Weather" buttons, the
+Server fetches the definitions from the Mod via `/api/v1/def/all`.
+
+### 1.1 The "Weather Machine"
+**Problem**: Currently supports only 6 vanilla weathers. Modded weathers (e.g., "Purple Fog") are ignored.
+**Solution**:
+*   **Server**: Fetch `weather_defs` from Mod on startup.
+*   **Dashboard**: Replace the 6 static weather buttons with a searchable Dropdown Menu.
+*   **UI**: "Changing weather to: [Select Weather ▼] - Cost: 500c".
+
+### 1.2 The "Event Director"
+**Problem**: Adding new incidents requires C# code updates.
+**Solution**:
+*   **Server**: Fetch `incidents_defs`. Filter by category (ThreatBig, Misc, etc.).
+*   **Dashboard**: Generate a "Buy Event" panel lists all available incidents.
+*   **Auto-Pricing**: Calculate cost based on `base_chance` or `combat_points` (if available in defs).
+
+### 1.3 Precise Spawning
+**Problem**: "Spawn Random Animal" is vague.
+**Solution**:
+*   **Server**: Fetch `pawn_kind_defs` where `race.animal == true`.
+*   **Dashboard**: Allow viewers to search and spawn specific animals (e.g., "Spawn Capybara").
+*   **Pricing**: Scale cost by `combatPower`.
+
+================================================================================
+## PHASE 2: COLONIST ADOPTION & DIRECT CONTROL (In Progress)
+================================================================================
+**Concept**: Viewers pay to "Adopt" a pawn, unlocking a private tab to control them.
+
+### 2.1 The Private Dashboard
+**Status**: Logic exists, UI needs building.
+**Features**:
+*   **Private Tab**: Only visible to the adopter.
+*   **Live Bio**: Real-time Needs (Food, Rest), Health (Bleeding?), Gear.
+*   **Portrait**: High-res render of the specific pawn.
+
+### 2.2 Direct Commands
+**Concept**: Viewers issue orders that execute on the main thread.
+**Implementation**:
+*   **Work Priorities**: Use `/api/v1/colonist/work-priority` to let viewers set their own job table (e.g., "I refuse to Clean, I only Art").
+*   **Force Equip**: Use `/api/v1/jobs/make/equip` to let viewers buy items from the market and force-equip them.
+*   **Draft/Move**: (Already implemented in backend, needs UI).
+
+================================================================================
+## PHASE 3: THE INTERACTIVE MAP (Long Term)
+================================================================================
+**Concept**: Allow viewers to scroll/pan the map independently of the streamer's camera.
+
+### 3.1 Tile Streaming
+*   **Tech**: Divide map into 64x64 chunks.
+*   **Update**: Only update chunks that have changed (delta compression).
+*   **Render**: HTML5 Canvas on client side.
+
+### 3.2 Click-to-Interact
+*   **Move**: Click ground -> Send "Goto" job for adopted pawn.
+*   **Attack**: Click enemy -> Send "Attack" job.
+
+================================================================================
+## PHASE 4: ECOSYSTEM & COMMUNITY
+================================================================================
+
+### 4.1 Global Leaderboards
+*   Track "Most Wealthy Colony", "Longest Survival", "Deadliest Stream".
+*   Viewer XP/Leveling system across different streamers.
+
+### 4.2 Twitch Integration (Deep)
+*   **Channel Points**: Auto-convert Channel Points to RatLab Coins.
+*   **Subscribers**: Passive income multiplier for subs.
+
+================================================================================
+## DEPRECATED / COMPLETED
+================================================================================
+*   [x] Sidecar Video Streaming
+*   [x] Web-based Settings Dashboard
+*   [x] Basic Economy
+*   [x] Queue System
