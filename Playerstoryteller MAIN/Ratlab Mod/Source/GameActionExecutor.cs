@@ -268,6 +268,17 @@ namespace PlayerStoryteller
                     case "dlcOrbitalDebris": DLCHelper.TriggerOrbitalDebris(map); break;
                     case "dlcMechanoidSignal": DLCHelper.TriggerMechanoidSignal(map); break;
 
+                    // ===== DYNAMIC CONTENT =====
+                    case "change_weather_dynamic":
+                        ChangeWeather(action.data);
+                        break;
+                    case "trigger_incident_dynamic":
+                        TriggerIncidentDynamic(action.data);
+                        break;
+                    case "spawn_pawn_dynamic":
+                        SpawnPawnDynamic(action.data);
+                        break;
+
                     // ===== FACTIONS =====
                     case "changeFactionGoodwill":
                         ChangeFactionGoodwill(action.data);
@@ -1004,6 +1015,71 @@ namespace PlayerStoryteller
         // ============================================ 
         // UTILITY
         // ============================================ 
+
+        // ============================================ 
+        // DYNAMIC CONTENT HELPERS
+        // ============================================ 
+
+        private void TriggerIncidentDynamic(string defName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(defName)) return;
+                
+                IncidentDef def = DefDatabase<IncidentDef>.GetNamedSilentFail(defName);
+                if (def == null)
+                {
+                    Log.Warning($"[Player Storyteller] Dynamic Incident not found: {defName}");
+                    return;
+                }
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(def.category, map);
+                parms.forced = true;
+                
+                if (def.pointsScaleable)
+                {
+                    float storyPoints = StorytellerUtility.DefaultThreatPointsNow(map);
+                    parms.points = Math.Max(35f, storyPoints);
+                }
+
+                if (def.Worker.TryExecute(parms))
+                {
+                    Messages.Message($"Viewers triggered dynamic event: {def.label}", MessageTypeDefOf.NeutralEvent);
+                }
+                else
+                {
+                    Messages.Message($"Failed to trigger {def.label} (conditions not met).", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering dynamic incident {defName}: {ex.Message}");
+            }
+        }
+
+        private void SpawnPawnDynamic(string defName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(defName)) return;
+
+                PawnKindDef kind = DefDatabase<PawnKindDef>.GetNamedSilentFail(defName);
+                if (kind == null)
+                {
+                    Log.Warning($"[Player Storyteller] Dynamic PawnKind not found: {defName}");
+                    return;
+                }
+
+                IntVec3 spawnSpot = CellFinder.RandomClosewalkCellNear(map.Center, map, 20);
+                Pawn pawn = PawnGenerator.GeneratePawn(kind, null);
+                GenSpawn.Spawn(pawn, spawnSpot, map);
+                Messages.Message($"Viewers spawned a {pawn.LabelShort}!", MessageTypeDefOf.NeutralEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error spawning dynamic pawn {defName}: {ex.Message}");
+            }
+        }
 
         private void ChangeWeather(string weatherDefName)
         {
