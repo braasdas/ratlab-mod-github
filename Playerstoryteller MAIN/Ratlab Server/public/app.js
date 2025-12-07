@@ -1843,6 +1843,194 @@ socket.on('map-image-update', (data) => {
     }
 });
 
+// CONTENT BROWSER LOGIC
+
+let definitions = null;
+
+async function openContentBrowser(category) {
+    const modal = document.getElementById('content-browser-modal');
+    const title = document.getElementById('browser-title');
+    const grid = document.getElementById('browser-grid');
+    const filterSelect = document.getElementById('browser-filter');
+    const searchInput = document.getElementById('browser-search');
+    
+    // Reset state
+    grid.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">Fetching telemetry...</p>';
+    filterSelect.innerHTML = '<option value="all">ALL CATEGORIES</option>';
+    searchInput.value = '';
+    
+    modal.classList.remove('hidden');
+
+    // Fetch definitions if not cached
+    if (!definitions) {
+        try {
+            const res = await fetch(`/api/definitions/${currentSession}`);
+            if (res.ok) {
+                definitions = await res.json();
+            } else {
+                throw new Error('API Error');
+            }
+        } catch (e) {
+            grid.innerHTML = '<p class="text-rat-red font-mono col-span-full text-center py-10">Failed to load game data.</p>';
+            return;
+        }
+    }
+
+    // Render logic based on category
+    let items = [];
+    let filters = [];
+
+    if (category === 'weather') {
+        title.textContent = 'WEATHER CONTROL';
+        items = (definitions.weather || []).map(w => ({
+            id: w.defName,
+            label: w.label,
+            desc: w.description,
+            type: 'weather',
+            category: 'Weather',
+            cost: 500 // Default cost
+        }));
+    } else if (category === 'events') {
+        title.textContent = 'EVENT DIRECTOR';
+        items = (definitions.incidents || []).map(i => ({
+            id: i.defName,
+            label: i.label,
+            desc: i.category,
+            type: 'event',
+            category: i.category,
+            cost: 1000 // Default cost
+        }));
+        filters = [...new Set(items.map(i => i.category))];
+    } else if (category === 'animals') {
+        title.textContent = 'ANIMAL SPAWNER';
+        items = (definitions.animals || []).map(a => ({
+            id: a.defName,
+            label: a.label,
+            desc: a.race,
+            type: 'animal',
+            category: a.race || 'Unknown',
+            cost: Math.max(100, Math.floor((a.combatPower || 10) * 2)) // Dynamic pricing
+        }));
+    }
+
+    // Populate Filter Dropdown
+    if (filters.length > 0) {
+        filters.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.textContent = f;
+            filterSelect.appendChild(opt);
+        });
+        filterSelect.disabled = false;
+    } else {
+        filterSelect.disabled = true;
+    }
+
+    // Initial Render
+    renderBrowserItems(items, grid);
+
+    // Search Handler
+    searchInput.oninput = (e) => {
+        const query = e.target.value.toLowerCase();
+        const cat = filterSelect.value;
+        const filtered = items.filter(i => 
+            (cat === 'all' || i.category === cat) &&
+            (i.label.toLowerCase().includes(query) || i.id.toLowerCase().includes(query))
+        );
+        renderBrowserItems(filtered, grid);
+    };
+
+    // Filter Handler
+    filterSelect.onchange = (e) => {
+        searchInput.dispatchEvent(new Event('input'));
+    };
+}
+
+function renderBrowserItems(items, container) {
+    document.getElementById('browser-count').textContent = `${items.length} ITEMS FOUND`;
+    
+    if (items.length === 0) {
+        container.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">No matching definitions found.</p>';
+        return;
+    }
+
+    container.innerHTML = items.map(item => `
+        <div class="bg-rat-panel border border-rat-border rounded p-4 hover:border-rat-green transition-colors group relative cursor-pointer" onclick="selectBrowserItem('${item.id}', '${item.type}', ${item.cost}, '${item.label.replace(/'/g, "\\'")}')">
+            <h3 class="font-mono text-rat-green text-lg truncate group-hover:text-white">${item.label}</h3>
+            <p class="text-xs text-rat-text-dim font-mono truncate mb-2">${item.desc || item.id}</p>
+            <div class="flex justify-between items-center mt-2 border-t border-rat-border pt-2">
+                <span class="text-xs text-rat-yellow font-mono font-bold">${item.cost}c</span>
+                <span class="text-[10px] text-rat-text-dim font-mono uppercase bg-rat-dark px-2 rounded border border-rat-border">BUY</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function closeContentBrowser() {
+    document.getElementById('content-browser-modal').classList.add('hidden');
+}
+
+// Handle selection and purchase
+async function selectBrowserItem(id, type, cost, label) {
+    if(!confirm(`Trigger "${label}" for ${cost} coins?`)) return;
+
+    // Construct payload
+    let action = '';
+    if (type === 'weather') action = 'change_weather_dynamic';
+    else if (type === 'event') action = 'trigger_incident_dynamic';
+    else if (type === 'animal') action = 'spawn_pawn_dynamic';
+
+    // Purchase logic reused from sendAction but adapted for dynamic costs
+    const currentCoinText = coinBalance ? coinBalance.textContent.replace(/[^0-9]/g, '') : '0';
+    const currentCoins = parseInt(currentCoinText);
+    
+    if (currentCoins < cost) {
+        showFeedback('error', `INSUFFICIENT FUNDS (${cost} CREDITS)`);
+        return;
+    }
+
+    try {
+        // 1. Pay
+        const purchaseRes = await fetch(`/api/economy/${encodeURIComponent(currentSession)}/purchase`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, action: 'dynamic_purchase', cost }) // Generic action name for log
+        });
+        
+        if (!purchaseRes.ok) {
+            showFeedback('error', 'PURCHASE FAILED');
+            return;
+        }
+
+        // 2. Execute
+        const response = await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                sessionId: currentSession, 
+                action: action, 
+                data: id, // The defName is the data
+                password: sessionPassword 
+            })
+        });
+
+        if (response.ok) {
+            showFeedback('success', 'PROTOCOL EXECUTED');
+            closeContentBrowser();
+        } else {
+            showFeedback('error', 'COMMAND FAILED');
+        }
+    } catch (e) {
+        console.error(e);
+        showFeedback('error', 'NETWORK ERROR');
+    }
+}
+
+// Expose global
+window.openContentBrowser = openContentBrowser;
+window.closeContentBrowser = closeContentBrowser;
+window.selectBrowserItem = selectBrowserItem;
+
 // UI Functions
 function updateConnectionStatus(connected) {
     const statusDot = connectionStatus.querySelector('.status-dot');
