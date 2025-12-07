@@ -1,187 +1,81 @@
-# RIMAPI Architecture Guide
+# RatLab Architecture
 
 ## System Overview
 
-RIMAPI is built as a RimWorld mod that hosts an embedded HTTP server providing REST API access to game data. The architecture is designed for performance, extensibility, and real-time updates.
+RatLab (formerly PlayerStoryteller) replaces the old embedded server architecture with a modern, cloud-connected client-server model. The system consists of three main components working in tandem to provide a low-latency, interactive streaming experience.
 
-```
-┌─────────────────┐    HTTP/WebSocket     ┌──────────────────┐
-│   HTTP Clients  │ ←──────────────────→  │   RIMAPI Server  │
-│   (Browsers,    │                       │   (Embedded)     │
-│    Apps, etc.)  │                       │                  │
-└─────────────────┘                       └──────────────────┘
-                                                 │
-                                                 │ RimWorld API
-                                                 ▼
-                                         ┌──────────────────┐
-                                         │   RimWorld Game  │
-                                         │     Engine       │
-                                         └──────────────────┘
-```
+```mermaid
+graph TD
+    subgraph Client PC
+        A[RimWorld Mod] -- JSON State --> D[Cloud Server]
+        A -- Manages --> B[Go Sidecar]
+        B -- Video Stream (WebRTC/HLS) --> D
+    end
 
-## Core Components
+    subgraph Cloud Infrastructure
+        D[RatLab Server] -- Socket.IO/HLS --> E[Web Dashboard]
+        D -- Actions --> A
+    end
 
-### 1. Game Component (`RIMAPI_GameComponent`)
-- **Purpose**: RimWorld integration point
-- **Responsibilities**:
-  - Initialize and manage API server lifecycle
-  - Process requests during game ticks and GUI events
-  - Handle mod settings integration
-
-```csharp
-public class RIMAPI_GameComponent : GameComponent
-{
-    public override void FinalizeInit()
-    {
-        // Server initialization
-        _apiServer = new ApiServer(settings.Port, _gameDataService);
-        _apiServer.Start();
-    }
-
-    public override void GameComponentTick()
-    {
-        // Process queued requests every tick
-        _apiServer.ProcessQueuedRequests();
-    }
-}
+    subgraph Users
+        F[Viewers] -- Interact --> E
+        E -- Video/Stats --> F
+    end
 ```
 
-### 2. API Server (`ApiServer`)
-- **Purpose**: HTTP server management
-- **Responsibilities**:
-  - Start/stop HTTP listener
-  - Route incoming requests
-  - Manage request queue
-  - Coordinate WebSocket connections
+## Components
 
-```csharp
-public class ApiServer : IDisposable
-{
-    private readonly HttpListener _listener;
-    private readonly Router _router;
-    private readonly WebSocketManager _webSocketManager;
-    private readonly Queue<HttpListenerContext> _requestQueue;
-}
-```
+### 1. The Mod (Client)
+**Language:** C# (.NET Framework 4.7.2)
+**Location:** `Ratlab Mod/`
 
-### 3. Router (`Router`)
-- **Purpose**: Request routing and URL parsing
-- **Features**:
-  - Pattern-based route matching
-  - Path parameter extraction
-  - Async request handling
+The mod acts as a telemetry agent and controller. It does **not** host a local server.
+*   **Data Polling:** Periodically scans game state (Colonists, Needs, Inventory, Map, Wealth).
+*   **Compression:** Compresses JSON payloads (GZip) before sending to the server.
+*   **Action Execution:** Polls the server for queued viewer actions (e.g., "Spawn Raid", "Send Gift") and executes them in-game on the main thread.
+*   **Sidecar Management:** Automatically launches and monitors the `go-sidecar` process for video streaming.
 
-```csharp
-// Route registration
-_router.AddRoute("GET", "/api/v1/colonists/{id}", 
-    context => new ColonistsController().GetColonist(context));
+### 2. The Sidecar (Streaming)
+**Language:** Go (Golang)
+**Location:** `go-sidecar/`
 
-// Route matching extracts {id} parameter
-```
+A lightweight external process responsible for high-performance video capture.
+*   **Window Capture:** Captures the RimWorld window directly using Windows APIs (GDI/DirectX).
+*   **Encoding:** Pipes raw frames to an embedded **FFmpeg** instance.
+    *   Supports Hardware Acceleration: NVIDIA (NVENC), AMD (AMF), Intel (QSV).
+    *   Falls back to CPU (libx264) if hardware encoding fails.
+*   **Transport:** Streams H.264 video segments via WebSocket to the Relay Server.
 
-### 4. Controllers
-- **Purpose**: Handle specific API endpoints
-- **Base Features** (via `BaseController`):
-  - ETag generation and validation
-  - Field filtering
-  - Consistent response formatting
+### 3. The Server (Relay & Web Host)
+**Language:** Node.js (Express + Socket.IO)
+**Location:** `Ratlab Server/`
 
-```csharp
-public class GameController : BaseController
-{
-    public async Task GetGameState(HttpListenerContext context)
-    {
-        var gameState = _gameDataService.GetGameState();
-        await HandleETagCaching(context, gameState, data => GenerateHash(...));
-    }
-}
-```
-
-### 5. Services (`IGameDataService`)
-- **Purpose**: Data access and business logic
-- **Responsibilities**:
-  - Access RimWorld game data
-  - Cache management
-  - Data transformation to DTOs
-
-```csharp
-public interface IGameDataService
-{
-    GameStateDto GetGameState();
-    List<ColonistDto> GetColonists();
-    void RefreshCache();
-}
-```
-
-### 6. WebSocket Manager (`WebSocketManager`)
-- **Purpose**: Real-time event broadcasting
-- **Features**:
-  - WebSocket connection management
-  - Event broadcasting to connected clients
-  - Automatic dead connection cleanup
+The central hub for data synchronization.
+*   **State Relay:** Receives compressed game state from the Mod and broadcasts it to connected web clients via Socket.IO.
+*   **Stream Distribution:**
+    *   **Low Latency:** Relays WebSocket video packets for real-time viewing.
+    *   **High Scalability:** Can output to HLS/CDN for mass audiences.
+*   **Action Queue:** Manages an economy system and action queue for viewer interactions.
+*   **Dashboard:** Serves the Single Page Application (SPA) web interface.
 
 ## Data Flow
 
-### HTTP Request Processing
-```
-1. HTTP Request → HttpListener
-2. Request Queued → Request Queue  
-3. Tick Processing → Router
-4. Route Matching → Controller
-5. Data Access → GameDataService
-6. Response Building → ResponseBuilder
-7. HTTP Response → Client
-```
+### 1. Game State (Telemetry)
+1.  **Poll:** Mod collects data (e.g., `Colonist.health`).
+2.  **Pack:** Data serialized to JSON and GZipped.
+3.  **Send:** HTTP POST to `https://ratlab.online/api/update`.
+4.  **Broadcast:** Server unpacks and emits `gamestate-update` event to browsers.
+5.  **Render:** Web Dashboard updates DOM (React/Vanilla JS).
 
-### WebSocket Event Flow
-```
-1. Game Event → GameDataService.RefreshCache()
-2. Cache Update → WebSocketManager.BroadcastGameUpdate()
-3. Message Serialization → JSON
-4. Broadcast → All Connected Clients
-```
+### 2. Video Stream
+1.  **Capture:** Sidecar grabs frame from window `HWND`.
+2.  **Encode:** FFmpeg encodes to H.264.
+3.  **Transmit:** Sidecar sends binary data to Server via WebSocket.
+4.  **Relay:** Server forwards data to Viewers.
+5.  **Decode:** Browser decodes using MSE (Media Source Extensions).
 
-## Caching Strategy
-
-### ETag Generation
-ETags are generated from data fingerprints to enable conditional requests:
-
-```csharp
-// ETag based on data content
-await HandleETagCaching(context, data, data => 
-    GenerateHash(data.GameTick, data.ColonyWealth, data.ColonistCount));
-```
-
-### Cache Refresh
-- **Tick-based**: Every `refreshIntervalTicks` (default: 300)
-- **On-demand**: When data is requested and cache is stale
-- **Event-driven**: When significant game events occur
-
-## Performance Considerations
-
-### Request Processing
-- **Dual Processing**: Both `GameComponentTick` and `GameComponentOnGUI`
-- **Queue Management**: Process up to 10 requests per tick
-- **Async Operations**: Non-blocking I/O operations
-
-### Memory Management
-- **DTO Pattern**: Lightweight data transfer objects
-- **Connection Pooling**: WebSocket connection management
-- **Cache Invalidation**: Tick-based cache refresh
-
-## Extension Points
-
-### 1. Adding New Endpoints
-- Create new controller
-- Register route in `ApiServer.RegisterRoutes()`
-- Implement data access in `IGameDataService`
-
-### 2. Adding New Data Types
-- Create DTO classes in `Models/` namespace
-- Extend `IGameDataService` interface
-- Implement in `GameDataService`
-
-### 3. Adding Real-time Events
-- Extend `WebSocketManager.BroadcastGameUpdate()`
-- Add new event types
-- Subscribe to RimWorld events
+### 3. Viewer Actions
+1.  **Trigger:** Viewer clicks "Heal Colonist" on Dashboard.
+2.  **Queue:** Server checks economy balance, adds to Action Queue.
+3.  **Fetch:** Mod polls `/api/actions` (or receives via WebSocket).
+4.  **Execute:** Mod runs C# code to heal the pawn on the next game tick.

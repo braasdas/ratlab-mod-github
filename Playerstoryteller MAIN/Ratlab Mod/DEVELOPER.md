@@ -1,569 +1,67 @@
-# RIMAPI Developer Guide
+# RatLab Developer Guide
 
 ## Prerequisites
 
-- RimWorld 1.4+
-- Visual Studio 2019+ or VSCode
-- .NET Framework 4.7.2
-- Basic C# and RimWorld modding knowledge
+*   **C# Mod:** Visual Studio 2022 or JetBrains Rider (.NET Framework 4.7.2).
+*   **Sidecar:** Go 1.21+ and GCC (MinGW-w64) for FFI.
+*   **Server:** Node.js 18+ and npm.
+*   **RimWorld:** Installed locally (for DLL references).
 
-## Project Structure
+## Repository Structure
 
 ```
-RimworldRestApi/
-├── Core/                    # Server core components
-│   ├── ApiServer.cs        # Main HTTP server
-│   ├── Router.cs           # Request routing
-│   └── ResponseBuilder.cs  # HTTP response formatting
-├── Controllers/            # API endpoint handlers
-│   ├── BaseController.cs   # Common controller functionality
-│   ├── GameController.cs   # Game state endpoints
-│   └── ColonistsController.cs # Colonist data endpoints
-├── Services/               # Business logic layer
-│   ├── IGameDataService.cs # Data access interface
-│   └── GameDataService.cs  # RimWorld data implementation
-├── Models/                 # Data transfer objects
-│   ├── DTOs/              # Request/response models
-│   └── Entities/          # Internal data models
-├── WebSockets/            # Real-time communication
-│   └── WebSocketManager.cs # WebSocket connection management
-└── Utilities/             # Helper classes
-    └── HashUtility.cs     # ETag generation
+Playerstoryteller MAIN/
+├── Ratlab Mod/             # C# Source Code
+│   ├── Source/             # .cs files
+│   ├── About/              # Mod metadata
+│   └── Assemblies/         # Compiled DLLs
+├── Ratlab Server/          # Node.js Backend & Frontend
+│   ├── src/                # Server logic
+│   └── public/             # Web Dashboard (HTML/JS)
+├── go-sidecar/             # Go Streaming Service
+│   ├── main.go
+│   └── encoder.go
+└── build.bat               # All-in-one build script
 ```
 
-Project architecture: [Link](https://github.com/IlyaChichkov/RIMAPI/blob/main/Docs/ARCHITECTURE.md)
-
-## Adding New API Endpoints
-
-### Step 1: Create Data Transfer Object (DTO)
-
-Create a new model in `Models/DTOs/`:
-
-```csharp
-namespace RimworldRestApi.Models
-{
-    public class ResearchProjectDto
-    {
-        public string Id { get; set; }
-        public string Name { get; set; }
-        public float Progress { get; set; }
-        public string Description { get; set; }
-        public int Cost { get; set; }
-    }
-}
-```
-
-### Step 2: Extend Data Service
-
-Add method to `IGameDataService`:
-
-```csharp
-public interface IGameDataService
-{
-    // Existing methods...
-    List<ResearchProjectDto> GetResearchProjects();
-    ResearchProjectDto GetResearchProject(string projectId);
-}
-```
-
-Implement in `GameDataService`:
-
-```csharp
-public List<ResearchProjectDto> GetResearchProjects()
-{
-    var projects = new List<ResearchProjectDto>();
-    
-    try
-    {
-        var researchManager = Find.ResearchManager;
-        if (researchManager == null) return projects;
-
-        // Access RimWorld research data
-        foreach (var project in DefDatabase<ResearchProjectDef>.AllDefs)
-        {
-            var progress = researchManager.GetProgress(project);
-            projects.Add(new ResearchProjectDto
-            {
-                Id = project.defName,
-                Name = project.label,
-                Progress = progress / project.baseCost,
-                Description = project.description,
-                Cost = project.baseCost
-            });
-        }
-    }
-    catch (Exception ex)
-    {
-        DebugLogging.Error($"Error getting research projects - {ex.Message}");
-    }
-    
-    return projects;
-}
-```
-
-### Step 3: Create Controller
-
-Create new controller or extend existing one:
-
-```csharp
-using System.Threading.Tasks;
-using System.Net;
-
-namespace RimworldRestApi.Controllers
-{
-    public class ResearchController : BaseController
-    {
-        private readonly IGameDataService _gameDataService;
-
-        public ResearchController(IGameDataService gameDataService)
-        {
-            _gameDataService = gameDataService;
-        }
-
-        public async Task GetResearchProjects(HttpListenerContext context)
-        {
-            var projects = _gameDataService.GetResearchProjects();
-            
-            await HandleETagCaching(context, projects, data =>
-                GenerateHash(data.Count, data.Max(p => p.Progress))
-            );
-        }
-
-        public async Task GetResearchProject(HttpListenerContext context)
-        {
-            var projectId = context.Request.QueryString["id"];
-            if (string.IsNullOrEmpty(projectId))
-            {
-                await ResponseBuilder.Error(context.Response, 
-                    HttpStatusCode.BadRequest, "Project ID required");
-                return;
-            }
-
-            var project = _gameDataService.GetResearchProject(projectId);
-            if (project == null)
-            {
-                await ResponseBuilder.Error(context.Response, 
-                    HttpStatusCode.NotFound, "Research project not found");
-                return;
-            }
-
-            await HandleETagCaching(context, project, data =>
-                GenerateHash(data.Id, data.Progress)
-            );
-        }
-    }
-}
-```
-
-### Step 4: Register Routes
-
-Add routes in `ApiServer.RegisterRoutes()`:
-
-```csharp
-private void RegisterRoutes()
-{
-    // Existing routes...
-    
-    // Research endpoints
-    _router.AddRoute("GET", "/api/v1/research/projects", context => 
-        new ResearchController(_gameDataService).GetResearchProjects(context));
-        
-    _router.AddRoute("GET", "/api/v1/research/projects/{id}", context => 
-        new ResearchController(_gameDataService).GetResearchProject(context));
-}
-```
-
-## Adding Real-time Events
-
-### Step 1: Define Event Type
-
-```csharp
-public class ResearchEvent
-{
-    public string Type { get; set; } // "researchStarted", "researchCompleted"
-    public string ProjectId { get; set; }
-    public float Progress { get; set; }
-    public DateTime Timestamp { get; set; }
-}
-```
-
-### Step 2: Extend WebSocket Manager
-
-Add broadcast method to `WebSocketManager`:
-
-```csharp
-public void BroadcastResearchEvent(ResearchEvent researchEvent)
-{
-    var message = new
-    {
-        type = "researchUpdate",
-        data = researchEvent,
-        timestamp = DateTime.UtcNow
-    };
-
-    _ = BroadcastMessageAsync(message);
-}
-```
-
-### Step 3: Hook into RimWorld Events
-
-Extend `GameDataService` to monitor research changes:
-
-```csharp
-public class GameDataService : IGameDataService
-{
-    private readonly WebSocketManager _webSocketManager;
-    private string _currentResearchProject;
-    private float _lastResearchProgress;
-
-    public void MonitorResearchChanges()
-    {
-        // This would be called periodically or from GameComponentTick
-        var currentProject = Find.ResearchManager?.currentProj;
-        var currentProgress = Find.ResearchManager?.GetProgress(currentProject) ?? 0;
-        
-        if (currentProject?.defName != _currentResearchProject)
-        {
-            // Research project changed
-            _webSocketManager.BroadcastResearchEvent(new ResearchEvent
-            {
-                Type = "researchStarted",
-                ProjectId = currentProject?.defName,
-                Progress = currentProgress
-            });
-            
-            _currentResearchProject = currentProject?.defName;
-        }
-        else if (Math.Abs(currentProgress - _lastResearchProgress) > 0.01f)
-        {
-            // Research progress updated
-            _webSocketManager.BroadcastResearchEvent(new ResearchEvent
-            {
-                Type = "researchProgress",
-                ProjectId = currentProject?.defName,
-                Progress = currentProgress
-            });
-            
-            _lastResearchProgress = currentProgress;
-        }
-    }
-}
-```
-
-## Implementing Field Filtering
-
-### Basic Field Filtering
-
-The `BaseController` automatically handles field filtering:
-
-```csharp
-// Client request with fields
-GET /api/v1/colonists?fields=name,health,skills
-
-// Controller automatically filters response to only include specified fields
-```
-
-### Custom Field Processing
-
-For complex objects, override field filtering:
-
-```csharp
-public async Task GetComplexData(HttpListenerContext context)
-{
-    var complexData = _gameDataService.GetComplexData();
-    var fields = context.Request.QueryString["fields"];
-    
-    // Custom filtering logic
-    var filteredData = ApplyCustomFieldFiltering(complexData, fields);
-    
-    await HandleETagCaching(context, filteredData, data => 
-        GenerateHash(data.Version, data.Timestamp));
-}
-
-private object ApplyCustomFieldFiltering(ComplexDto data, string fields)
-{
-    if (string.IsNullOrEmpty(fields)) return data;
-    
-    // Implement custom field selection logic
-    var fieldList = fields.Split(',');
-    var result = new ExpandoObject();
-    
-    foreach (var field in fieldList)
-    {
-        switch (field.Trim())
-        {
-            case "summary":
-                ((IDictionary<string, object>)result).Add("summary", data.GetSummary());
-                break;
-            case "details":
-                ((IDictionary<string, object>)result).Add("details", data.GetDetails());
-                break;
-            // Add more custom field mappings
-        }
-    }
-    
-    return result;
-}
-```
-
-## Error Handling Best Practices
-
-### Controller Error Handling
-
-```csharp
-public async Task GetDataWithValidation(HttpListenerContext context)
-{
-    try
-    {
-        // Validate parameters
-        var idParam = context.Request.QueryString["id"];
-        if (!int.TryParse(idParam, out int id) || id <= 0)
-        {
-            await ResponseBuilder.Error(context.Response, 
-                HttpStatusCode.BadRequest, "Invalid ID parameter");
-            return;
-        }
-
-        // Business logic validation
-        var data = _gameDataService.GetData(id);
-        if (data == null)
-        {
-            await ResponseBuilder.Error(context.Response, 
-                HttpStatusCode.NotFound, "Data not found");
-            return;
-        }
-
-        // Success response
-        await HandleETagCaching(context, data, d => GenerateHash(d.Id, d.Version));
-    }
-    catch (Exception ex)
-    {
-        DebugLogging.Error($"Error in GetDataWithValidation - {ex}");
-        await ResponseBuilder.Error(context.Response, 
-            HttpStatusCode.InternalServerError, "Internal server error");
-    }
-}
-```
-
-### Custom Exception Types
-
-```csharp
-public class ApiException : Exception
-{
-    public HttpStatusCode StatusCode { get; }
-    
-    public ApiException(HttpStatusCode statusCode, string message) 
-        : base(message)
-    {
-        StatusCode = statusCode;
-    }
-}
-
-// Usage in service layer
-public ColonistDto GetColonist(int id)
-{
-    var colonist = FindColonistById(id);
-    if (colonist == null)
-        throw new ApiException(HttpStatusCode.NotFound, "Colonist not found");
-        
-    return colonist;
-}
-```
-
-## Testing Your Extensions
-
-### Unit Testing Controllers
-
-```csharp
-[TestClass]
-public class ResearchControllerTests
-{
-    private ResearchController _controller;
-    private Mock<IGameDataService> _mockGameDataService;
-
-    [TestInitialize]
-    public void Setup()
-    {
-        _mockGameDataService = new Mock<IGameDataService>();
-        _controller = new ResearchController(_mockGameDataService.Object);
-    }
-
-    [TestMethod]
-    public async Task GetResearchProjects_ReturnsProjects()
-    {
-        // Arrange
-        var projects = new List<ResearchProjectDto>
-        {
-            new ResearchProjectDto { Id = "project1", Progress = 0.5f }
-        };
-        _mockGameDataService.Setup(x => x.GetResearchProjects()).Returns(projects);
-        
-        var context = CreateMockContext("/api/v1/research/projects");
-
-        // Act
-        await _controller.GetResearchProjects(context);
-
-        // Assert
-        // Verify response contains expected data
-    }
-}
-```
-
-### Integration Testing
-
-```csharp
-[TestClass]
-public class ApiIntegrationTests
-{
-    private ApiServer _server;
-
-    [TestInitialize]
-    public void Setup()
-    {
-        _server = new ApiServer(8765, new GameDataService());
-        _server.Start();
-    }
-
-    [TestMethod]
-    public async Task GetVersion_ReturnsValidResponse()
-    {
-        using var client = new HttpClient();
-        var response = await client.GetAsync("http://localhost:8765/api/v1/version");
-        
-        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        
-        var content = await response.Content.ReadAsStringAsync();
-        var version = JsonSerializer.Deserialize<VersionDto>(content);
-        
-        Assert.IsNotNull(version);
-        Assert.IsFalse(string.IsNullOrEmpty(version.ApiVersion));
-    }
-
-    [TestCleanup]
-    public void Cleanup()
-    {
-        _server?.Dispose();
-    }
-}
-```
-
-## Performance Optimization
-
-### Efficient Data Access
-
-```csharp
-public List<ColonistDto> GetColonistsOptimized()
-{
-    // Use RimWorld's optimized access patterns
-    var map = Find.CurrentMap;
-    if (map == null) return new List<ColonistDto>();
-
-    return map.mapPawns.FreeColonists
-        .Where(pawn => pawn != null && pawn.Spawned)
-        .Select(pawn => new ColonistDto
-        {
-            Id = pawn.thingIDNumber,
-            Name = pawn.Name?.ToStringShort ?? "Unknown",
-            // Only access necessary properties
-            Health = pawn.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-            Position = new PositionDto 
-            { 
-                X = pawn.Position.x, 
-                Z = pawn.Position.z 
-                // Skip Y if not needed
-            }
-        })
-        .ToList();
-}
-```
-
-### Cache Strategy
-
-```csharp
-public class OptimizedGameDataService : IGameDataService
-{
-    private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds(5);
-    private DateTime _lastCacheUpdate = DateTime.MinValue;
-    private GameStateDto _cachedGameState;
-
-    public GameStateDto GetGameState()
-    {
-        if (DateTime.UtcNow - _lastCacheUpdate > _cacheDuration)
-        {
-            RefreshCache();
-        }
-        return _cachedGameState;
-    }
-
-    public void RefreshCache()
-    {
-        // Only update if significant changes occurred
-        var newState = CreateGameState();
-        if (ShouldUpdateCache(_cachedGameState, newState))
-        {
-            _cachedGameState = newState;
-            _lastCacheUpdate = DateTime.UtcNow;
-        }
-    }
-
-    private bool ShouldUpdateCache(GameStateDto oldState, GameStateDto newState)
-    {
-        return oldState == null || 
-               Math.Abs(oldState.ColonyWealth - newState.ColonyWealth) > 100 ||
-               oldState.ColonistCount != newState.ColonistCount;
-    }
-}
-```
-
-## Common Pitfalls
-
-### 1. RimWorld API Thread Safety
-```csharp
-// WRONG - Accessing RimWorld API from background thread
-public void BadMethod()
-{
-    Task.Run(() => {
-        var colonists = Find.CurrentMap.mapPawns.FreeColonists; // Thread unsafe!
-    });
-}
-
-// CORRECT - Process on main thread
-public void GoodMethod()
-{
-    // Use MainThreadDispatcher or process during tick
-}
-```
-
-### 2. Memory Leaks
-```csharp
-// WRONG - Not disposing WebSocket connections
-_sockets.Add(webSocket); // Never removed
-
-// CORRECT - Proper cleanup
-try
-{
-    // Use socket
-}
-finally
-{
-    lock (_lock) { _sockets.Remove(webSocket); }
-    webSocket?.Dispose();
-}
-```
-
-### 3. Performance Issues
-```csharp
-// WRONG - Inefficient data access every request
-public ColonistDto GetColonist(int id)
-{
-    // This scans all pawns every call
-    return Find.CurrentMap.mapPawns.AllPawns
-        .FirstOrDefault(p => p.thingIDNumber == id);
-}
-
-// CORRECT - Cached access
-public ColonistDto GetColonist(int id)
-{
-    return GetColonists() // Uses cached list
-        .FirstOrDefault(c => c.Id == id);
-}
+## Building
+
+### 1. The Mod
+1.  Open `Ratlab Mod/Source/PlayerStoryteller.csproj` in Visual Studio.
+2.  Update Reference Paths: Ensure `Assembly-CSharp.dll` and `UnityEngine.dll` point to your RimWorld installation (`RimWorld/RimWorldWin64_Data/Managed/`).
+3.  Build Solution (Release mode).
+4.  Output `PlayerStoryteller.dll` will be placed in `Ratlab Mod/Assemblies/`.
+
+### 2. The Sidecar
+1.  Navigate to `go-sidecar/`.
+2.  Run `go build -o sidecar.exe .`
+3.  **Important:** Copy `ffmpeg.exe` (available from ffmpeg.org) next to `sidecar.exe`.
+4.  Copy `sidecar.exe` and `ffmpeg.exe` to `Ratlab Mod/go-sidecar/` (the mod expects them there).
+
+### 3. The Server
+1.  Navigate to `Ratlab Server/`.
+2.  Run `npm install`.
+3.  Run `node server.js` (defaults to port 3000).
+
+## Debugging
+
+### Local Development Loop
+The mod allows switching between Production (`ratlab.online`) and Development (`localhost`) modes.
+
+1.  **Start Server:** Run `node server.js` in `Ratlab Server/`.
+2.  **Launch RimWorld:** Enable "RatLab" mod.
+3.  **Configure:** Go to Options -> Mod Settings -> Rat Lab.
+4.  **Enable Dev Mode:** Check **"Dev Mode (Use localhost:3000)"**.
+5.  **Play:** Load a save. The mod will connect to your local server.
+6.  **View:** Open `http://localhost:3000` in your browser.
+
+### Logs
+*   **Mod Logs:** RimWorld's `Player.log` (`%AppData%/../LocalLow/Ludeon Studios/RimWorld...`). Look for `[Player Storyteller]`.
+*   **Sidecar Logs:** `Ratlab Mod/go-sidecar/sidecar.log`.
+*   **Server Logs:** Console output of the Node.js process.
+
+## Architecture Guidelines
+
+*   **Main Thread:** All RimWorld actions (spawning items, healing) MUST be executed on the main thread. Use `CoroutineHandler` or `LongEventHandler` if coming from an async context.
+*   **Bandwidth:** The Sidecar manages bandwidth automatically. Do not change encoder settings in `main.go` unless you understand FFmpeg flags.
+*   **Security:** Never expose the `secretKey` in the client-side dashboard code. It is for the Mod <-> Server trust only.
