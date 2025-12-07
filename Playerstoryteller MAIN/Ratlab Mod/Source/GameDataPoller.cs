@@ -236,6 +236,8 @@ namespace PlayerStoryteller
 
         #endregion
 
+        private bool hasPushedDefinitions = false;
+
         #region Static Data (Factions, research - rarely changes)
 
         /// <summary>
@@ -246,6 +248,13 @@ namespace PlayerStoryteller
         {
             try
             {
+                // First run: Push Definitions to Server
+                if (!hasPushedDefinitions)
+                {
+                    hasPushedDefinitions = true; // Set immediately to prevent re-entry
+                    PushDefinitionsAsync();
+                }
+
                 // PERFORMANCE FIX: Fetch all in parallel
                 var researchTask = apiClient.GetResearchProgress();
                 var factionsTask = apiClient.GetFactions();
@@ -318,5 +327,41 @@ namespace PlayerStoryteller
         }
 
         #endregion
+
+        private async void PushDefinitionsAsync()
+        {
+            try
+            {
+                string defsJson = await apiClient.GetAllDefinitions();
+                if (string.IsNullOrEmpty(defsJson)) return;
+
+                string serverUrl = PlayerStorytellerMod.GetServerUrl();
+                string sessionId = PlayerStorytellerMod.GetSessionId();
+                string streamKey = PlayerStorytellerMod.settings.secretKey;
+
+                using (var client = new System.Net.Http.HttpClient())
+                {
+                    var content = new System.Net.Http.StringContent(defsJson, Encoding.UTF8, "application/json");
+                    content.Headers.Add("x-stream-key", streamKey);
+                    
+                    var response = await client.PostAsync($"{serverUrl}/api/definitions/{Uri.EscapeDataString(sessionId)}", content);
+                    
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Log.Message("[Player Storyteller] Successfully pushed definitions to server.");
+                    }
+                    else
+                    {
+                        Log.Warning($"[Player Storyteller] Failed to push definitions. Server returned: {response.StatusCode}");
+                        hasPushedDefinitions = false; // Retry later
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Error pushing definitions: {ex.Message}");
+                hasPushedDefinitions = false; // Retry later
+            }
+        }
     }
 }

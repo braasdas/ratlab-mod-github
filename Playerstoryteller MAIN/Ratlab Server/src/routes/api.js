@@ -49,17 +49,50 @@ module.exports = (io, definitionManager) => {
         });
     });
 
-    // Get Definitions (Proxy to Game API via DefinitionManager)
-    router.get('/api/definitions/:sessionId', async (req, res) => {
-        // We accept sessionId to potentially allow session-specific mods in future,
-        // but for now it's global based on the host's mod list.
+    // Get Definitions (From Cache)
+    router.get('/api/definitions/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
         if (!definitionManager) {
             return res.status(503).json({ error: 'Definition service unavailable' });
         }
         
-        // Trigger a fresh fetch if cache is old (handled internally by manager)
-        const defs = await definitionManager.fetchDefinitions();
+        const defs = definitionManager.getDefinitions(sessionId);
+        if (!defs) {
+            // Fallback: Return empty structure or error.
+            // Client handles empty/null gracefully.
+            return res.json({});
+        }
         res.json(defs);
+    });
+
+    // Upload Definitions (From Mod)
+    router.post('/api/definitions/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+        
+        // Basic auth check (Session must exist and key must match if set)
+        // We allow creating a session implicitly here if it's the startup sequence?
+        // Better to require session existence or just stream key validation.
+        
+        let session = sessionStore.getSession(sessionId);
+        if (session && session.streamKey && session.streamKey !== streamKey) {
+            return res.status(403).json({ error: 'Invalid stream key' });
+        }
+        
+        // If session doesn't exist, we might be too early. Mod should ensure session creation first?
+        // Actually, Mod calls /api/update usually first. 
+        // But let's be permissive: if key is valid (or new session), accept it.
+        
+        if (!definitionManager) return res.status(503).json({ error: 'Service unavailable' });
+
+        try {
+            const data = req.body; // Expecting the full JSON from /def/all
+            definitionManager.processAndStore(sessionId, data);
+            res.json({ success: true });
+        } catch (e) {
+            console.error("Error processing definitions:", e);
+            res.status(500).json({ error: e.message });
+        }
     });
 
     // Receive combined update from RimWorld mod (HTTP POST fallback)

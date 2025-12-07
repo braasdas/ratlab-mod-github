@@ -1,54 +1,20 @@
-const fetch = require('node-fetch');
-
 class DefinitionManager {
     constructor() {
-        this.definitions = {
+        // Map of sessionId -> definitions
+        this.sessionDefinitions = new Map();
+    }
+
+    processAndStore(sessionId, data) {
+        const processed = {
             weather: [],
             incidents: [],
             animals: [],
             items: []
         };
-        this.lastFetch = 0;
-        this.fetchInterval = 60 * 1000; // 1 minute cache
-        this.gameApiUrl = 'http://localhost:8765/api/v1/def/all';
-    }
 
-    async fetchDefinitions() {
-        // Prevent spamming the game API
-        if (Date.now() - this.lastFetch < this.fetchInterval && this.definitions.weather.length > 0) {
-            return this.definitions;
-        }
-
-        try {
-            console.log('[DefinitionManager] Fetching definitions from Game API...');
-            const response = await fetch(this.gameApiUrl);
-            
-            if (!response.ok) {
-                throw new Error(`Game API returned ${response.status}`);
-            }
-
-            const json = await response.json();
-            
-            if (!json.success || !json.data) {
-                throw new Error('Invalid JSON structure from Game API');
-            }
-
-            this.processDefinitions(json.data);
-            this.lastFetch = Date.now();
-            console.log('[DefinitionManager] Definitions updated successfully.');
-            
-            return this.definitions;
-        } catch (error) {
-            console.warn(`[DefinitionManager] Failed to fetch definitions: ${error.message}. Is the game running?`);
-            // Return cached (even if empty) on failure
-            return this.definitions;
-        }
-    }
-
-    processDefinitions(data) {
         // 1. Weather
         if (data.weather_defs) {
-            this.definitions.weather = data.weather_defs.map(d => ({
+            processed.weather = data.weather_defs.map(d => ({
                 defName: d.def_name,
                 label: d.label,
                 description: d.description
@@ -57,7 +23,7 @@ class DefinitionManager {
 
         // 2. Incidents (Events)
         if (data.incidents_defs) {
-            this.definitions.incidents = data.incidents_defs
+            processed.incidents = data.incidents_defs
                 .filter(d => ['ThreatBig', 'ThreatSmall', 'Misc'].includes(d.category))
                 .map(d => ({
                     defName: d.def_name,
@@ -69,7 +35,7 @@ class DefinitionManager {
 
         // 3. Animals (PawnKind)
         if (data.pawn_kind_defs) {
-            this.definitions.animals = data.pawn_kind_defs
+            processed.animals = data.pawn_kind_defs
                 .filter(d => d.race && d.race.animal) // Ensure it's an animal
                 .map(d => ({
                     defName: d.def_name,
@@ -79,9 +45,9 @@ class DefinitionManager {
                 }));
         }
         
-        // 4. Items (ThingDef) - Optional for now, but useful for "Force Equip"
+        // 4. Items (ThingDef)
         if (data.things_defs) {
-            this.definitions.items = data.things_defs
+            processed.items = data.things_defs
                 .filter(d => d.is_weapon || d.is_apparel) // Only equipment
                 .map(d => ({
                     defName: d.def_name,
@@ -90,10 +56,13 @@ class DefinitionManager {
                     isWeapon: d.is_weapon
                 }));
         }
+
+        console.log(`[DefinitionManager] Stored definitions for session ${sessionId}. (Events: ${processed.incidents.length}, Weather: ${processed.weather.length})`);
+        this.sessionDefinitions.set(sessionId, processed);
     }
 
-    getDefinitions() {
-        return this.definitions;
+    getDefinitions(sessionId) {
+        return this.sessionDefinitions.get(sessionId) || null;
     }
 }
 

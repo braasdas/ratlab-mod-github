@@ -139,6 +139,28 @@ namespace PlayerStoryteller
             return await SafeFetchAsync($"{RimApiBaseUrl}/actions/poll?session_id={sessionId}", "actions");
         }
 
+        /// <summary>
+        /// Fetches ALL definitions from RimAPI (Heavy payload).
+        /// Uses a separate client with longer timeout.
+        /// </summary>
+        public async Task<string> GetAllDefinitions()
+        {
+            try
+            {
+                using (var longClient = new HttpClient())
+                {
+                    longClient.Timeout = TimeSpan.FromSeconds(10);
+                    var response = await longClient.GetStringAsync($"{RimApiBaseUrl}/def/all");
+                    return ExtractDataFromResponse(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to fetch definitions: {ex.Message}");
+                return null;
+            }
+        }
+
         #endregion
 
         #region Private Helper Methods
