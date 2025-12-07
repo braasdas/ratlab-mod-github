@@ -51,7 +51,6 @@ appServer.on('request', (req, res) => {
 setupSocketIO(io);
 const streamWss = setupStreamService();
 economyManager.start(io);
-definitionManager.fetchDefinitions(); // Initial fetch attempt
 
 // 7. Upgrade Handling (WebSocket Streams)
 appServer.on('upgrade', (request, socket, head) => {
