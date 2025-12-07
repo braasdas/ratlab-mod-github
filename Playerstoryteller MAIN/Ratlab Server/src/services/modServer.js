@@ -1,0 +1,150 @@
+const WebSocket = require('ws');
+const url = require('url');
+const sessionStore = require('../store/sessionStore');
+const log = require('../utils/logger');
+const { MOD_PORT } = require('../config/config');
+
+function startModServer(io) {
+    const modWss = new WebSocket.Server({ port: MOD_PORT });
+
+    modWss.on('connection', (ws, req) => {
+        // Parse query params for fallback auth
+        const params = url.parse(req.url, true).query;
+        
+        let sessionId = req.headers['session-id'] || params.sessionId;
+        let streamKey = params.streamKey;
+        
+        // Extract Bearer token if available
+        const authHeader = req.headers['authorization'];
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            streamKey = authHeader.substring(7);
+        }
+
+        const interactionPassword = req.headers['x-interaction-password'] || params.interactionPassword;
+        
+        // Logic: Default to PUBLIC unless explicitly set to 'false'
+        const headerPublic = req.headers['is-public'];
+        const paramPublic = params.isPublic;
+        const isPublic = (headerPublic !== 'false') && (paramPublic !== 'false');
+
+        if (!sessionId || !streamKey) {
+            log('warn', `[WS Mod] Rejected connection. Missing params/headers. ID: ${sessionId}, Key: ${streamKey ? '***' : 'null'}`);
+            ws.close();
+            return;
+        }
+
+        // Initialize or Update Session in Store
+        let session = sessionStore.getSession(sessionId);
+        
+        if (!session) {
+            log('info', `[WS Mod] New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
+            session = sessionStore.createSession(sessionId, {
+                streamKey, interactionPassword, isPublic
+            });
+        } else {
+            // SECURITY CHECK
+            if (session.streamKey && session.streamKey !== streamKey) {
+                log('warn', `[WS Mod] Hijack attempt on session ${sessionId}`);
+                ws.close();
+                return;
+            }
+            // Update session details
+            log('info', `[WS Mod] Updating session: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
+            sessionStore.updateSession(sessionId, { 
+                interactionPassword, 
+                isPublic,
+                streamKey // Ensure map is updated
+            });
+        }
+
+        log('info', `[WS Mod] Connected for session: ${sessionId}`);
+
+        ws.on('message', (message) => {
+            processModMessage(message, sessionId, io);
+        });
+
+        ws.on('close', () => {
+            log('info', `[WS Mod] Disconnected: ${sessionId}`);
+        });
+        
+        ws.on('error', (err) => {
+             log('error', `[WS Mod] Socket error for ${sessionId}:`, err);
+        });
+    });
+
+    log('info', `Mod WebSocket Server running on port ${MOD_PORT}`);
+    return modWss;
+}
+
+function processModMessage(message, sessionId, io) {
+    try {
+        // Binary Protocol:
+        // [0]: Type (1=Image, 2=JSON)
+        // [1]: SessionID Length (N)
+        // [2..2+N]: SessionID (Ignored as we use connection scope)
+        // [2+N..]: Payload
+
+        if (!Buffer.isBuffer(message) || message.length < 3) return;
+
+        const msgType = message[0];
+        const idLength = message[1];
+        
+        // Offset where payload begins
+        const payloadStart = 2 + idLength;
+        
+        if (message.length < payloadStart) return;
+
+        const session = sessionStore.getSession(sessionId);
+        if (!session) {
+            return;
+        }
+
+        session.lastUpdate = new Date();
+        session.lastHeartbeat = new Date();
+
+        // TYPE 1: IMAGE (JPEG)
+        if (msgType === 1) {
+            // OPTIMIZATION: Keep as Buffer, don't convert to Base64 string
+            const imageBuffer = message.slice(payloadStart);
+            
+            // Store the raw buffer
+            session.screenshot = imageBuffer;
+
+            io.emit('screenshot-update', {
+                sessionId,
+                screenshot: session.screenshot, // Sending Buffer directly
+                timestamp: session.lastUpdate
+            });
+        }
+        // TYPE 2: GAME STATE (JSON)
+        else if (msgType === 2) {
+            const jsonBuffer = message.slice(payloadStart);
+            const jsonString = jsonBuffer.toString('utf8');
+            try {
+                session.gameState = JSON.parse(jsonString);
+                io.emit('gamestate-update', {
+                    sessionId,
+                    gameState: session.gameState,
+                    timestamp: session.lastUpdate
+                });
+            } catch (jsonErr) {
+                console.error('[WS Mod] JSON Parse Error:', jsonErr);
+            }
+        }
+        // TYPE 3: FULL MAP IMAGE (JPEG)
+        else if (msgType === 3) {
+            const imageBuffer = message.slice(payloadStart);
+            session.mapImage = imageBuffer;
+            
+            io.emit('map-image-update', {
+                sessionId,
+                image: session.mapImage,
+                timestamp: session.lastUpdate
+            });
+        }
+    } catch (e) {
+        console.error('[WS Mod] Error processing message:', e);
+    }
+}
+
+module.exports = startModServer;

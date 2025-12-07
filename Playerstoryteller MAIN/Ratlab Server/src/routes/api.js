@@ -1,0 +1,742 @@
+const express = require('express');
+const router = express.Router();
+const sessionStore = require('../store/sessionStore');
+const log = require('../utils/logger');
+const { checkUpdateRateLimit, checkActionRateLimit } = require('../middleware/security');
+
+// SECURITY: Input validation
+function validateActionData(action, data) {
+    // Validate action name (alphanumeric + underscores only)
+    if (!/^[a-zA-Z0-9_]+$/.test(action)) {
+        return { valid: false, message: 'Invalid action name. Only letters, numbers, and underscores allowed.' };
+    }
+
+    // Validate data length
+    if (data && typeof data === 'string' && data.length > 500) {
+        return { valid: false, message: 'Action data too long. Maximum 500 characters.' };
+    }
+
+    // Sanitize message actions
+    if (action === 'sendLetter' || action === 'showMessage') {
+        if (!data || typeof data !== 'string') {
+            return { valid: false, message: 'Message actions require string data.' };
+        }
+
+        // Check for empty or whitespace-only messages
+        if (data.trim().length === 0) {
+            return { valid: false, message: 'Message cannot be empty.' };
+        }
+
+        // Minimum length for messages
+        if (data.trim().length < 3) {
+            return { valid: false, message: 'Message too short. Minimum 3 characters.' };
+        }
+    }
+
+    return { valid: true };
+}
+
+module.exports = (io) => {
+
+    // Health check
+    router.get('/health', (req, res) => {
+        res.status(200).json({
+            status: 'healthy',
+            uptime: process.uptime(),
+            timestamp: new Date().toISOString(),
+            activeSessions: sessionStore.gameSessions.size,
+            connectedViewers: sessionStore.viewers.size
+        });
+    });
+
+    // Receive combined update from RimWorld mod (HTTP POST fallback)
+    router.post('/api/update', (req, res) => {
+        try {
+            const sessionId = req.headers['session-id'] || 'default-session';
+            const streamKey = req.headers['x-stream-key'];
+            const interactionPassword = req.headers['x-interaction-password'];
+            const isPublic = req.headers['is-public'] !== 'false';
+
+            if (!streamKey) {
+                return res.status(401).json({ error: 'Missing stream key' });
+            }
+
+            // Rate Limit
+            if (!checkUpdateRateLimit(sessionId)) {
+                return res.status(429).json({ error: 'Too many updates. Maximum 30 per second.' });
+            }
+
+            // NOTE: req.body is already parsed JSON thanks to express.json() middleware
+            const { screenshot, gameState } = req.body;
+
+            if (screenshot === undefined || screenshot === null) {
+                return res.status(400).json({ error: 'Missing screenshot data' });
+            }
+            if (!gameState) {
+                return res.status(400).json({ error: 'Missing gameState data' });
+            }
+
+            // Create or Update Session
+            let session = sessionStore.getSession(sessionId);
+            
+            if (!session) {
+                log('info', `New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
+                session = sessionStore.createSession(sessionId, {
+                    streamKey, interactionPassword, isPublic
+                });
+            } else {
+                // Security Check
+                if (session.streamKey && session.streamKey !== streamKey) {
+                    log('warn', `[SECURITY] Hijack attempt on session ${sessionId}`);
+                    return res.status(403).json({ error: 'Invalid stream key' });
+                }
+                sessionStore.updateSession(sessionId, { interactionPassword, isPublic });
+            }
+
+            // Handle Screenshot buffer
+            if (typeof screenshot === 'string') {
+                session.screenshot = Buffer.from(screenshot, 'base64');
+            } else {
+                session.screenshot = screenshot;
+            }
+
+            // Handle GameState
+            // FIX: Removed redundant JSON.parse(gameState)
+            // If the client sends gameState as a string inside JSON, we might need to parse it.
+            // But if the client sends a nested JSON object, express.json() handles it.
+            // Let's be robust:
+            if (typeof gameState === 'string') {
+                 try {
+                    session.gameState = JSON.parse(gameState);
+                 } catch (e) {
+                    console.error("Error parsing inner gameState JSON string:", e);
+                    // Fallback: treat as empty or error
+                    session.gameState = {}; 
+                 }
+            } else {
+                 session.gameState = gameState;
+            }
+
+            // Logging (throttled)
+            const now = Date.now();
+            if (!session.lastLogTime || (now - session.lastLogTime) > 10000) {
+                session.lastLogTime = now;
+                console.log('Received gameState structure:', {
+                    hasColonists: !!session.gameState.colonists,
+                    colonistsCount: session.gameState.colonists?.length || 0,
+                });
+            }
+
+            session.lastUpdate = new Date();
+            session.lastHeartbeat = new Date();
+
+            // Broadcast
+            io.emit('screenshot-update', {
+                sessionId,
+                screenshot: session.screenshot,
+                timestamp: session.lastUpdate
+            });
+            io.emit('gamestate-update', {
+                sessionId,
+                gameState: session.gameState,
+                timestamp: session.lastUpdate
+            });
+
+            res.status(200).json({ success: true });
+
+        } catch (error) {
+            log('error', 'Error handling update:', error);
+            // Check if headers sent to avoid crashing
+            if (!res.headersSent) {
+                res.status(500).json({ error: error.message });
+            }
+        }
+    });
+
+    // Get specific session
+    router.get('/api/session/:sessionId', (req, res) => {
+        try {
+            const { sessionId } = req.params;
+            const data = sessionStore.getSession(sessionId);
+
+            if (!data) {
+                return res.status(404).json({ error: 'Session not found' });
+            }
+
+            const gameState = data.gameState || {};
+            const colonists = gameState.colonists || [];
+            const resources = gameState.resources || {};
+            const power = gameState.power || {};
+            const creatures = gameState.creatures || {};
+            const research = gameState.research || {};
+
+            const session = {
+                sessionId: sessionId,
+                colonistCount: colonists.length || creatures.colonists_count || 0,
+                mapName: gameState.mapName || 'Colony',
+                wealth: resources.total_market_value || 0,
+                lastUpdate: data.lastUpdate,
+                playerCount: data.players.length,
+                networkQuality: gameState.networkQuality || 'medium',
+                powerGenerated: power.current_power || 0,
+                powerConsumed: power.total_consumption || 0,
+                enemiesCount: creatures.enemies_count || 0,
+                currentResearch: research.label || research.name || 'None',
+                isPublic: data.isPublic !== false,
+                requiresPassword: !!data.interactionPassword
+            };
+
+            res.json({ session });
+        } catch (error) {
+            console.error('Error getting session:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // GET /api/settings/:sessionId
+    router.get('/api/settings/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        res.json({ 
+            settings: session.settings, 
+            economy: session.economy,
+            queueSettings: session.queue ? session.queue.settings : {},
+            meta: {
+                isPublic: session.isPublic,
+                hasPassword: !!session.interactionPassword,
+                activeDlcs: session.gameState ? session.gameState.active_dlcs : null
+            }
+        });
+    });
+
+    // POST /api/settings/:sessionId
+    router.post('/api/settings/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+        const session = sessionStore.getSession(sessionId);
+
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (session.streamKey && session.streamKey !== streamKey) {
+            return res.status(403).json({ error: 'Invalid stream key' });
+        }
+
+        const { settings, economy, meta, queueSettings } = req.body;
+
+        if (settings) {
+            // Deep merge or replace settings
+            if (settings.fastDataInterval) session.settings.fastDataInterval = settings.fastDataInterval;
+            if (settings.slowDataInterval) session.settings.slowDataInterval = settings.slowDataInterval;
+            if (settings.staticDataInterval) session.settings.staticDataInterval = settings.staticDataInterval;
+            if (settings.enableLiveScreen !== undefined) session.settings.enableLiveScreen = settings.enableLiveScreen;
+            if (settings.maxActionsPerMinute) session.settings.maxActionsPerMinute = settings.maxActionsPerMinute;
+            if (settings.actions) session.settings.actions = { ...session.settings.actions, ...settings.actions };
+        }
+
+        if (economy) {
+            if (economy.coinRate) session.economy.coinRate = economy.coinRate;
+            if (economy.actionCosts) session.economy.actionCosts = { ...session.economy.actionCosts, ...economy.actionCosts };
+            
+            // Notify viewers of price changes
+            io.to(sessionId).emit('economy-config-update', { actionCosts: session.economy.actionCosts });
+        }
+
+        if (queueSettings && session.queue) {
+            if (queueSettings.voteDuration !== undefined) session.queue.settings.voteDuration = queueSettings.voteDuration;
+            if (queueSettings.autoExecute !== undefined) session.queue.settings.autoExecute = queueSettings.autoExecute;
+        }
+
+        if (meta) {
+            if (meta.isPublic !== undefined) session.isPublic = meta.isPublic;
+            if (meta.interactionPassword !== undefined) session.interactionPassword = meta.interactionPassword;
+        }
+
+        res.json({ success: true });
+    });
+
+    // POST /api/settings/:sessionId/validate
+    router.post('/api/settings/:sessionId/validate', (req, res) => {
+        const { sessionId } = req.params;
+        const { streamKey } = req.body;
+        const session = sessionStore.getSession(sessionId);
+
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        
+        const isValid = session.streamKey === streamKey;
+        res.json({ valid: isValid });
+    });
+
+    // Get active sessions
+    router.get('/api/sessions', (req, res) => {
+        try {
+            const sessions = Array.from(sessionStore.gameSessions.entries())
+                .filter(([id, data]) => data.isPublic !== false)
+                .map(([id, data]) => {
+                    const gameState = data.gameState || {};
+                    const colonists = gameState.colonists || [];
+                    const resources = gameState.resources || {};
+                    const power = gameState.power || {};
+                    const creatures = gameState.creatures || {};
+                    const research = gameState.research || {};
+
+                    return {
+                        sessionId: id,
+                        colonistCount: colonists.length || creatures.colonists_count || 0,
+                        mapName: gameState.mapName || 'Colony',
+                        wealth: resources.total_market_value || 0,
+                        lastUpdate: data.lastUpdate,
+                        playerCount: data.players.length,
+                        networkQuality: gameState.networkQuality || 'medium',
+                        powerGenerated: power.current_power || 0,
+                        powerConsumed: power.total_consumption || 0,
+                        enemiesCount: creatures.enemies_count || 0,
+                        currentResearch: research.label || research.name || 'None'
+                    };
+                });
+
+            res.json({ sessions });
+        } catch (error) {
+            console.error('Error getting sessions:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Player Action
+    router.post('/api/action', (req, res) => {
+        try {
+            const { sessionId, action, data, password } = req.body;
+            const clientIp = req.ip || req.connection.remoteAddress;
+
+            // Rate Limit
+            const rateCheck = checkActionRateLimit(clientIp);
+            if (!rateCheck.allowed) {
+                log('warn', `Rate limit exceeded for ${clientIp}`);
+                return res.status(429).json({ success: false, message: rateCheck.message });
+            }
+
+            if (!action) {
+                return res.status(400).json({ success: false, message: 'Action field is required.' });
+            }
+
+            const session = sessionStore.getSession(sessionId);
+
+            if (session) {
+                // Password Check
+                if (session.interactionPassword) {
+                    if (!password || password !== session.interactionPassword) {
+                        return res.status(401).json({ success: false, message: 'Invalid password for this session.' });
+                    }
+                }
+
+                // Check if action is enabled
+                if (session.settings && session.settings.actions) {
+                    // Map JS action names to Mod setting names if necessary, or assume 1:1
+                    // The frontend sends camelCase (e.g. 'healColonist'), Mod uses snake_case (e.g. 'heal_colonist')
+                    // Or wait, in `sessionStore.js` defaults, they are snake_case.
+                    // Frontend `app.js` action buttons likely use camelCase or snake_case depending on `data-action`.
+                    // Let's convert camelCase to snake_case for lookup.
+                    const settingKey = action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+                    
+                    // Special handling for mapped names if needed, but consistent naming is better.
+                    // Assuming session.settings.actions uses the keys from sessionStore.js (snake_case).
+                    
+                    if (session.settings.actions[settingKey] === false || session.settings.actions[action] === false) {
+                         return res.status(403).json({ success: false, message: 'Action disabled by streamer.' });
+                    }
+                }
+
+                // Validation
+                const validation = validateActionData(action, data);
+                if (!validation.valid) {
+                    return res.status(400).json({ success: false, message: validation.message });
+                }
+
+                session.actions.push({
+                    action,
+                    data: typeof data === 'string' ? data : JSON.stringify(data),
+                    timestamp: new Date()
+                });
+                
+                console.log(`Action queued for session ${sessionId}: ${action}`);
+                res.json({ success: true, message: 'Action queued.' });
+            } else {
+                res.status(404).json({ success: false, message: 'Session not found.' });
+            }
+        } catch (error) {
+            console.error('Error handling action:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Poll actions (Used by Mod)
+    router.get('/api/actions/:sessionId', (req, res) => {
+        try {
+            const { sessionId } = req.params;
+            const session = sessionStore.getSession(sessionId);
+
+            if (session) {
+                const actions = [...session.actions];
+                session.actions = []; // Clear queue
+                res.json({ success: true, actions: actions });
+            } else {
+                res.status(404).json({ success: false, message: 'Session not found.' });
+            }
+        } catch (error) {
+            console.error('Error getting actions:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Network speed test
+    router.post('/api/speedtest', (req, res) => {
+        try {
+            const testData = req.body;
+            const dataSize = Buffer.byteLength(JSON.stringify(testData));
+            res.json({
+                success: true,
+                receivedSize: dataSize,
+                serverTime: new Date().getTime(),
+                echo: testData
+            });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // === ECONOMY ENDPOINTS ===
+
+    // Get Balance
+    router.get('/api/economy/:sessionId/balance/:username', (req, res) => {
+        const { sessionId, username } = req.params;
+        const session = sessionStore.getSession(sessionId);
+        
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (!session.economy) return res.status(400).json({ error: 'Economy not initialized' });
+        
+        const profile = session.economy.viewers.get(username);
+        const balance = profile ? profile.coins : 0;
+        
+        res.json({ username, coins: balance });
+    });
+
+    // Get Prices
+    router.get('/api/economy/:sessionId/prices', (req, res) => {
+        const { sessionId } = req.params;
+        const session = sessionStore.getSession(sessionId);
+        
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        
+        res.json({ 
+            prices: session.economy ? session.economy.actionCosts : {},
+            coinRate: session.economy ? session.economy.coinRate : 0
+        });
+    });
+
+    // Purchase Action
+    router.post('/api/economy/:sessionId/purchase', (req, res) => {
+        const { sessionId } = req.params;
+        const { username, action, cost } = req.body;
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        
+        if (!session.economy || !session.economy.viewers.has(username)) {
+            return res.status(400).json({ error: 'User has no wallet' });
+        }
+        
+        const profile = session.economy.viewers.get(username);
+        
+        let finalCost = cost;
+        // Verify cost if action is known
+        if (action && session.economy.actionCosts[action] !== undefined) {
+            finalCost = session.economy.actionCosts[action];
+        }
+        
+        if (profile.coins < finalCost) {
+            return res.status(402).json({ error: 'Insufficient funds', current: profile.coins, required: finalCost });
+        }
+        
+        profile.coins -= finalCost;
+        
+        // Emit update
+        io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
+        
+        res.json({ success: true, newBalance: profile.coins });
+    });
+
+    // === QUEUE ENDPOINTS ===
+
+    // Get Queue
+    router.get('/api/queue/:sessionId', (req, res) => {
+        const session = sessionStore.getSession(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        res.json({ queue: session.queue });
+    });
+
+    // Submit Request
+    router.post('/api/queue/:sessionId/submit', (req, res) => {
+        const { sessionId } = req.params;
+        const { username, action, type, data } = req.body;
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        
+        // Check cost
+        // Convert action to camelCase for cost lookup if needed (assuming passed action is camelCase)
+        const cost = session.economy.actionCosts[action] || 0;
+        const profile = session.economy.viewers.get(username);
+        
+        if (!profile || profile.coins < cost) {
+            return res.status(402).json({ error: 'Insufficient funds' });
+        }
+        
+        // Deduct cost
+        profile.coins -= cost;
+        io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
+        
+        const request = {
+            id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+            type: type || 'action',
+            action,
+            submittedBy: username,
+            submittedAt: new Date(),
+            votes: [],
+            cost,
+            status: 'pending',
+            data
+        };
+        
+        session.queue.requests.push(request);
+        io.to(sessionId).emit('queue-update', { queue: session.queue });
+        
+        res.json({ success: true, request });
+    });
+
+    // Vote
+    router.post('/api/queue/:sessionId/vote', (req, res) => {
+        const { sessionId } = req.params;
+        const { requestId, username, voteType } = req.body; // voteType: 'upvote' or 'downvote'
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        
+        const reqItem = session.queue.requests.find(r => r.id === requestId);
+        if (!reqItem) return res.status(404).json({ error: 'Request not found' });
+        
+        // Ensure votes array stores objects
+        if (!Array.isArray(reqItem.votes) || !reqItem.votes.every(v => typeof v === 'object' && v.username && v.type)) {
+            // Migrate old votes (which were just usernames) to upvotes, or initialize
+            reqItem.votes = reqItem.votes.map(v => ({ username: v, type: 'upvote' }));
+        }
+
+        const existingVoteIndex = reqItem.votes.findIndex(v => v.username === username);
+
+        if (existingVoteIndex !== -1) {
+            // User has voted before
+            if (reqItem.votes[existingVoteIndex].type === voteType) {
+                // Same vote type, so unvote (remove vote)
+                reqItem.votes.splice(existingVoteIndex, 1);
+            } else {
+                // Changed vote type (e.g., upvote to downvote, or vice versa)
+                reqItem.votes[existingVoteIndex].type = voteType;
+            }
+        } else {
+            // New vote
+            reqItem.votes.push({ username, type: voteType });
+        }
+        
+        io.to(sessionId).emit('queue-update', { queue: session.queue });
+        
+        res.json({ success: true });
+    });
+
+    // Approve (Streamer)
+    router.post('/api/queue/:sessionId/approve/:requestId', (req, res) => {
+        const { sessionId, requestId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (session.streamKey && session.streamKey !== streamKey) return res.status(403).json({ error: 'Unauthorized' });
+        
+        const index = session.queue.requests.findIndex(r => r.id === requestId);
+        if (index === -1) return res.status(404).json({ error: 'Request not found' });
+        
+        const reqItem = session.queue.requests[index];
+        
+        // Execute Action
+        session.actions.push({
+            action: reqItem.action,
+            data: reqItem.data,
+            timestamp: new Date()
+        });
+        
+        // Remove from queue
+        session.queue.requests.splice(index, 1);
+        io.to(sessionId).emit('queue-update', { queue: session.queue });
+        
+        res.json({ success: true });
+    });
+
+    // Reject (Streamer)
+    router.post('/api/queue/:sessionId/reject/:requestId', (req, res) => {
+        const { sessionId, requestId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (session.streamKey && session.streamKey !== streamKey) return res.status(403).json({ error: 'Unauthorized' });
+        
+        const index = session.queue.requests.findIndex(r => r.id === requestId);
+        if (index === -1) return res.status(404).json({ error: 'Request not found' });
+        
+        const reqItem = session.queue.requests[index];
+        
+        // Refund
+        const profile = session.economy.viewers.get(reqItem.submittedBy);
+        if (profile) {
+            profile.coins += reqItem.cost;
+            io.to(sessionId).emit('coin-update', { username: reqItem.submittedBy, coins: profile.coins });
+        }
+        
+        // Remove from queue
+        session.queue.requests.splice(index, 1);
+        io.to(sessionId).emit('queue-update', { queue: session.queue });
+        
+        res.json({ success: true });
+    });
+
+    // Get Active Session by Stream Key (For dashboard recovery)
+    router.post('/api/streamer/get-active-session', (req, res) => {
+        const { streamKey } = req.body;
+        if (!streamKey) return res.status(400).json({ error: 'Missing stream key' });
+
+        const sessionId = sessionStore.streamKeyToSessionId.get(streamKey);
+        
+        if (sessionId) {
+            const session = sessionStore.getSession(sessionId);
+            // Security check: verify mapping is still valid
+            if (session && session.streamKey === streamKey) {
+                return res.json({ 
+                    sessionId: sessionId,
+                    isPublic: session.isPublic
+                });
+            }
+        }
+        
+        return res.status(404).json({ error: 'No active session found for this key' });
+    });
+
+    // === ADOPTION ENDPOINTS ===
+
+    // Get Adoption Status
+    router.get('/api/adoptions/:sessionId/status/:username', (req, res) => {
+        const { sessionId, username } = req.params;
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        const adoption = session.adoptions.active.get(username);
+        if (adoption) {
+            // find current stats from gameState
+            let pawnData = null;
+            if (session.gameState && session.gameState.colonists) {
+                pawnData = session.gameState.colonists.find(c => 
+                    (c.colonist && (c.colonist.id == adoption.pawnId || c.colonist.pawn_id == adoption.pawnId)) ||
+                    (c.id == adoption.pawnId || c.pawn_id == adoption.pawnId)
+                );
+            }
+            res.json({ hasAdopted: true, adoption, pawnData });
+        } else {
+            res.json({ hasAdopted: false, cost: session.adoptions.settings.cost });
+        }
+    });
+
+    // Request Adoption
+    router.post('/api/adoptions/:sessionId/request', (req, res) => {
+        const { sessionId } = req.params;
+        const { username } = req.body;
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        // 1. Check if already adopted
+        if (session.adoptions.active.has(username)) {
+            return res.status(400).json({ error: 'You already have a colonist!' });
+        }
+
+        // 2. Check funds
+        const profile = session.economy.viewers.get(username);
+        const cost = session.adoptions.settings.cost;
+        
+        if (!profile || profile.coins < cost) {
+            return res.status(402).json({ error: `Insufficient funds. Cost: ${cost}` });
+        }
+
+        // 3. Find available colonist (Simplistic: random unadopted one)
+        // A robust system would let the user pick or streamer assign. 
+        // For now: Auto-assign first available.
+        const allColonists = session.gameState.colonists || [];
+        const adoptedIds = Array.from(session.adoptions.active.values()).map(a => String(a.pawnId));
+        
+        const available = allColonists.filter(c => {
+            const data = c.colonist || c;
+            const id = String(data.id || data.pawn_id);
+            return !adoptedIds.includes(id);
+        });
+
+        if (available.length === 0) {
+            return res.status(409).json({ error: 'No colonists available for adoption!' });
+        }
+
+        const target = available[Math.floor(Math.random() * available.length)];
+        const targetData = target.colonist || target;
+        const pawnId = targetData.id || targetData.pawn_id;
+        const pawnName = targetData.name;
+
+        // 4. Process Transaction
+        profile.coins -= cost;
+        io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
+
+        // 5. Assign
+        const adoptionRecord = {
+            pawnId: pawnId,
+            name: pawnName,
+            adoptedAt: new Date()
+        };
+        session.adoptions.active.set(username, adoptionRecord);
+
+        res.json({ success: true, adoption: adoptionRecord });
+    });
+
+    // Send Command
+    router.post('/api/adoptions/:sessionId/command', (req, res) => {
+        const { sessionId } = req.params;
+        const { username, command, target } = req.body; // command: 'draft', 'undraft', 'move', 'attack'
+
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        const adoption = session.adoptions.active.get(username);
+        if (!adoption) {
+            return res.status(403).json({ error: 'You do not have an adopted colonist.' });
+        }
+
+        // Rate limit commands specifically?
+        // For now, rely on global action limit or trusting the polling speed.
+
+        session.actions.push({
+            action: 'colonist_command',
+            data: JSON.stringify({
+                pawnId: adoption.pawnId,
+                type: command,
+                target: target
+            }),
+            timestamp: new Date()
+        });
+
+        res.json({ success: true });
+    });
+
+    return router;
+};

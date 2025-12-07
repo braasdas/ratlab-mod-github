@@ -1,0 +1,163 @@
+[hr]
+
+[h1]RAT LAB 2.0: THE SIDECAR UPDATE[/h1]
+
+Turn RimWorld into a massive social experiment. Rat Lab allows your viewers to interact directly with your game through a web dashboard—spawning items, triggering raids, and managing the chaos—all with [b]zero performance impact[/b] on your game.
+
+[h2]THE PERFORMANCE REVOLUTION: INTRODUCING "SIDECAR"[/h2]
+
+Previous streaming mods slowed RimWorld down by forcing the game to compress video. Rat Lab 2.0 uses a revolutionary [b]Hybrid Architecture[/b]:
+
+[list]
+[*][b]ZERO-OVERHEAD CAPTURE:[/b] We no longer ask RimWorld to render the stream. A separate, lightweight "Sidecar" process captures your window directly. Your game runs at full speed while the Sidecar handles the heavy lifting.
+[*][b]SMOOTH 30 FPS:[/b] By decoupling the stream from the game tick, your viewers get a buttery smooth video feed even when your colony is lagging from 500 tribal raiders.
+[*][b]FIREWALL BYPASS:[/b] We have upgraded our networking to use standard secure web ports (WSS/443), meaning you can now host from strict networks like dorms or offices without port forwarding.
+[/list]
+
+[h2]FOR VIEWERS: GOD MODE ENABLED[/h2]
+Viewers access your colony via [url=https://ratlab.online]ratlab.online[/url]. No Twitch account required.
+
+[list]
+[*][b]INTERACTIVE PINGS:[/b] Viewers can click anywhere on the video feed to create a visual "Ping" in your game, highlighting resources or danger.
+[*][b]LIVE INVENTORY:[/b] See exactly what is in every stockpile and what every colonist is carrying, updated in real-time with item icons.
+[*][b]FULL BIOGRAPHY:[/b] Inspect colonist traits, health conditions, and mood breakdowns without the streamer needing to click on them.
+[*][b]REAL-TIME DASHBOARD:[/b] Monitor colony wealth, power consumption, and faction relations live in the browser.
+[/list]
+
+[h2]THE STREAMER PANEL: TOTAL CONTROL[/h2]
+You are the Storyteller, not the victim. Our dedicated Streamer Panel gives you god-like control over every aspect of the experience:
+
+[list]
+[*][b]FULL ECONOMY MANAGEMENT:[/b] You decide the inflation. Set exactly how many coins viewers earn per minute (passive income) and tweak the price of every single action individually. Want a Raid to cost 10,000 coins? Done.
+[*][b]GRANULAR COOLDOWNS:[/b] Prevent spam with precision. Set global cooldowns to pace the stream, or enforce specific limits like "One orbital bombardment per hour."
+[*][b]ACTION TOGGLES:[/b] Don't want mechs destroying your medieval run? Distinct toggle switches for every single event allow you to enable or disable specific interactions on the fly.
+[*][b]KARMA BALANCING:[/b] Force a balance between "Good" (Healing, Drops) and "Bad" (Raids, Disasters) events to keep the story interesting.
+[/list]
+
+[h2]FULL DLC & MOD SUPPORT[/h2]
+Rat Lab now fully integrates with all official DLCs and select popular mods:
+
+[list]
+[*][b]ROYALTY:[/b] Viewers can trigger Tribute Collectors or summon Anima Trees.
+[*][b]IDEOLOGY:[/b] Viewers can demand Rituals, spawn Gauranlen Pods, or trigger Hacker Camps.
+[*][b]BIOTECH:[/b] Viewers can summon Bossgroups (Diabolus, Warqueen, Apocriton), drop Wastepacks, or deliver Genepacks.
+[*][b]ANOMALY:[/b] Unleash the horror with viewer-triggered Death Palls, Blood Rain, Pit Gates, or summon the Golden Cube.
+[*][b]ODYSSEY:[/b] Support for the Odyssey mod events like Gravship Crashes and Hunter Drones.
+[/list]
+
+[h2]HOW TO START[/h2]
+[olist]
+[*]Subscribe to Rat Lab and the required [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3593423732]RIMAPI[/url] dependency.
+[*]Launch RimWorld. The mod will automatically launch the Sidecar process.
+[*]Copy your Session Link from the in-game window.
+[*]Share the link. Let the experiments begin.
+[/olist]
+
+[h2]PRIVACY & TECHNICAL DISCLOSURE[/h2]
+This mod includes a bundled executable ("stream-sidecar.exe") used exclusively for window capture and video encoding.
+
+[list]
+[*][b]Data Transmission:[/b] Game state (JSON) and Video (MP4 fragments) are transmitted to our relay server at ratlab.online via encrypted WebSocket (WSS).
+[*][b]Persistence:[/b] No video is recorded or stored. Session data is held in RAM and wiped immediately when the session ends.
+[*][b]Authentication:[/b] Sessions are secured via a unique Session ID and Stream Key generated locally on your machine.
+[/list]
+
+[h2]CREDITS[/h2]
+[list]
+[*][b]Art:[/b] [url=https://dfifd.carrd.co/]djfjdfofdjfjd[/url]
+[*][b]Dependency (RIMAPI) & Beta Testing:[/b] aenclave
+[/list]
+
+[h1]OPEN SOURCE[/h1]
+[url=https://github.com/braasdas/ratlab-mod-github]Rat Lab Mod Source Code[/url]
+[url=https://github.com/braasdas/ratlab-server-github]Server Infrastructure Source Code[/url]
+
+
+
+UPDATE MESSAGE 
+
+
+
+**RAT LAB 2.0: THE SIDECAR UPDATE & ROADMAP**
+
+I have released a complete rewrite of the streaming architecture ("The Sidecar Update") to address performance overhead and connectivity issues. Additionally, I am unveiling the comprehensive roadmap for the next phases of development.
+
+━━━━━━━━━━━━━━━━
+**PART 1: THE UPDATE (LIVE NOW)**
+━━━━━━━━━━━━━━━━
+
+**The "Sidecar" Architecture**
+I moved video encoding out of the Unity engine entirely. The mod now spawns a lightweight external process (`stream-sidecar.exe`, written in Go) that captures the game window directly via OS APIs.
+* **Zero-Overhead:** RimWorld no longer handles video compression, significantly improving in-game FPS.
+* **Plug & Play:** A standard FFmpeg library is fully packaged within the mod. No external downloads, installations, or configuration is required.
+* **Decoupled Rendering:** The stream maintains stability even if the game client stutters during heavy load.
+
+**Network & Connectivity**
+I replaced the legacy port-based connection with standard WebSocket Secure (WSS) routing.
+* **Firewall Bypass:** Traffic now routes over port 443 (standard HTTPS). This resolves connection failures for users on restrictive networks like university dorms or corporate offices without requiring port forwarding.
+
+**New Features**
+* **Interactive Pings:** Viewers can click the video feed to spawn visual markers in the game world.
+* **Full DLC Support:** I added event triggers for Biotech (Bossgroups), Anomaly (Golden Cube/Death Pall), Royalty, and Ideology.
+* **Streamer Panel:** Added granular controls for economy inflation, global cooldowns, and per-event toggles.
+
+━━━━━━━━━━━━━━━━
+**PART 2: THE ROADMAP (IN DEVELOPMENT)**
+━━━━━━━━━━━━━━━━
+
+With the **Voting & Queue System (Phase 4)** complete, development is shifting to Direct Control and Ecosystem features.
+
+**Twitch Integration & Channel Points**
+Currently, Rat Lab requires **no Twitch login**—viewers can join instantly anonymously. However, deep integration is coming soon.
+* **Channel Point Conversion:** Streamers will be able to link their accounts, allowing viewers to convert Twitch Channel Points directly into Rat Lab coins.
+* **Custom Exchange Rates:** Total control over the economy. You will decide the exact exchange rate for how many Channel Points equal a Coin.
+
+**Phase 5: Colonist Adoption (Direct Control)** -- WIP PARTIALLY DONE
+This is the next major leap. Viewers will soon transcend from "Observer" to "Participant".
+* **The Private Command Tab:** When you spend coins to adopt a colonist, you unlock a strictly private "My Colonist" dashboard. This interface isolates your specific pawn, giving you a real-time feed of their Mood, Health, Needs, and Inventory that only you can see.
+* **Direct Commands:** I am building a dedicated API for this private tab. You will be able to issue specific orders—**Move, Draft, Attack, Haul**—to your adopted pawn directly from the browser, influencing the colony from the inside.
+
+**Phase 6: The Interactive Map**
+* **Full Map Rendering:** A new system to render the *entire* explorable map, not just the camera view. -- THIS IS PARTIALLY DONE ALREADY, SOMEWHAT BROKEN.
+* **Freedom of Movement:** Viewers can zoom and pan across the colony independently of the stream feed.
+* **Click-to-Move:** Click anywhere on the full map to move your adopted pawn.
+
+**Phase 7: Community Ecosystem**
+* **Global Leaderboards:** Tracking top coin earners across all Rat Lab sessions.
+* **Achievements:** Badges for stream participation and successful colony survivals.
+
+━━━━━━━━━━━━━━━━
+**STREAMER & VIEWER SECURITY**
+━━━━━━━━━━━━━━━━
+
+We take the safety of your hardware and identity seriously.
+* **IP Masking (Relay Architecture):** Rat Lab uses a relay server architecture. Viewers connect to our cloud server, *never* directly to your computer. Your home IP address remains completely hidden, protecting you from DDoS attacks.
+* **Session Isolation:** Every stream generates a unique, cryptographically secure Session ID and Stream Key. Even if your game crashes, only you can reconnect to your session.
+* **Anti-Griefing Protocols:** The Dashboard includes strict Rate Limiting (default 30 actions/min), Input Sanitization to prevent chat injection attacks, and a "Panic Button" to instantly disable viewer interactions.
+* **Data Privacy:** We do not store video. Session data is held in RAM and is wiped immediately after the session ends.
+
+━━━━━━━━━━━━━━━━
+**KNOWN ISSUES**
+━━━━━━━━━━━━━━━━
+
+* **Stream Delay:** Additive delay may occur after very long streaming sessions (2+ hours). Restarting the session resolves this immediately.
+* **Resolution Changes:** Resizing the game window or changing resolution mid-stream currently causes the Sidecar to crash. A fix for dynamic resizing is in development.
+* **AMD/Intel Encoding:** While NVIDIA (NVENC) is fully supported, AMD and Intel hardware encoding is currently experimental. If you experience artifacts, please switch to CPU encoding in the launcher settings.
+
+━━━━━━━━━━━━━━━━
+**TRUST & COMPATIBILITY**
+━━━━━━━━━━━━━━━━
+
+**Is the .exe safe?**
+Yes. The Sidecar is required to capture the game window without lagging your PC. It does not capture your desktop or keyboard input.
+* **VirusTotal Scan:** https://www.virustotal.com/gui/file/0cd5484929086a185e4c825fa40dbd236eec8c6ecf4ee85fea141879826f9a4e/detection
+* **Open Source:** If you do not trust the binary, you can audit the Go source code and build it yourself.
+
+**Compatibility Notes:**
+* **OS Support:** Windows only (MacOS/Linux coming soon).
+* **Encoding:** NVENC recommended; CPU fallback available.
+
+**Dashboard:** https://ratlab.online
+**Source:** https://github.com/braasdas/ratlab-mod-github
+
+May Randy be merciful on your CPU.

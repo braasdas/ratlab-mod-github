@@ -1,0 +1,1160 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using UnityEngine;
+using Verse;
+using RimWorld;
+
+namespace PlayerStoryteller
+{
+    /// <summary>
+    /// Handles the execution of specific viewer actions.
+    /// Contains the game logic for events, spawning, healing, etc.
+    /// </summary>
+    public class GameActionExecutor
+    {
+        private readonly Map map;
+        private const int MaxMessageLength = 500;
+
+        public GameActionExecutor(Map map)
+        {
+            this.map = map;
+        }
+
+        public void ExecuteAction(PlayerAction action)
+        {
+            try
+            {
+                Log.Message($"[Player Storyteller] Processing action: {action.action} with data: {action.data}");
+
+                switch (action.action)
+                {
+                    // ===== COMMUNICATION =====
+                    case "sendLetter":
+                        ShowLetter(action.data);
+                        break;
+                    case "ping":
+                        CreatePing(action.data);
+                        break;
+
+                    // ===== COLONISTS & PEOPLE =====
+                    case "sendRefugee":
+                        SendRefugee();
+                        break;
+                    case "sendWanderer":
+                        SendWanderer();
+                        break;
+                    case "healColonist":
+                        HealRandomColonist();
+                        break;
+                    case "healAll":
+                        HealAllColonists();
+                        break;
+                    case "inspireColonist":
+                        InspireRandomColonist();
+                        break;
+                    case "inspireAll":
+                        InspireAllColonists();
+                        break;
+                    case "startQuest":
+                        StartQuest();
+                        break;
+
+                    // ===== RESOURCES & SUPPLIES =====
+                    case "dropFood":
+                        DropPodResource("Food", 75);
+                        break;
+                    case "dropMedicine":
+                        DropPodResource("Medicine", 30);
+                        break;
+                    case "dropSteel":
+                        DropPodResource("Steel", 200);
+                        break;
+                    case "dropComponents":
+                        DropPodResource("Components", 25);
+                        break;
+                    case "dropSilver":
+                        DropPodResource("Silver", 1000);
+                        break;
+                    case "legendary":
+                        GiftLegendaryItem();
+                        break;
+
+                    // ===== ECONOMY & TRADE =====
+                    case "sendTrader":
+                        SendTraderCaravan();
+                        break;
+
+                    // ===== ANIMALS =====
+                    case "tameAnimal":
+                        TameRandomAnimal();
+                        break;
+                    case "spawnAnimal":
+                        SpawnRandomAnimal();
+                        break;
+
+                    // ===== EVENTS - POSITIVE =====
+                    case "goodEvent":
+                        TriggerPositiveEvent();
+                        break;
+                    case "weatherClear":
+                        ChangeWeather("Clear");
+                        break;
+                    case "psychicSoothe":
+                        TriggerIncident("PsychicSoothe");
+                        break;
+                    case "ambrosiaSprout":
+                        TriggerIncident("AmbrosiaSprout");
+                        break;
+                    case "farmAnimalsWanderIn":
+                        TriggerIncident("FarmAnimalsWanderIn");
+                        break;
+                    case "aurora":
+                        TriggerIncident("Aurora");
+                        break;
+
+                    // ===== EVENTS - NEUTRAL/RISKY =====
+                    case "thrumboPasses":
+                        TriggerIncident("ThrumboPasses");
+                        break;
+                    case "herdMigration":
+                        TriggerIncident("HerdMigration");
+                        break;
+                    case "wildManWandersIn":
+                        TriggerIncident("WildManWandersIn");
+                        break;
+                    case "ransomDemand":
+                        TriggerIncident("RansomDemand");
+                        break;
+
+                    // ===== EVENTS - CHALLENGES =====
+                    case "raid":
+                        TriggerRaid();
+                        break;
+                    case "manhunter":
+                        TriggerManhunterPack();
+                        break;
+                    case "infestation":
+                        TriggerIncident("Infestation", IncidentCategoryDefOf.ThreatBig);
+                        break;
+                    case "mechShip":
+                        TriggerMechShip();
+                        break;
+                    case "madAnimal":
+                        TriggerMadAnimal();
+                        break;
+                    case "solarFlare":
+                        TriggerSolarFlare();
+                        break;
+                    case "eclipse":
+                        TriggerEclipse();
+                        break;
+                    case "toxicFallout":
+                        TriggerToxicFallout();
+                        break;
+                    case "volcanicWinter":
+                        TriggerIncident("VolcanicWinter");
+                        break;
+                    case "flashstorm":
+                        TriggerFlashstorm();
+                        break;
+                    case "psychicDrone":
+                        TriggerIncident("PsychicDrone");
+                        break;
+                    case "shortCircuit":
+                        TriggerIncident("ShortCircuit");
+                        break;
+                    case "cropBlight":
+                        TriggerIncident("CropBlight");
+                        break;
+                    case "alphabeavers":
+                        TriggerIncident("Alphabeavers");
+                        break;
+
+                    // ===== CHAOS EVENTS =====
+                    case "meteor":
+                        TriggerMeteorShower();
+                        break;
+                    case "tornado":
+                        TriggerTornado();
+                        break;
+                    case "lightning":
+                        TriggerLightningStrike();
+                        break;
+                    case "randomEvent":
+                        TriggerRandomEvent();
+                        break;
+
+                    // ===== WEATHER =====
+                    case "weatherRain":
+                        ChangeWeather("Rain");
+                        break;
+                    case "weatherFog":
+                        ChangeWeather("Fog");
+                        break;
+                    case "weatherSnow":
+                        ChangeWeather("Snow");
+                        break;
+                    case "weatherThunderstorm":
+                        ChangeWeather("RainyThunderstorm");
+                        break;
+                    
+                    // ===== EXPANDED WEATHER =====
+                    case "weatherVomit":
+                        WeatherEventHelper.TriggerVomitRain(map);
+                        break;
+                    case "weatherHeatWave":
+                        WeatherEventHelper.TriggerHeatWave(map);
+                        break;
+                    case "weatherColdSnap":
+                        WeatherEventHelper.TriggerColdSnap(map);
+                        break;
+                    case "weatherDryStorm":
+                        WeatherEventHelper.TriggerDryThunderstorm(map);
+                        break;
+                    case "weatherFoggyRain":
+                        WeatherEventHelper.TriggerFoggyRain(map);
+                        break;
+                    case "weatherSnowGentle":
+                        WeatherEventHelper.TriggerSnowGentle(map);
+                        break;
+                    case "weatherSnowHard":
+                        WeatherEventHelper.TriggerSnowHard(map);
+                        break;
+
+                    // ===== DLC EVENTS =====
+                    
+                    // ROYALTY
+                    case "dlcLaborers": DLCHelper.TriggerLaborerTeam(map); break;
+                    case "dlcTribute": DLCHelper.TriggerTributeCollector(map); break;
+                    case "dlcAnimaTree": DLCHelper.TriggerAnimaTree(map); break;
+                    case "dlcMechCluster": DLCHelper.TriggerMechCluster(map); break;
+
+                    // IDEOLOGY
+                    case "dlcRitual": DLCHelper.TriggerDateRitual(map); break;
+                    case "dlcGauranlen": DLCHelper.SpawnGauranlenPod(map); break;
+                    case "dlcHackerCamp": DLCHelper.TriggerHackerCamp(map); break;
+                    case "dlcInsectJelly": DLCHelper.TriggerInsectJelly(map); break;
+                    case "dlcSkylanterns": DLCHelper.TriggerSkylanterns(map); break;
+
+                    // BIOTECH
+                    case "dlcDiabolus": DLCHelper.SummonDiabolus(map); break;
+                    case "dlcWarqueen": DLCHelper.SummonWarqueen(map); break;
+                    case "dlcApocriton": DLCHelper.SummonApocriton(map); break;
+                    case "dlcWastepack": DLCHelper.DropWastepack(map); break;
+                    case "dlcSanguophage": DLCHelper.SummonSanguophage(map); break;
+                    case "dlcGenepack": DLCHelper.DropGenepack(map); break;
+                    case "dlcPoluxTree": DLCHelper.TriggerPoluxTree(map); break;
+                    case "dlcAcidicSmog": DLCHelper.TriggerAcidicSmog(map); break;
+                    case "dlcWastepackInfestation": DLCHelper.TriggerWastepackInfestation(map); break;
+
+                    // ANOMALY
+                    case "dlcDeathPall": DLCHelper.TriggerDeathPall(map); break;
+                    case "dlcBloodRain": DLCHelper.TriggerBloodRain(map); break;
+                    case "dlcDarkness": DLCHelper.TriggerUnnaturalDarkness(map); break;
+                    case "dlcShamblers": DLCHelper.SummonShamblers(map); break;
+                    case "dlcFleshbeasts": DLCHelper.SummonFleshbeasts(map); break;
+                    case "dlcPitGate": DLCHelper.TriggerPitGate(map); break;
+                    case "dlcChimera": DLCHelper.TriggerChimera(map); break;
+                    case "dlcNociosphere": DLCHelper.TriggerNociosphere(map); break;
+                    case "dlcGoldenCube": DLCHelper.TriggerGoldenCube(map); break;
+                    case "dlcMetalhorror": DLCHelper.TriggerMetalhorror(map); break;
+
+                    // ODYSSEY
+                    case "dlcGravship": DLCHelper.TriggerGravshipCrash(map); break;
+                    case "dlcDrones": DLCHelper.SpawnExplosiveDrones(map); break;
+                    case "dlcOrbitalTrader": DLCHelper.TriggerOrbitalTrader(map); break;
+                    case "dlcOrbitalDebris": DLCHelper.TriggerOrbitalDebris(map); break;
+                    case "dlcMechanoidSignal": DLCHelper.TriggerMechanoidSignal(map); break;
+
+                    // ===== FACTIONS =====
+                    case "changeFactionGoodwill":
+                        ChangeFactionGoodwill(action.data);
+                        break;
+
+                    // ===== VIEWER INTEGRATION =====
+                    case "buyPawn":
+                        BuyPawn(action.data);
+                        break;
+                    case "colonist_command":
+                        ExecuteColonistCommand(action.data);
+                        break;
+
+                    default:
+                        Log.Warning($"[Player Storyteller] Unknown player action: {action.action}");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error processing action '{action.action}': {ex.Message}");
+            }
+        }
+
+        private void ExecuteColonistCommand(string json)
+        {
+            try
+            {
+                // Simple JSON parsing
+                if (string.IsNullOrEmpty(json)) return;
+                var data = JsonUtility.FromJson<ColonistCommandData>(json);
+                if (data == null) return;
+
+                Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber.ToString() == data.pawnId || p.Name.ToStringFull == data.pawnId); // Try ID then Name
+                if (pawn == null) return;
+
+                switch (data.type)
+                {
+                    case "draft":
+                        if (pawn.Drafted) break;
+                        pawn.drafter.Drafted = true;
+                        Messages.Message($"{pawn.Name.ToStringShort} drafted by viewer.", MessageTypeDefOf.PositiveEvent);
+                        break;
+                    case "undraft":
+                        if (!pawn.Drafted) break;
+                        pawn.drafter.Drafted = false;
+                        break;
+                    case "move":
+                        // Requires target coordinates (future phase)
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error executing colonist command: {ex.Message}");
+            }
+        }
+
+        [Serializable]
+        public class ColonistCommandData
+        {
+            public string pawnId;
+            public string type;
+            public string target; // Optional
+        }
+
+        // ============================================ 
+        // VIEWER INTEGRATION
+        // ============================================ 
+
+        private void BuyPawn(string data)
+        {
+            try
+            {
+                // Data format: "username" (simple string) or JSON {"username":"ben"}
+                string username = data;
+                if (data.Trim().StartsWith("{"))
+                {
+                    // Simple manual JSON parse to avoid dependency issues
+                    if (data.Contains("\"username\""))
+                    {
+                        int start = data.IndexOf("\"username\"") + 10;
+                        int valStart = data.IndexOf("\"", start) + 1;
+                        int valEnd = data.IndexOf("\"", valStart);
+                        if (valStart > 0 && valEnd > valStart)
+                        {
+                            username = data.Substring(valStart, valEnd - valStart);
+                        }
+                    }
+                }
+                
+                username = SanitizeUserInput(username);
+                if (string.IsNullOrEmpty(username)) return;
+
+                ViewerManager viewerManager = map.GetComponent<ViewerManager>();
+                if (viewerManager == null)
+                {
+                    Log.Error("[Player Storyteller] ViewerManager MapComponent not found!");
+                    return;
+                }
+
+                if (viewerManager.ViewerHasActivePawn(username))
+                {
+                    Messages.Message($"Viewer {username} is already in the colony!", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+
+                // Generate Pawn
+                PawnKindDef pawnKind = PawnKindDefOf.Colonist;
+                Faction faction = Faction.OfPlayer;
+                
+                // Use simplified constructor to avoid version mismatch on arguments
+                // Args: Kind, Faction, Context, Tile, ForceGenerateNew
+                PawnGenerationRequest request = new PawnGenerationRequest(
+                    pawnKind, 
+                    faction, 
+                    PawnGenerationContext.NonPlayer, 
+                    -1, 
+                    true
+                );
+                
+                Pawn newPawn = PawnGenerator.GeneratePawn(request);
+
+                // Rename Pawn
+                NameTriple oldName = newPawn.Name as NameTriple;
+                newPawn.Name = new NameTriple(oldName?.First ?? "Viewer", username, oldName?.Last ?? "Player");
+
+                // Spawn
+                IntVec3 spawnLoc;
+                if (CellFinder.TryFindRandomEdgeCellWith((IntVec3 c) => map.reachability.CanReachColony(c) && !c.Fogged(map), map, CellFinder.EdgeRoadChance_Neutral, out spawnLoc))
+                {
+                    GenSpawn.Spawn(newPawn, spawnLoc, map, WipeMode.Vanish);
+                    
+                    // Register
+                    viewerManager.RegisterPawn(username, newPawn);
+
+                    // Notify
+                    string label = "Viewer Joined";
+                    string text = $"Viewer {username} has bought a ticket to the Rim! They have joined the colony.";
+                    Find.LetterStack.ReceiveLetter(label, text, LetterDefOf.PositiveEvent, newPawn);
+                    Messages.Message($"Viewer {username} has joined!", MessageTypeDefOf.PositiveEvent);
+                }
+                else
+                {
+                    Log.Warning($"[Player Storyteller] Could not find safe spawn location for viewer {username}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error in BuyPawn: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // COLONISTS & PEOPLE
+        // ============================================ 
+
+        private void StartQuest()
+        {
+            try
+            {
+                var questIncidents = DefDatabase<IncidentDef>.AllDefs
+                    .Where(d => d.defName.Contains("Quest_") && d.TargetAllowed(map) && d.Worker.CanFireNow(StorytellerUtility.DefaultParmsNow(d.category, map)))
+                    .ToList();
+
+                if (questIncidents.Count == 0)
+                {
+                    Messages.Message("No quests available to start.", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+
+                IncidentDef questDef = questIncidents.RandomElement();
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(questDef.category, map);
+                parms.forced = true;
+
+                if (questDef.Worker.TryExecute(parms))
+                {
+                    Messages.Message($"Viewers started a quest: {questDef.label}", MessageTypeDefOf.PositiveEvent);
+                    Log.Message($"[Player Storyteller] Started quest: {questDef.defName}");
+                }
+                else
+                {
+                    Messages.Message("Failed to start quest.", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error starting quest: {ex.Message}");
+            }
+        }
+
+        private void SendRefugee()
+        {
+            try
+            {
+                IncidentDef refugeeDef = DefDatabase<IncidentDef>.GetNamedSilentFail("RefugeeChased")
+                    ?? DefDatabase<IncidentDef>.GetNamedSilentFail("RefugeePodCrash");
+
+                if (refugeeDef == null)
+                {
+                    Messages.Message("Refugee incident not available.", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+
+                refugeeDef.Worker.TryExecute(parms);
+                Messages.Message("A refugee is seeking shelter!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error sending refugee: {ex.Message}");
+            }
+        }
+
+        private void SendWanderer()
+        {
+            try
+            {
+                IncidentDef wandererDef = IncidentDefOf.WandererJoin;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+
+                wandererDef.Worker.TryExecute(parms);
+                Messages.Message("A wanderer has joined your colony!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error sending wanderer: {ex.Message}");
+            }
+        }
+
+        private void HealRandomColonist()
+        {
+            try
+            {
+                var colonists = map.mapPawns.FreeColonists.Where(c => c.health.hediffSet.hediffs.Any(h => h.def.isBad)).ToList();
+
+                if (colonists.Count == 0)
+                {
+                    Messages.Message("All colonists are healthy!", MessageTypeDefOf.NeutralEvent);
+                    return;
+                }
+
+                Pawn colonist = colonists.RandomElement();
+                var hediffs = colonist.health.hediffSet.hediffs.ToList();
+                foreach (var hediff in hediffs)
+                {
+                    if (hediff.def.makesSickThought || hediff.def.isBad)
+                    {
+                        colonist.health.RemoveHediff(hediff);
+                    }
+                }
+
+                Messages.Message($"{colonist.Name.ToStringShort} has been healed!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error healing colonist: {ex.Message}");
+            }
+        }
+
+        private void InspireRandomColonist()
+        {
+            try
+            {
+                var colonists = map.mapPawns.FreeColonists.ToList();
+                if (colonists.Count == 0) return;
+
+                Pawn colonist = colonists.RandomElement();
+                var allInspirations = DefDatabase<InspirationDef>.AllDefsListForReading;
+                
+                if (allInspirations.Count > 0)
+                {
+                    var inspiration = allInspirations.RandomElement();
+                    colonist.mindState.inspirationHandler.TryStartInspiration(inspiration);
+                    Messages.Message($"{colonist.Name.ToStringShort} has been inspired: {inspiration.label}!", MessageTypeDefOf.PositiveEvent);
+                }
+                else
+                {
+                    if (colonist.needs?.joy != null) colonist.needs.joy.CurLevel = 1f;
+                    if (colonist.needs?.comfort != null) colonist.needs.comfort.CurLevel = 1f;
+                    if (colonist.needs?.beauty != null) colonist.needs.beauty.CurLevel = 1f;
+                    Messages.Message($"{colonist.Name.ToStringShort} feels inspired!", MessageTypeDefOf.PositiveEvent);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error inspiring colonist: {ex.Message}");
+            }
+        }
+
+        private void HealAllColonists()
+        {
+            try
+            {
+                int healed = 0;
+                foreach (Pawn colonist in map.mapPawns.FreeColonists)
+                {
+                    var hediffs = colonist.health.hediffSet.hediffs.ToList();
+                    foreach (var hediff in hediffs)
+                    {
+                        if (hediff.def.makesSickThought || hediff.def.isBad)
+                        {
+                            colonist.health.RemoveHediff(hediff);
+                        }
+                    }
+                    healed++;
+                }
+                Messages.Message($"Viewers healed all {healed} colonists!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error healing colonists: {ex.Message}");
+            }
+        }
+
+        private void InspireAllColonists()
+        {
+            try
+            {
+                int inspired = 0;
+                foreach (Pawn colonist in map.mapPawns.FreeColonists)
+                {
+                    var allInspirations = DefDatabase<InspirationDef>.AllDefsListForReading;
+                    if (allInspirations.Count > 0)
+                    {
+                        var inspiration = allInspirations.RandomElement();
+                        colonist.mindState.inspirationHandler.TryStartInspiration(inspiration);
+                    }
+                    else
+                    {
+                        if (colonist.needs?.joy != null) colonist.needs.joy.CurLevel = 1f;
+                        if (colonist.needs?.comfort != null) colonist.needs.comfort.CurLevel = 1f;
+                        if (colonist.needs?.beauty != null) colonist.needs.beauty.CurLevel = 1f;
+                    }
+                    inspired++;
+                }
+                Messages.Message($"Viewers inspired all colonists!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error inspiring colonists: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // RESOURCES & SUPPLIES
+        // ============================================ 
+
+        private void DropPodResource(string resourceType, int amount)
+        {
+            try
+            {
+                IntVec3 dropSpot = DropCellFinder.RandomDropSpot(map);
+                List<Thing> items = new List<Thing>();
+                ThingDef thingDef = null;
+                string displayName = resourceType;
+
+                switch (resourceType)
+                {
+                    case "Food": thingDef = ThingDefOf.MealSurvivalPack; displayName = "survival meals"; break;
+                    case "Medicine": thingDef = ThingDefOf.MedicineIndustrial; displayName = "medicine"; break;
+                    case "Steel": thingDef = ThingDefOf.Steel; displayName = "steel"; break;
+                    case "Components": thingDef = ThingDefOf.ComponentIndustrial; displayName = "components"; break;
+                    case "Silver": thingDef = ThingDefOf.Silver; displayName = "silver"; break;
+                    default: return;
+                }
+
+                Thing item = ThingMaker.MakeThing(thingDef);
+                item.stackCount = amount;
+                items.Add(item);
+                DropPodUtility.DropThingsNear(dropSpot, map, items, forbid: false);
+                Messages.Message($"Drop pod delivered {amount} {displayName}!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error dropping resource: {ex.Message}");
+            }
+        }
+
+        private void GiftLegendaryItem()
+        {
+            try
+            {
+                var allDefs = new List<ThingDef>();
+                allDefs.AddRange(DefDatabase<ThingDef>.AllDefs.Where(d => d.IsWeapon && d.tradeability != Tradeability.None));
+                allDefs.AddRange(DefDatabase<ThingDef>.AllDefs.Where(d => d.IsApparel && d.tradeability != Tradeability.None));
+
+                if (allDefs.Count == 0) return;
+
+                ThingDef chosenDef = allDefs.RandomElement();
+                Thing item = ThingMaker.MakeThing(chosenDef, GenStuff.RandomStuffFor(chosenDef));
+                var qualityComp = item.TryGetComp<CompQuality>();
+                if (qualityComp != null)
+                {
+                    qualityComp.SetQuality(QualityCategory.Legendary, ArtGenerationContext.Colony);
+                }
+
+                IntVec3 dropSpot = DropCellFinder.RandomDropSpot(map);
+                GenPlace.TryPlaceThing(item, dropSpot, map, ThingPlaceMode.Near);
+                Messages.Message($"Viewers sent a legendary {item.Label}!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error gifting legendary item: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // ECONOMY & TRADE
+        // ============================================ 
+
+        private void SendTraderCaravan()
+        {
+            try
+            {
+                IncidentDef traderDef = IncidentDefOf.TraderCaravanArrival;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                traderDef.Worker.TryExecute(parms);
+                Messages.Message("A trader caravan is approaching!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error sending trader: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // ANIMALS
+        // ============================================ 
+
+        private void TameRandomAnimal()
+        {
+            try
+            {
+                var wildAnimals = map.mapPawns.AllPawns.Where(p => p.AnimalOrWildMan() && p.Faction == null).ToList();
+                if (wildAnimals.Count == 0)
+                {
+                    Messages.Message("No wild animals found on the map.", MessageTypeDefOf.NeutralEvent);
+                    return;
+                }
+
+                Pawn animal = wildAnimals.RandomElement();
+                animal.SetFaction(Faction.OfPlayer);
+                Messages.Message($"Viewers tamed a wild {animal.LabelShort}!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error taming animal: {ex.Message}");
+            }
+        }
+
+        private void SpawnRandomAnimal()
+        {
+            try
+            {
+                var animalKinds = DefDatabase<PawnKindDef>.AllDefs.Where(k => k.RaceProps != null && k.RaceProps.Animal).ToList();
+                if (animalKinds.Count == 0) return;
+
+                PawnKindDef chosenAnimal = animalKinds.RandomElement();
+                IntVec3 spawnSpot = CellFinder.RandomClosewalkCellNear(map.Center, map, 20);
+                Pawn animal = PawnGenerator.GeneratePawn(chosenAnimal, null);
+                GenSpawn.Spawn(animal, spawnSpot, map);
+                Messages.Message($"A wild {animal.LabelShort} has appeared!", MessageTypeDefOf.NeutralEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error spawning animal: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // POSITIVE EVENTS
+        // ============================================ 
+
+        private void TriggerPositiveEvent()
+        {
+            try
+            {
+                var positiveEvents = new List<IncidentDef>
+                {
+                    IncidentDefOf.FarmAnimalsWanderIn,
+                    IncidentDefOf.TravelerGroup,
+                    IncidentDefOf.TraderCaravanArrival
+                };
+
+                IncidentDef chosen = positiveEvents.RandomElement();
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                chosen.Worker.TryExecute(parms);
+                Messages.Message($"Event: {chosen.label}", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering positive event: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // CHALLENGING EVENTS
+        // ============================================ 
+
+        private void TriggerRaid()
+        {
+            try
+            {
+                IncidentDef raidDef = IncidentDefOf.RaidEnemy;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.ThreatBig, map);
+                parms.forced = true;
+
+                Faction faction = Find.FactionManager.RandomEnemyFaction();
+                if (faction == null)
+                {
+                    Messages.Message("No enemy factions available for raid.", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+                parms.faction = faction;
+                parms.raidArrivalMode = PawnsArrivalModeDefOf.EdgeWalkIn;
+                parms.raidStrategy = RaidStrategyDefOf.ImmediateAttack;
+                
+                float storyPoints = StorytellerUtility.DefaultThreatPointsNow(map);
+                parms.points = Math.Max(35f, Math.Min(storyPoints * 1.2f, storyPoints));
+
+                if (raidDef.Worker.TryExecute(parms))
+                {
+                    Messages.Message("Viewers triggered a raid!", MessageTypeDefOf.ThreatBig);
+                }
+                else
+                {
+                    Messages.Message("Failed to trigger raid.", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering raid: {ex.Message}");
+            }
+        }
+
+        private void TriggerManhunterPack()
+        {
+            try
+            {
+                IncidentDef manhunterDef = IncidentDefOf.ManhunterPack;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.ThreatBig, map);
+                parms.forced = true;
+                manhunterDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers sent a manhunter pack!", MessageTypeDefOf.ThreatBig);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering manhunter pack: {ex.Message}");
+            }
+        }
+
+        private void TriggerMadAnimal()
+        {
+            try
+            {
+                IncidentDef madAnimalDef = DefDatabase<IncidentDef>.GetNamedSilentFail("AnimalInsanitySingle")
+                    ?? DefDatabase<IncidentDef>.GetNamedSilentFail("AnimalInsanityMass");
+
+                if (madAnimalDef == null) return;
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.ThreatSmall, map);
+                parms.forced = true;
+                madAnimalDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers made animals go mad!", MessageTypeDefOf.ThreatSmall);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering mad animal: {ex.Message}");
+            }
+        }
+
+        private void TriggerSolarFlare()
+        {
+            try
+            {
+                IncidentDef solarFlareDef = IncidentDefOf.SolarFlare;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                solarFlareDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers triggered a solar flare!", MessageTypeDefOf.NegativeEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering solar flare: {ex.Message}");
+            }
+        }
+
+        private void TriggerEclipse()
+        {
+            try
+            {
+                IncidentDef eclipseDef = IncidentDefOf.Eclipse;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                eclipseDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers triggered an eclipse!", MessageTypeDefOf.NegativeEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering eclipse: {ex.Message}");
+            }
+        }
+
+        private void TriggerToxicFallout()
+        {
+            try
+            {
+                IncidentDef toxicDef = IncidentDefOf.ToxicFallout;
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                toxicDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers triggered toxic fallout!", MessageTypeDefOf.NegativeEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering toxic fallout: {ex.Message}");
+            }
+        }
+
+        private void TriggerFlashstorm()
+        {
+            try
+            {
+                IncidentDef flashstormDef = DefDatabase<IncidentDef>.GetNamedSilentFail("Flashstorm")
+                    ?? DefDatabase<IncidentDef>.GetNamedSilentFail("FlashStorm");
+
+                if (flashstormDef == null) return;
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                flashstormDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers triggered a flashstorm!", MessageTypeDefOf.NegativeEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering flashstorm: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // CHAOS EVENTS
+        // ============================================ 
+
+        private void TriggerMeteorShower()
+        {
+            try
+            {
+                IncidentDef meteorDef = DefDatabase<IncidentDef>.GetNamedSilentFail("MeteoriteImpact")
+                    ?? DefDatabase<IncidentDef>.GetNamedSilentFail("Meteorite");
+
+                if (meteorDef == null) return;
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                for (int i = 0; i < 5; i++)
+                {
+                    meteorDef.Worker.TryExecute(parms);
+                }
+                Messages.Message("Viewers triggered a meteor shower!", MessageTypeDefOf.NeutralEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering meteor shower: {ex.Message}");
+            }
+        }
+
+        private void TriggerTornado()
+        {
+            try
+            {
+                IncidentDef tornadoDef = DefDatabase<IncidentDef>.GetNamedSilentFail("Tornado");
+                if (tornadoDef == null)
+                {
+                    Messages.Message("Tornado incident not available.", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                tornadoDef.Worker.TryExecute(parms);
+                Messages.Message("Viewers summoned a tornado!", MessageTypeDefOf.ThreatBig);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering tornado: {ex.Message}");
+            }
+        }
+
+        private void TriggerLightningStrike()
+        {
+            try
+            {
+                IntVec3 targetCell = CellFinderLoose.RandomCellWith(c => c.Standable(map) && !c.Roofed(map), map);
+                map.weatherManager.eventHandler.AddEvent(new WeatherEvent_LightningStrike(map, targetCell));
+                Messages.Message("Viewers called down lightning!", MessageTypeDefOf.NeutralEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering lightning: {ex.Message}");
+            }
+        }
+
+        private void TriggerRandomEvent()
+        {
+            try
+            {
+                var incidents = new List<IncidentDef>
+                {
+                    IncidentDefOf.TraderCaravanArrival,
+                    IncidentDefOf.FarmAnimalsWanderIn,
+                    IncidentDefOf.ShipChunkDrop,
+                    IncidentDefOf.TravelerGroup,
+                    IncidentDefOf.VisitorGroup
+                };
+
+                IncidentDef randomIncident = incidents.RandomElement();
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+                randomIncident.Worker.TryExecute(parms);
+                Messages.Message($"Viewers triggered: {randomIncident.label}", MessageTypeDefOf.NeutralEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering random event: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // UTILITY
+        // ============================================ 
+
+        private void ChangeWeather(string weatherDefName)
+        {
+            if (string.IsNullOrEmpty(weatherDefName)) return;
+            WeatherDef weatherDef = DefDatabase<WeatherDef>.GetNamed(weatherDefName, false);
+            if (weatherDef == null) return;
+
+            map.weatherManager.TransitionTo(weatherDef);
+            Messages.Message($"The weather has changed to {weatherDef.label}.", MessageTypeDefOf.NeutralEvent);
+        }
+
+        private void ChangeFactionGoodwill(string data)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(data)) return;
+                // Unescape quotes: \" becomes "
+                string cleanedData = data.Replace("\\\"", "\"").Trim('"');
+                FactionGoodwillData goodwillData;
+                try { goodwillData = JsonUtility.FromJson<FactionGoodwillData>(cleanedData); }
+                catch { return; }
+
+                if (goodwillData == null || string.IsNullOrEmpty(goodwillData.faction)) return;
+
+                Faction faction = Find.FactionManager.AllFactions.FirstOrDefault(f => f.Name == goodwillData.faction);
+                if (faction == null || faction.IsPlayer) return;
+
+                faction.TryAffectGoodwillWith(Faction.OfPlayer, goodwillData.amount, canSendMessage: false, canSendHostilityLetter: false);
+                Messages.Message($"Goodwill with {faction.Name} changed.", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error changing goodwill: {ex.Message}");
+            }
+        }
+
+        [Serializable]
+        public class FactionGoodwillData
+        {
+            public string faction;
+            public int amount;
+        }
+
+        private void ShowLetter(string message)
+        {
+            try
+            {
+                message = SanitizeUserInput(message);
+                if (string.IsNullOrEmpty(message)) return;
+
+                if (message.Length > MaxMessageLength)
+                    message = message.Substring(0, MaxMessageLength) + "...";
+
+                Find.LetterStack.ReceiveLetter("Message from Viewer", message, LetterDefOf.NeutralEvent, (LookTargets)null, null, null);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Exception in ShowLetter: {ex.ToString()}");
+            }
+        }
+
+        private string SanitizeUserInput(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+            var cleaned = new StringBuilder(input.Length);
+            foreach (char c in input)
+            {
+                if (c == '\n' || c == '\r' || c == '\t' || (c >= 32 && c < 127) || (c >= 160 && c <= 255))
+                {
+                    cleaned.Append(c);
+                }
+            }
+            return cleaned.ToString().Trim();
+        }
+
+        private void CreatePing(string coordinatesJson)
+        {
+            try
+            {
+                var parts = coordinatesJson.Replace("{", "").Replace("}", "").Replace("\"", "").Split(',');
+                int x = 0, z = 0;
+                foreach (var part in parts)
+                {
+                    var kv = part.Split(':');
+                    if (kv.Length == 2)
+                    {
+                        if (kv[0].Trim() == "x") int.TryParse(kv[1].Trim(), out x);
+                        if (kv[0].Trim() == "z") int.TryParse(kv[1].Trim(), out z);
+                    }
+                }
+
+                IntVec3 location = new IntVec3(x, 0, z);
+                if (!location.InBounds(map)) return;
+
+                ThingDef moteDef = DefDatabase<ThingDef>.GetNamedSilentFail("Mote_FeedbackGoto");
+                if (moteDef != null)
+                {
+                    MoteMaker.MakeStaticMote(location.ToVector3Shifted(), map, moteDef, 3f);
+                }
+                MoteMaker.ThrowText(location.ToVector3Shifted(), map, "* Viewer Ping *", Color.cyan, 3.5f);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error creating ping: {ex.Message}");
+            }
+        }
+
+        // ============================================ 
+        // GENERIC INCIDENT HELPERS
+        // ============================================ 
+
+        private void TriggerIncident(string defName, IncidentCategoryDef category = null)
+        {
+            try
+            {
+                IncidentDef def = DefDatabase<IncidentDef>.GetNamedSilentFail(defName);
+                if (def == null)
+                {
+                    Log.Warning($"[Player Storyteller] Incident definition not found: {defName}");
+                    return;
+                }
+
+                IncidentParms parms = StorytellerUtility.DefaultParmsNow(category ?? IncidentCategoryDefOf.Misc, map);
+                parms.forced = true;
+
+                if (def.Worker.TryExecute(parms))
+                {
+                    Messages.Message($"Viewers triggered: {def.label}", MessageTypeDefOf.NeutralEvent);
+                }
+                else
+                {
+                    Messages.Message($"Failed to trigger {def.label} (conditions not met).", MessageTypeDefOf.RejectInput);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering {defName}: {ex.Message}");
+            }
+        }
+
+        private void TriggerMechShip()
+        {
+            try
+            {
+                string defName = Rand.Value > 0.5f ? "DefoliatorShipPartCrash" : "PsychicEmanatorShipPartCrash";
+                TriggerIncident(defName, IncidentCategoryDefOf.ThreatBig);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering mech ship: {ex.Message}");
+            }
+        }
+    }
+}

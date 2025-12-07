@@ -1,0 +1,58 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+)
+
+// Simple test program to verify window capture works
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: test-capture <PID>")
+		fmt.Println("Example: test-capture 12345")
+		os.Exit(1)
+	}
+
+	pid64, err := strconv.ParseUint(os.Args[1], 10, 32)
+	if err != nil {
+		fmt.Printf("Invalid PID: %v\n", err)
+		os.Exit(1)
+	}
+
+	pid := uint32(pid64)
+	fmt.Printf("Testing window capture for PID: %d\n", pid)
+
+	capture := NewWindowCapture(pid)
+
+	fmt.Println("Attempting to find window...")
+	if err := capture.findWindow(); err != nil {
+		fmt.Printf("Error finding window: %v\n", err)
+		fmt.Println("\nTroubleshooting:")
+		fmt.Println("1. Make sure RimWorld is running")
+		fmt.Println("2. Check that the PID is correct (Task Manager -> Details tab)")
+		fmt.Println("3. Ensure RimWorld has a visible window")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Window found! Handle: %v\n", capture.hwnd)
+	fmt.Println("Capturing 5 test frames...")
+
+	for i := 0; i < 5; i++ {
+		start := time.Now()
+		frame, err := capture.CaptureWindow(75)
+		elapsed := time.Since(start)
+
+		if err != nil {
+			fmt.Printf("Frame %d: ERROR - %v\n", i+1, err)
+		} else {
+			fmt.Printf("Frame %d: %d KB captured in %v\n", i+1, len(frame)/1024, elapsed)
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	fmt.Println("\nSuccess! Window capture is working.")
+	fmt.Println("You can now use the full sidecar with --rimworld-pid parameter.")
+}

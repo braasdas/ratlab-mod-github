@@ -1,0 +1,311 @@
+package main
+
+import (
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/pion/webrtc/v3"
+	"golang.org/x/sys/windows"
+)
+
+// Configuration
+const (
+	ServerURL       = "ws://localhost:3000/webrtc-signal"
+	FFmpegPath      = "ffmpeg.exe"
+	LogFileName     = "sidecar-capture.log"
+	FrameBufferSize = 3 // Buffer for captured frames
+	FeedbackPort    = 9000
+	TargetFPS       = 30
+	CaptureQuality  = 75 // JPEG quality
+)
+
+var (
+	logger          *log.Logger
+	sessionID       string
+	streamKey       string
+	rimworldPID     uint32
+	peerConn        *webrtc.PeerConnection
+	dataChannel     *webrtc.DataChannel
+	wsConn          *websocket.Conn
+	wsMutex         sync.Mutex
+	ffmpegCmd       *exec.Cmd
+	ffmpegStdin     io.WriteCloser
+	mu              sync.Mutex
+	fpsTracker      *FPSTracker
+	hardwareEncoder string
+	windowCapture   *WindowCapture
+	captureStopChan chan struct{}
+)
+
+func main() {
+	// Setup Logging
+	setupLogging()
+	logMsg("Sidecar started (Window Capture Mode)")
+
+	// Detect hardware encoder
+	hardwareEncoder = detectHardwareEncoder()
+	if hardwareEncoder != "" {
+		logMsg(fmt.Sprintf("Hardware encoder detected: %s", hardwareEncoder))
+	} else {
+		logMsg("No hardware encoder detected. Using CPU encoding (libx264).")
+	}
+
+	// Initialize FPS Tracker
+	fpsTracker = NewFPSTracker(TargetFPS, 30)
+
+	var providedSessionID string
+	var providedPIDStr string
+
+	// Parse arguments
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if arg == "--rimworld-pid" && i+1 < len(os.Args) {
+			providedPIDStr = os.Args[i+1]
+			i++
+		} else if arg == "--stream-key" && i+1 < len(os.Args) {
+			streamKey = os.Args[i+1]
+			i++
+		} else if !strings.HasPrefix(arg, "--") && providedSessionID == "" {
+			providedSessionID = arg
+		}
+	}
+
+	if providedSessionID != "" {
+		sessionID = providedSessionID
+	} else {
+		sessionID = "current-session"
+	}
+
+	if providedPIDStr != "" {
+		pid64, err := strconv.ParseUint(providedPIDStr, 10, 32)
+		if err != nil {
+			logMsg(fmt.Sprintf("Invalid RimWorld PID: %s, error: %v", providedPIDStr, err))
+			os.Exit(1)
+		}
+		rimworldPID = uint32(pid64)
+	} else {
+		logMsg("ERROR: --rimworld-pid is required")
+		os.Exit(1)
+	}
+
+	if streamKey == "" {
+		logMsg("WARNING: No stream key provided! Authentication may fail.")
+	}
+
+	logMsg(fmt.Sprintf("Session ID: %s", sessionID))
+	logMsg(fmt.Sprintf("Capturing RimWorld PID: %d", rimworldPID))
+
+	// Monitor parent process
+	go monitorParentProcess(rimworldPID)
+
+	// Start HTTP Feedback Server
+	go startFeedbackServer()
+
+	// Initialize window capture
+	windowCapture = NewWindowCapture(rimworldPID)
+	captureStopChan = make(chan struct{})
+
+	// Connect to Signaling Server
+	connectSignaling()
+
+	// Keep main thread alive
+	select {}
+}
+
+func startCapture() {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if windowCapture == nil {
+		logMsg("ERROR: Window capture not initialized")
+		return
+	}
+
+	// Start capture loop in goroutine
+	frameChan := make(chan []byte, FrameBufferSize)
+
+	go windowCapture.CaptureLoop(TargetFPS, CaptureQuality, frameChan, captureStopChan)
+
+	// Start frame consumer (feeds to FFmpeg)
+	go func() {
+		for frame := range frameChan {
+			mu.Lock()
+			stdin := ffmpegStdin
+			mu.Unlock()
+
+			if stdin != nil {
+				fpsTracker.RecordFrame()
+				_, err := stdin.Write(frame)
+				if err != nil {
+					logMsg(fmt.Sprintf("Failed to write frame to FFmpeg: %v", err))
+				}
+			}
+		}
+	}()
+
+	logMsg("Window capture started")
+}
+
+func stopCapture() {
+	close(captureStopChan)
+	captureStopChan = make(chan struct{}) // Reset for next use
+	logMsg("Window capture stopped")
+}
+
+// Reuse existing functions from main.go
+// (Copy all the WebRTC, FFmpeg, signaling functions here)
+// For brevity, I'll note which functions to include:
+
+// - setupLogging()
+// - logMsg()
+// - startFeedbackServer()
+// - handleFPSFeedback()
+// - handleHealth()
+// - monitorParentProcess() [modified to take PID parameter]
+// - connectSignaling()
+// - sendSignal()
+// - handleSignalMessage()
+// - handleOffer()
+// - startFFmpeg()
+// - stopFFmpeg()
+// - sendToDataChannel()
+// - detectHardwareEncoder()
+// - sendDriverWarning()
+
+// Key modifications:
+// 1. Remove readInputLoop() - we don't read from stdin anymore
+// 2. Replace it with startCapture() / stopCapture()
+// 3. FFmpeg input becomes MJPEG frames from window capture
+
+// Modified monitorParentProcess to accept PID
+func monitorParentProcess(parentPID uint32) {
+	if parentPID == 0 {
+		logMsg("Parent PID is 0, not monitoring parent process.")
+		return
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	logMsg(fmt.Sprintf("Started monitoring parent process with PID %d", parentPID))
+
+	for range ticker.C {
+		handle, err := windows.OpenProcess(windows.PROCESS_QUERY_INFORMATION, false, parentPID)
+		if err != nil {
+			logMsg(fmt.Sprintf("Failed to open handle to parent process (PID %d): %v. Terminating sidecar.", parentPID, err))
+			os.Exit(1)
+			return
+		}
+		defer windows.CloseHandle(handle)
+
+		var exitCode uint32
+		err = windows.GetExitCodeProcess(handle, &exitCode)
+		if err != nil {
+			logMsg(fmt.Sprintf("Failed to get exit code for parent process (PID %d): %v. Terminating sidecar.", parentPID, err))
+			os.Exit(1)
+			return
+		}
+
+		if exitCode != STILL_ACTIVE {
+			logMsg(fmt.Sprintf("Parent process (PID %d) has exited with code %d. Terminating sidecar.", parentPID, exitCode))
+			os.Exit(1)
+			return
+		}
+	}
+}
+
+// Modified handleOffer to start capture when data channel opens
+func handleOfferModified(msg SignalMessage) {
+	config := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{URLs: []string{"stun:stun.l.google.com:19302"}},
+		},
+	}
+
+	var err error
+	peerConn, err = webrtc.NewPeerConnection(config)
+	if err != nil {
+		logMsg(fmt.Sprintf("Failed to create PeerConn: %v", err))
+		return
+	}
+
+	peerConn.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		candidate := c.ToJSON()
+		sendSignal(SignalMessage{
+			Type:      "ice-candidate",
+			Candidate: &candidate,
+			To:        msg.From,
+			SessionID: sessionID,
+		})
+	})
+
+	peerConn.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		logMsg(fmt.Sprintf("Peer Connection State: %s", s.String()))
+	})
+
+	peerConn.OnDataChannel(func(d *webrtc.DataChannel) {
+		logMsg(fmt.Sprintf("New DataChannel: %s %d", d.Label(), d.ID()))
+		dataChannel = d
+
+		d.OnOpen(func() {
+			logMsg("DataChannel Open. Starting window capture...")
+			time.Sleep(1000 * time.Millisecond)
+			startFFmpeg()
+			startCapture()
+		})
+
+		d.OnClose(func() {
+			logMsg("DataChannel Closed. Stopping capture...")
+			stopCapture()
+			stopFFmpeg()
+		})
+	})
+
+	if err := peerConn.SetRemoteDescription(*msg.Offer); err != nil {
+		logMsg(fmt.Sprintf("SetRemoteDesc error: %v", err))
+		return
+	}
+
+	answer, err := peerConn.CreateAnswer(nil)
+	if err != nil {
+		logMsg(fmt.Sprintf("CreateAnswer error: %v", err))
+		return
+	}
+
+	if err := peerConn.SetLocalDescription(answer); err != nil {
+		logMsg(fmt.Sprintf("SetLocalDesc error: %v", err))
+		return
+	}
+
+	sendSignal(SignalMessage{
+		Type:      "answer",
+		Answer:    &answer,
+		To:        msg.From,
+		SessionID: sessionID,
+	})
+}
+
+// NOTE: This is a skeleton. You need to copy all the helper functions from main.go:
+// - setupLogging, logMsg, startFeedbackServer, handleFPSFeedback, handleHealth
+// - connectSignaling, sendSignal, handleSignalMessage
+// - startFFmpeg, stopFFmpeg, sendToDataChannel
+// - detectHardwareEncoder, sendDriverWarning
+// - FPSTracker and related functions
+// - SignalMessage, StatusMessage structs
+
+// For a complete implementation, merge this with main.go

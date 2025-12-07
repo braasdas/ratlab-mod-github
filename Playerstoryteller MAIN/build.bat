@@ -2,24 +2,14 @@
 echo Building Player Storyteller mod...
 echo.
 
-REM Set paths - CUSTOMIZE THESE FOR YOUR SYSTEM
-set RIMWORLD_DIR=E:\SteamLibrary\steamapps\common\RimWorld
-set RIMWORLD_MODS=%RIMWORLD_DIR%\Mods
-set MOD_NAME=PlayerStoryteller
-set SOURCE_DIR=PlayerStoryteller
+REM Set RimWorld path to user's location
+set "RIMWORLD_DIR=E:\SteamLibrary\steamapps\common\RimWorld"
 
-REM Check if RimWorld directory exists
-if not exist "%RIMWORLD_DIR%" (
-    echo ERROR: RimWorld directory not found at: %RIMWORLD_DIR%
-    echo Please update RIMWORLD_DIR in build.bat to match your RimWorld installation
-    echo.
-    echo Common locations:
-    echo   - E:\SteamLibrary\steamapps\common\RimWorld
-    echo   - C:\Program Files ^(x86^)\Steam\steamapps\common\RimWorld
-    echo.
-    pause
-    exit /b 1
-)
+set RIMWORLD_MODS=%RIMWORLD_DIR%\Mods
+set MOD_NAME=RatLab
+set SOURCE_DIR=Ratlab mod
+
+echo Found RimWorld at: %RIMWORLD_DIR%
 
 REM Check if dotnet is available
 where dotnet >nul 2>nul
@@ -27,41 +17,63 @@ if %ERRORLEVEL% NEQ 0 (
     echo ERROR: dotnet CLI not found
     echo Please install .NET SDK from: https://dotnet.microsoft.com/download
     echo.
-    pause
     exit /b 1
 )
 
-echo Found RimWorld at: %RIMWORLD_DIR%
+REM Check if go is available
+where go >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: go CLI not found
+    echo Please install Go from: https://go.dev/dl/
+    echo.
+    exit /b 1
+)
+
 echo Building mod: %MOD_NAME%
 echo.
 
-REM Build the project
+REM Build the C# project
 echo Building C# project...
 cd "%SOURCE_DIR%\Source"
-
-REM Set RIMWORLD_DIR environment variable for the build process
-set RIMWORLD_DIR=%RIMWORLD_DIR%
 
 dotnet build PlayerStoryteller.csproj /p:Configuration=Release /nologo /verbosity:minimal
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ========================================
-    echo Build FAILED!
+    echo C# Build FAILED!
     echo Check the errors above
     echo ========================================
     echo.
     cd ..\..
-    pause
     exit /b 1
 )
 
 cd ..\..
 
+REM Build the Go Sidecar (Clean Rewrite with MP4 Parser)
+echo.
+echo Building Go Sidecar (Clean Rewrite with MP4 Parser)...
+cd go-sidecar
+go build -o sidecar.exe
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ========================================
+    echo Go Build FAILED!
+    echo Check the errors above
+    echo ========================================
+    echo.
+    cd ..
+    exit /b 1
+)
+cd ..
+
 echo.
 echo ========================================
 echo Build successful!
 echo DLL created in: %SOURCE_DIR%\Assemblies\
+echo Sidecar binary created in: go-sidecar\sidecar.exe
 echo ========================================
 echo.
 
@@ -83,7 +95,6 @@ if exist "%RIMWORLD_MODS%\%MOD_NAME%\Assemblies\PlayerStoryteller.dll" (
         echo WARNING: Could not delete old DLL - RimWorld may be running
         echo Please close RimWorld and try again.
         echo.
-        pause
         exit /b 1
     )
 )
@@ -108,30 +119,40 @@ if exist "%SOURCE_DIR%\Textures" (
     xcopy /E /I /Y "%SOURCE_DIR%\Textures" "%RIMWORLD_MODS%\%MOD_NAME%\Textures" >nul
 )
 
+REM Deploy Sidecar (Binary + FFmpeg)
+echo - Deploying Sidecar...
+if not exist "%RIMWORLD_MODS%\%MOD_NAME%\go-sidecar" mkdir "%RIMWORLD_MODS%\%MOD_NAME%\go-sidecar"
+
+copy /Y "go-sidecar\sidecar.exe" "%RIMWORLD_MODS%\%MOD_NAME%\go-sidecar\" >nul
+
+REM Try to find FFmpeg in multiple locations
+set FFMPEG_FOUND=0
+if exist "go-sidecar\ffmpeg.exe" (
+    copy /Y "go-sidecar\ffmpeg.exe" "%RIMWORLD_MODS%\%MOD_NAME%\go-sidecar\" >nul
+    set FFMPEG_FOUND=1
+    echo   Found ffmpeg.exe in go-sidecar folder
+) else if exist "webrtc-sidecar\ffmpeg.exe" (
+    copy /Y "webrtc-sidecar\ffmpeg.exe" "%RIMWORLD_MODS%\%MOD_NAME%\go-sidecar\" >nul
+    set FFMPEG_FOUND=1
+    echo   Found ffmpeg.exe in webrtc-sidecar folder (deprecated location)
+)
+
+if %FFMPEG_FOUND%==0 (
+    echo.
+    echo WARNING: ffmpeg.exe not found!
+    echo Please download FFmpeg from: https://github.com/BtbN/FFmpeg-Builds/releases
+    echo Extract ffmpeg.exe to the go-sidecar\ folder
+    echo.
+)
+
+REM Unblock the executable to prevent SmartScreen/Security warnings
+powershell -Command "Unblock-File -Path '%RIMWORLD_MODS%\%MOD_NAME%\go-sidecar\sidecar.exe' -ErrorAction SilentlyContinue"
+
 echo.
 echo ========================================
 echo SUCCESS!
 echo ========================================
 echo.
+
 echo Mod deployed to: %RIMWORLD_MODS%\%MOD_NAME%
 echo.
-echo Mod folder structure:
-echo   %RIMWORLD_MODS%\%MOD_NAME%\
-echo   ├── About\
-echo   │   └── About.xml
-echo   ├── Assemblies\
-echo   │   └── PlayerStoryteller.dll
-echo   └── Textures\
-echo.
-echo You can now:
-echo 1. Launch RimWorld
-echo 2. Enable the Player Storyteller mod in Mod Settings
-echo 3. Make sure RIMAPI is loaded BEFORE this mod
-echo 4. Start a game and configure server URL in mod settings
-echo.
-echo Server setup:
-echo   cd server
-echo   npm install
-echo   npm start
-echo.
-pause

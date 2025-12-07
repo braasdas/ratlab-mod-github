@@ -1,0 +1,44 @@
+v1.1.0 (2025-12-05)
+Add endpoint:
+[GET]
+
+/api/v1/faction/player
+/api/v1/faction/
+/api/v1/faction/def
+/api/v1/faction/relations-with
+/api/v1/faction/relations
+[POST]
+/api/v1/faction/change/goodwill
+/api/v1/change/weather
+
+Add caching service
+Test performance of GET /colonists/detailed endpoint no/with caching, results:
+
+Speed acceleration of 16-21%
+Improved stability (0 vs 9 failures)
+Reduction of peak delays by 72%
+
+Fix: Add endpoints from v0.5.6
+/api/v1/resources/storages/summary
+/api/v1/select
+/api/v1/trait-def
+/api/v1/time-assignments
+/api/v1/colonist/time-assignment
+/api/v1/outfits
+/api/v1/work-list
+/api/v1/colonist/work-priority
+/api/v1/colonists/work-priority
+/api/v1/jobs/make/equip
+
+Thanks to @Branb and his RatLab mod 
+Aenclave — 10:51 AM
+v1.2.0 (2025-12-06)
+Add endpoint:
+[GET]
+/api/v1/def/all
+[POST]
+/api/v1/game/send/letter
+
+Change endpoint path:
+/api/v1/building/info -> /api/v1/map/building/info
+/api/v1/change/weather -> /api/v1/map/weather/change

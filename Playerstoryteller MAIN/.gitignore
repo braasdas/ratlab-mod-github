@@ -1,0 +1,19 @@
+backup/
+BUILDS/
+deprecated & github backups/
+POSSIBLE INTEGRATIONS & ETCS/
+temp_defs/
+.claude/
+nul
+*.log
+*.exe
+*.dll
+*.pdb
+node_modules/
+obj/
+bin/
+.vs/
+*.user
+*.suo
+.DS_Store
+Thumbs.db

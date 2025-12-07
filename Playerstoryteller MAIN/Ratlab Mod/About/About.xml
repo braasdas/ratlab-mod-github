@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+    <name>Rat Lab</name>
+    <author>tempperment 22</author>
+    <packageId>tempperment22.rimworldratlab</packageId>
+    <supportedVersions>
+        <li>1.6</li>
+    </supportedVersions>
+    <description>TURN YOUR RIMWORLD COLONY INTO A LIVING LABORATORY
+
+Rat Lab transforms RimWorld into a live streaming powerhouse where your friends, audience, or rivals become mad scientists experimenting on YOUR colony. Stream buttery-smooth gameplay to a sleek web dashboard at ratlab.online where viewers can watch every catastrophe unfold - and make things infinitely worse.
+
+Your colonists are the lab rats. Your viewers are the researchers. And you? You're just trying to survive the experiment.
+
+--- FOR VIEWERS: POKE THE RATS ---
+
+Forget typing "!raid" in chat like a caveman. Access a gorgeous real-time dashboard to:
+
+* LIVE COLONY FEED: Watch colonists scramble in real-time with automatic quality adjustment based on your internet speed. Adjustable frame viewer with pause-aware streaming.
+* MULTI-TAB INTERFACE: Six dedicated tabs - Stream &amp; Actions, Colonists (with portraits and inventories), Colony Inventory (storage zones), Factions (relations and goodwill), Installed Mods, and Colony Statistics.
+* VISUAL HEALTH ALERTS: Medical panel highlights colonists with injuries or illnesses requiring attention.
+* INTERACTIVE MAP PINGS: Click anywhere on the screenshot to drop visual markers that appear in-game instantly.
+* COLONIST DOSSIERS: View detailed profiles with health bars, mood meters, skills, equipped weapons/armor, and carried items with quality indicators.
+* TRIGGER EVENTS: Drop legendary weapons, summon traders, heal colonists, inspire mood boosts, send refugees, trigger raids, cause weather disasters, start quests, adjust faction relations, or send cryptic messages (36+ unique actions).
+* WATCH THE CHAOS: Every explosion, every breakdown, every triumph - streamed with zero delay.
+
+--- FOR STREAMERS: LABORATORY-GRADE PERFORMANCE ---
+
+Most streaming mods turn your PC into a space heater and your game into a slideshow. Rat Lab was engineered from the ground up to stream heavily-modded colonies at 60 FPS without breaking a sweat.
+
+SMART SCREENSHOT PIPELINE: Instead of freezing your game to capture screenshots, we use "asynchronous GPU readback" - think of it like taking photos while walking instead of stopping to pose. Your graphics card captures frames in the background while RimWorld keeps running smoothly.
+
+INTELLIGENT COMPRESSION: A dedicated background thread compresses screenshots using professional-grade JPEG encoding (the same tech Netflix uses). This happens on a separate CPU core so your game never stutters.
+
+TIERED DATA SYSTEM: Not all information updates at the same speed. Colonist health changes every second, but research progress? Maybe once a minute. We poll game data in multiple smart tiers:
+  • Fast Lane (2s): Colonist vitals, positions, equipment, and immediate threats
+  • Slow Lane (8s): Resources, power levels, and creature counts
+  • Static Lane (45s): Research, factions, installed mods, and long-term stats
+  • Portrait Cache (30s): Colonist face images
+  • Inventory Cache: Per-colonist equipment with quality indicators
+  • Storage Cache: Colony stockpiles with item icons
+
+BANDWIDTH SAVER: When you pause the game, the stream pauses too - no bandwidth wasted sending identical frames. All data is compressed with Gzip (like a .zip file for web traffic), cutting bandwidth usage by 30%.
+
+AUTO-TUNING: Hit the "Network Speed Test" button in settings and Rat Lab automatically configures quality, framerate, and polling speeds based on YOUR internet connection. No PhD required.
+
+--- YOU'RE IN CONTROL: CONFIGURE THE CHAOS ---
+
+To prevent griefing, you have granular control over viewer capabilities:
+
+* INDIVIDUAL ACTION TOGGLES: Enable/disable any of the 36 viewer actions independently. Want healing but no raids? Just toggle them.
+* RATE LIMITING: Set max actions per minute (1-100, default 30) with 500ms minimum between individual actions.
+* PASSWORD PROTECTION: Optionally require a password for any viewer interaction.
+* STREAM KEY AUTHENTICATION: Prevents session hijacking - only you control your colony stream.
+* PUBLIC/PRIVATE MODES: List your colony in the public session browser or keep it invite-only.
+
+Create a helpful guardian angel experience or a merciless gauntlet of suffering - your choice.
+
+--- HOW IT WORKS ---
+
+1. Install Rat Lab and the required RIMAPI dependency.
+2. Launch RimWorld - the mod auto-connects to the Rat Lab Hub.
+3. Share your unique Session Link with friends or drop it in chat.
+4. Survive the science. No port forwarding, no server configuration, just chaos.
+
+--- PRIVACY &amp; DATA DISCLOSURE ---
+
+IMPORTANT: This mod streams gameplay to an external server so viewers can watch and interact with your colony.
+
+Data transmitted includes:
+• Live screenshots of your game (JPEG compressed)
+• Colonist names, health, mood, skills, and positions
+• Colony statistics (wealth, resources, power, research progress)
+• Faction relationships and world information
+• Viewer actions and messages
+
+Privacy modes:
+• PUBLIC MODE: Your colony appears in the public experiment list. Anyone can spectate.
+• PRIVATE MODE: Session only accessible via unique link. Hidden from public discovery.
+
+The mod connects to an external relay server that bridges your game and web viewers. Security features include stream key authentication, optional password protection, rate limiting (30 actions/min per viewer, 500ms minimum between actions), input validation, and automatic session cleanup.
+
+CONNECTION RESILIENCE: Automatic retry with exponential backoff (up to 5 retries). If connection fails permanently, the mod pauses until the issue is resolved.
+
+Technical details:
+• Session data stored temporarily in server memory
+• No long-term logging - sessions purged after 30 seconds of inactivity
+• All screenshot compression happens locally before transmission
+• First-run privacy notice dialog ensures informed consent
+
+By using this mod, you consent to data transmission. Stop anytime by disabling the mod or closing RimWorld.
+
+Self-hosted server option coming soon for maximum privacy control.
+
+Powered by RIMAPI.
+
+THE EXPERIMENT AWAITS.</description>
+    <modDependencies>
+        <li>
+            <packageId>redeyedev.rimapi</packageId>
+            <displayName>RIMAPI</displayName>
+            <steamWorkshopUrl>steam://url/CommunityFilePage/3593423732</steamWorkshopUrl>
+        </li>
+    </modDependencies>
+    <loadAfter>
+        <li>redeyedev.rimapi</li>
+    </loadAfter>
+</ModMetaData>
