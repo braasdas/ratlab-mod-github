@@ -177,18 +177,33 @@ func (e *EncoderManager) detectHardwareEncoders() []string {
 	}
 
 	encoderList := string(output)
+	supported := make(map[string]bool)
+	if strings.Contains(encoderList, "h264_nvenc") { supported["h264_nvenc"] = true }
+	if strings.Contains(encoderList, "h264_amf") { supported["h264_amf"] = true }
+	if strings.Contains(encoderList, "h264_qsv") { supported["h264_qsv"] = true }
+
 	var available []string
 
-	// Priority Order: NVIDIA -> AMD -> Intel -> CPU
-	if strings.Contains(encoderList, "h264_nvenc") {
-		available = append(available, "h264_nvenc")
+	// 1. Detect Physical GPU Vendor to prioritize
+	vendor := GetGPUVendor()
+	e.logger.Info("Detected GPU Vendor: %s", vendor)
+
+	// 2. Add prioritized encoder first
+	switch vendor {
+	case VendorNvidia:
+		if supported["h264_nvenc"] { available = append(available, "h264_nvenc") }
+	case VendorAMD:
+		if supported["h264_amf"] { available = append(available, "h264_amf") }
+	case VendorIntel:
+		if supported["h264_qsv"] { available = append(available, "h264_qsv") }
 	}
-	if strings.Contains(encoderList, "h264_amf") {
-		available = append(available, "h264_amf")
-	}
-	if strings.Contains(encoderList, "h264_qsv") {
-		available = append(available, "h264_qsv")
-	}
+
+	// 3. Add remaining supported encoders as fallbacks
+	// (e.g. if we have NVIDIA hardware but for some reason want to try others if nvenc fails, 
+	// though usually cross-vendor won't work, having them in the list doesn't hurt if the first one works)
+	if supported["h264_nvenc"] && vendor != VendorNvidia { available = append(available, "h264_nvenc") }
+	if supported["h264_amf"] && vendor != VendorAMD { available = append(available, "h264_amf") }
+	if supported["h264_qsv"] && vendor != VendorIntel { available = append(available, "h264_qsv") }
 	
 	// Always add CPU fallback at the end
 	available = append(available, "") 
@@ -438,7 +453,7 @@ func (e *EncoderManager) recoverEncoder() {
 		// Small delay to let system settle
 		time.Sleep(1 * time.Second)
 		
-e.mu.Lock()
+		e.mu.Lock()
 		width, height := e.currentWidth, e.currentHeight
 		err := e.startFFmpegInternal(width, height)
 		e.isRestarting = false
