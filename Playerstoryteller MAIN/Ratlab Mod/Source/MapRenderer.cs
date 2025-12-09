@@ -84,24 +84,9 @@ namespace PlayerStoryteller
                 cam.orthographicSize = orthoSize;
 
                 // 4. Force Draw All Map Sections
-                // We manually submit render commands for every section of the map
-                Array sections = (Array)sectionsField.GetValue(currentMap.mapDrawer);
-                if (sections != null)
-                {
-                    foreach (object section in sections)
-                    {
-                        // Section is Verse.Section, but we use dynamic or reflection to call DrawSection
-                        // to avoid assembly visibility issues if Section is internal (though it shouldn't be).
-                        // Safest way:
-                        if (section is Section s)
-                        {
-                            s.DrawSection();
-                        }
-                    }
-                }
+                DrawAllMapSections();
 
                 // 5. Render
-                // The camera now sees all the meshes we just submitted
                 cam.Render();
 
                 return targetTexture;
@@ -118,6 +103,65 @@ namespace PlayerStoryteller
                 cam.transform.position = oldCamPos;
                 cam.transform.rotation = oldCamRot;
                 cam.orthographicSize = oldCamSize;
+            }
+        }
+
+        /// <summary>
+        /// Renders a specific view centered on a pawn.
+        /// </summary>
+        public RenderTexture RenderPawnView(Pawn pawn, int width, int height, float orthoSize)
+        {
+            if (currentMap == null || pawn == null || !pawn.Spawned) return null;
+
+            Camera cam = Find.Camera;
+            if (cam == null) return null;
+
+            // Reuse or recreate texture if size changed
+            SetupTexture(width, height);
+
+            Vector3 oldCamPos = cam.transform.position;
+            float oldCamSize = cam.orthographicSize;
+            RenderTexture oldTarget = cam.targetTexture;
+
+            try
+            {
+                cam.targetTexture = targetTexture;
+                cam.transform.position = pawn.DrawPos + new Vector3(0, 15f, 0);
+                cam.orthographicSize = orthoSize;
+
+                // For a small view, we technically only need to draw visible sections.
+                // However, DrawAllMapSections is robust. 
+                // Optimization: Draw only relevant sections if performance is an issue.
+                DrawAllMapSections();
+
+                cam.Render();
+                return targetTexture;
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Pawn View Render Error: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                cam.targetTexture = oldTarget;
+                cam.transform.position = oldCamPos;
+                cam.orthographicSize = oldCamSize;
+            }
+        }
+
+        private void DrawAllMapSections()
+        {
+            Array sections = (Array)sectionsField.GetValue(currentMap.mapDrawer);
+            if (sections != null)
+            {
+                foreach (object section in sections)
+                {
+                    if (section is Section s)
+                    {
+                        s.DrawSection();
+                    }
+                }
             }
         }
 

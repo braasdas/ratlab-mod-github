@@ -13,8 +13,8 @@ function createApp() {
     app.use(decompressMiddleware);
 
     // 3. Standard Body Parsers
-    app.use(express.json({ limit: '10mb' })); 
-    app.use(express.urlencoded({ extended: true }));
+    app.use(express.json({ limit: '50mb' })); 
+    app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
     // Static Files
     app.use(express.static(path.join(__dirname, '../public'), { etag: false, maxAge: 0 }));

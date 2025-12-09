@@ -56,7 +56,7 @@ function handleStreamer(ws, streamSession, sessionId) {
 
     ws.on('message', (data) => {
         packetCount++;
-        const isInitPacket = packetCount <= 15;
+        const isInitPacket = packetCount <= 30; // Increased to 30 to cover larger init segments
 
         // Heartbeat: Keep session alive every ~1 second (30 packets @ 30fps)
         if (packetCount % 30 === 0) {

@@ -4,7 +4,9 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using Verse;
+using Verse.AI;
 using RimWorld;
+using Newtonsoft.Json;
 
 namespace PlayerStoryteller
 {
@@ -15,6 +17,7 @@ namespace PlayerStoryteller
     public class GameActionExecutor
     {
         private readonly Map map;
+        private readonly RimApiClient rimApiClient = new RimApiClient();
         private const int MaxMessageLength = 500;
 
         public GameActionExecutor(Map map)
@@ -307,9 +310,9 @@ namespace PlayerStoryteller
         {
             try
             {
-                // Simple JSON parsing
+                // Robust JSON parsing with Newtonsoft
                 if (string.IsNullOrEmpty(json)) return;
-                var data = JsonUtility.FromJson<ColonistCommandData>(json);
+                var data = JsonConvert.DeserializeObject<ColonistCommandData>(json);
                 if (data == null) return;
 
                 Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber.ToString() == data.pawnId || p.Name.ToStringFull == data.pawnId); // Try ID then Name
@@ -326,8 +329,57 @@ namespace PlayerStoryteller
                         if (!pawn.Drafted) break;
                         pawn.drafter.Drafted = false;
                         break;
-                    case "move":
-                        // Requires target coordinates (future phase)
+                    case "order":
+                        IntVec3 target = new IntVec3(data.x, 0, data.z);
+                        if (target.InBounds(map))
+                        {
+                            // Basic move order logic (Simplified to fix build errors)
+                            // To restore context logic, ensure FloatMenuMakerMap is accessible or replicate logic
+                            
+                            if (pawn.Drafted)
+                            {
+                                Job job = JobMaker.MakeJob(JobDefOf.Goto, target);
+                                pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc);
+                                
+                                // Feedback
+                                ThingDef moteDef = ThingDef.Named("Mote_FeedbackGoto");
+                                if (moteDef != null)
+                                {
+                                    MoteMaker.MakeStaticMote(target, map, moteDef, 1f);
+                                }
+                            }
+                            else
+                            {
+                                // If not drafted, maybe create a float menu or just ignore?
+                                // For now, auto-draft and move if player intends to control?
+                                // Or better: just ignore to respect game rules.
+                                Messages.Message($"{pawn.Name.ToStringShort} is not drafted.", MessageTypeDefOf.RejectInput, false);
+                            }
+                        }
+                        break;
+                    case "set_work_priorities":
+                        if (data.priorities != null)
+                        {
+                            // Fire and forget async call to RimAPI
+                            _ = rimApiClient.SetColonistWorkPriorities(data.pawnId, data.priorities);
+                            Messages.Message($"{pawn.Name.ToStringShort}'s work priorities updated.", MessageTypeDefOf.NeutralEvent);
+                        }
+                        break;
+                    case "set_schedule":
+                        if (!string.IsNullOrEmpty(data.assignment))
+                        {
+                             _ = rimApiClient.SetColonistSchedule(data.pawnId, data.hour, data.assignment);
+                             // Messages.Message($"{pawn.Name.ToStringShort}'s schedule updated.", MessageTypeDefOf.NeutralEvent); // Spammy if bulk update
+                        }
+                        break;
+                    case "select":
+                        _ = rimApiClient.SelectColonist(pawn.thingIDNumber.ToString());
+                        break;
+                    case "toggle_draft":
+                        if (pawn.drafter != null)
+                        {
+                            pawn.drafter.Drafted = !pawn.drafter.Drafted;
+                        }
                         break;
                 }
             }
@@ -335,14 +387,6 @@ namespace PlayerStoryteller
             {
                 Log.Error($"[Player Storyteller] Error executing colonist command: {ex.Message}");
             }
-        }
-
-        [Serializable]
-        public class ColonistCommandData
-        {
-            public string pawnId;
-            public string type;
-            public string target; // Optional
         }
 
         // ============================================ 
@@ -1232,5 +1276,18 @@ namespace PlayerStoryteller
                 Log.Error($"[Player Storyteller] Error triggering mech ship: {ex.Message}");
             }
         }
+    }
+
+    [Serializable]
+    public class ColonistCommandData
+    {
+        public string pawnId;
+        public string type;
+        public string target; // Optional
+        public Dictionary<string, int> priorities; // Optional
+        public int hour; // Optional, for schedule
+        public string assignment; // Optional, for schedule
+        public int x; // Optional, for order
+        public int z; // Optional, for order
     }
 }

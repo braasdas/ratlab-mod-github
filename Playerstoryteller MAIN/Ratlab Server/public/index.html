@@ -174,13 +174,13 @@
                             <i class="fa-solid fa-eye w-5 text-center group-hover:animate-pulse"></i>
                             <span class="hidden md:inline font-mono text-sm tracking-wide">VISUAL FEED</span>
                         </button>
+                        <button id="tab-btn-my-pawn" class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-yellow hover:text-white transition-all flex items-center gap-3" data-tab="my-pawn">
+                            <i class="fa-solid fa-user-astronaut w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">ADOPT</span>
+                        </button>
                         <button class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3" data-tab="queue">
                             <i class="fa-solid fa-list-ol w-5 text-center"></i>
                             <span class="hidden md:inline font-mono text-sm tracking-wide">QUEUE</span>
-                        </button>
-                        <button class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3" data-tab="my-colonist">
-                            <i class="fa-solid fa-user-tag w-5 text-center"></i>
-                            <span class="hidden md:inline font-mono text-sm tracking-wide">MY COLONIST</span>
                         </button>
                         <button class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3" data-tab="colonists">
                             <i class="fa-solid fa-users w-5 text-center"></i>
@@ -361,6 +361,164 @@
                         </div>
                     </div>
 
+                    <!-- TAB: MY PAWN (Private Dashboard) -->
+                    <div id="tab-my-pawn" class="tab-pane h-full overflow-hidden flex flex-col">
+                        
+                        <!-- 1. ADOPTION CALL TO ACTION (Default Visible) -->
+                        <div class="h-full flex flex-col items-center justify-center" id="adoption-cta">
+                            <div class="bg-rat-panel border border-rat-green rounded-lg p-8 text-center max-w-lg w-full shadow-[0_0_30px_rgba(0,255,65,0.1)]">
+                                <i class="fa-solid fa-user-astronaut text-6xl text-rat-green mb-6"></i>
+                                <h2 class="font-mono text-2xl text-white mb-2">ADOPT A COLONIST</h2>
+                                <p class="text-rat-text-dim mb-8">Take direct control of a subject. Monitor their vitals, manage their inventory, and guide their actions.</p>
+                                <button id="btn-adopt-request-main" class="bg-rat-green text-black font-mono font-bold text-lg py-3 px-8 rounded hover:bg-white transition-all uppercase tracking-widest flex items-center gap-2 mx-auto">
+                                    <span>INITIATE UPLINK</span>
+                                    <span class="bg-black/20 px-2 py-1 rounded text-sm">1000c</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 2. MY PAWN DASHBOARD (Hidden until adopted) -->
+                        <div class="h-full hidden flex flex-col" id="adoption-interface">
+                            <!-- Header / Stats Bar -->
+                            <div class="flex justify-between items-center p-4 bg-rat-dark border-b border-rat-border sticky top-0 z-10">
+                                <div class="flex items-center gap-4">
+                                    <div id="my-pawn-portrait-container" class="w-16 h-16 border border-rat-green rounded overflow-hidden bg-black relative">
+                                        <div class="w-full h-full flex items-center justify-center text-xs text-rat-green animate-pulse">SCANNING</div>
+                                    </div>
+                                    <div>
+                                        <h2 id="my-pawn-name" class="font-mono text-xl text-rat-green font-bold">UNKNOWN SUBJECT</h2>
+                                        <div class="flex gap-4 text-xs font-mono text-rat-text-dim mt-1">
+                                            <span id="my-pawn-job" class="text-rat-yellow">ACTIVITY: IDLE</span>
+                                            <span id="my-pawn-location">LOC: UNKNOWN</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex gap-4 text-right">
+                                    <div class="flex flex-col items-end">
+                                        <span class="text-xs text-rat-text-dim mb-1">HEALTH</span>
+                                        <div class="w-32 h-2 bg-rat-border rounded-full overflow-hidden">
+                                            <div id="my-pawn-health-bar" class="h-full bg-rat-red transition-all duration-500" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col items-end">
+                                        <span class="text-xs text-rat-text-dim mb-1">MOOD</span>
+                                        <div class="w-32 h-2 bg-rat-border rounded-full overflow-hidden">
+                                            <div id="my-pawn-mood-bar" class="h-full bg-rat-green transition-all duration-500" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Main Content Grid -->
+                            <div class="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 custom-scrollbar">
+                                
+                                <!-- COLUMN 1: LIVE FEED, NEEDS & GEAR -->
+                                <div class="flex flex-col gap-4">
+                                    <!-- Live Feed Panel -->
+                                    <div id="my-pawn-live-view-panel" class="bg-rat-panel border border-rat-border rounded p-4 hidden">
+                                        <h3 class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
+                                            <span>LIVE OPTICAL FEED</span>
+                                            <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
+                                        </h3>
+                                        <div id="my-pawn-live-view-container" class="aspect-square bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
+                                            <!-- Image injected here -->
+                                            <div class="absolute inset-0 flex items-center justify-center text-rat-text-dim text-xs">NO SIGNAL</div>
+                                            <!-- Overlay Hint -->
+                                            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                                <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80">CLICK TO ORDER</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Needs Panel -->
+                                    <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                        <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">PHYSIOLOGICAL NEEDS</h3>
+                                        <div id="my-pawn-needs-list" class="flex flex-col gap-3">
+                                            <!-- Needs injected here -->
+                                        </div>
+                                    </div>
+
+                                    <!-- Gear Panel -->
+                                    <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                        <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">EQUIPMENT LOADOUT</h3>
+                                        <div id="my-pawn-gear-layout" class="equipment-layout">
+                                            <!-- Gear grid injected here -->
+                                        </div>
+                                        <button id="btn-force-equip" class="w-full mt-3 btn-rat text-xs py-2 bg-rat-dark border border-rat-border hover:border-rat-green hover:text-rat-green transition-colors">
+                                            <i class="fa-solid fa-shirt"></i> FORCE EQUIP NEW ITEM
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- COLUMN 2: WORK & SCHEDULE -->
+                                <div class="flex flex-col gap-4">
+                                    <!-- Current Task -->
+                                    <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                        <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">CURRENT DIRECTIVE</h3>
+                                        <div class="flex items-center gap-3 bg-rat-dark p-3 rounded border border-rat-border">
+                                            <i class="fa-solid fa-person-digging text-rat-green text-xl"></i>
+                                            <div>
+                                                <div id="my-pawn-current-task-label" class="text-sm font-mono text-white">Unknown</div>
+                                                <div id="my-pawn-current-target" class="text-xs font-mono text-rat-text-dim">No target</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Work Priorities (Interactive) -->
+                                    <div class="bg-rat-panel border border-rat-border rounded p-4 flex-1">
+                                        <div class="flex justify-between items-center mb-3 border-b border-rat-yellow/20 pb-1">
+                                            <h3 class="font-mono text-rat-yellow text-sm">WORK PRIORITIES</h3>
+                                            <span class="text-[10px] text-rat-text-dim uppercase">Drag to reorder</span>
+                                        </div>
+                                        <div id="my-pawn-work-list" class="flex flex-col gap-1 text-xs font-mono h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                            <!-- Work types injected here -->
+                                            <div class="p-2 bg-rat-dark text-rat-text-dim text-center">Fetching work data...</div>
+                                        </div>
+                                        <button id="btn-save-priorities" class="w-full mt-3 btn-rat text-xs py-2 bg-rat-green text-black font-bold hover:bg-white transition-colors hidden">
+                                            SAVE PRIORITY CHANGES
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- COLUMN 3: ACTIONS & LOGS -->
+                                <div class="flex flex-col gap-4">
+                                    <!-- Direct Commands -->
+                                    <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                        <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">DIRECT COMMAND INTERFACE</h3>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <button class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-rat-red hover:text-white p-2 rounded text-xs transition-colors" data-cmd="draft">
+                                                <i class="fa-solid fa-person-military-rifle mb-1 block text-lg"></i>
+                                                TOGGLE DRAFT
+                                            </button>
+                                            <button class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-rat-green hover:text-black p-2 rounded text-xs transition-colors" data-cmd="goto">
+                                                <i class="fa-solid fa-location-dot mb-1 block text-lg"></i>
+                                                MOVE TO...
+                                            </button>
+                                            <button class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-rat-yellow hover:text-black p-2 rounded text-xs transition-colors" data-cmd="attack">
+                                                <i class="fa-solid fa-crosshairs mb-1 block text-lg"></i>
+                                                ATTACK TARGET
+                                            </button>
+                                            <button class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-blue-500 hover:text-white p-2 rounded text-xs transition-colors" data-cmd="medical">
+                                                <i class="fa-solid fa-user-doctor mb-1 block text-lg"></i>
+                                                TEND SELF
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Personal Log -->
+                                    <div class="bg-rat-panel border border-rat-border rounded p-4 flex-1 flex flex-col">
+                                        <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">PERSONAL LOG</h3>
+                                        <div id="my-pawn-log" class="flex-1 bg-black p-2 font-mono text-[10px] text-rat-text-dim overflow-y-auto custom-scrollbar h-[200px] border border-rat-border/50 rounded">
+                                            <div class="text-rat-green">> System linked.</div>
+                                            <div class="text-rat-green">> Awaiting biometric data...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- TAB: QUEUE -->
                     <div id="tab-queue" class="tab-pane h-full p-6 overflow-hidden">
                         <div class="max-w-7xl mx-auto w-full h-full flex flex-col">
@@ -386,91 +544,6 @@
                             <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                                 <div id="queue-list" class="space-y-4">
                                     <p class="loading font-mono text-rat-text-dim text-center py-10">Loading queue data...</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- TAB: MY COLONIST -->
-                    <div id="tab-my-colonist" class="tab-pane h-full p-6 overflow-y-auto">
-                        <div class="max-w-4xl mx-auto h-full flex flex-col items-center justify-center" id="adoption-cta">
-                            <div class="bg-rat-panel border border-rat-green rounded-lg p-8 text-center max-w-lg w-full shadow-[0_0_30px_rgba(0,255,65,0.1)]">
-                                <i class="fa-solid fa-user-astronaut text-6xl text-rat-green mb-6"></i>
-                                <h2 class="font-mono text-2xl text-white mb-2">ADOPT A COLONIST</h2>
-                                <p class="text-rat-text-dim mb-8">Take direct control of a subject. Monitor their vitals, manage their inventory, and guide their actions.</p>
-                                <button id="btn-adopt-request" class="bg-rat-green text-black font-mono font-bold text-lg py-3 px-8 rounded hover:bg-white transition-all uppercase tracking-widest flex items-center gap-2 mx-auto">
-                                    <span>INITIATE UPLINK</span>
-                                    <span class="bg-black/20 px-2 py-1 rounded text-sm">1000c</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="max-w-7xl mx-auto h-full hidden" id="adoption-interface">
-                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-                                <!-- Left: Status -->
-                                <div class="lg:col-span-1 flex flex-col gap-6">
-                                    <div class="bg-rat-panel border border-rat-border rounded-lg p-6 text-center">
-                                        <div id="my-pawn-portrait" class="w-32 h-32 mx-auto bg-black border border-rat-border rounded-full overflow-hidden mb-4 relative">
-                                            <div class="w-full h-full flex items-center justify-center text-rat-text-dim">?</div>
-                                        </div>
-                                        <h3 id="my-pawn-name" class="font-mono text-xl text-rat-green mb-1">Unknown</h3>
-                                        <span class="text-xs bg-rat-dark px-2 py-1 rounded text-rat-text-dim border border-rat-border">STATUS: ACTIVE</span>
-                                        
-                                        <div class="mt-6 space-y-4">
-                                            <div>
-                                                <div class="flex justify-between text-xs font-mono mb-1 text-rat-text-dim"><span>HEALTH</span><span id="my-pawn-health-txt">100%</span></div>
-                                                <div class="h-2 bg-rat-border rounded-full overflow-hidden"><div id="my-pawn-health-bar" class="h-full bg-rat-red" style="width: 100%"></div></div>
-                                            </div>
-                                            <div>
-                                                <div class="flex justify-between text-xs font-mono mb-1 text-rat-text-dim"><span>MOOD</span><span id="my-pawn-mood-txt">50%</span></div>
-                                                <div class="h-2 bg-rat-border rounded-full overflow-hidden"><div id="my-pawn-mood-bar" class="h-full bg-rat-green" style="width: 50%"></div></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="bg-rat-panel border border-rat-border rounded-lg p-6 flex-1">
-                                        <h4 class="font-mono text-rat-yellow text-sm mb-4 border-b border-rat-border pb-2">LOG</h4>
-                                        <div id="my-pawn-log" class="font-mono text-xs text-rat-text-dim space-y-2 h-48 overflow-y-auto custom-scrollbar">
-                                            <p>Connection established...</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Right: Controls -->
-                                <div class="lg:col-span-2 flex flex-col gap-6">
-                                    <div class="bg-rat-panel border border-rat-border rounded-lg p-6">
-                                        <h4 class="font-mono text-white text-sm mb-4 border-b border-rat-border pb-2 flex justify-between items-center">
-                                            <span>COMMAND INTERFACE</span>
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-xs text-rat-text-dim">DRAFTED:</span>
-                                                <div class="w-3 h-3 rounded-full bg-rat-red animate-pulse" id="my-pawn-draft-status" style="opacity: 0"></div>
-                                            </div>
-                                        </h4>
-                                        
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                                            <button class="cmd-btn bg-rat-dark border border-rat-border p-4 rounded hover:border-rat-red text-rat-red flex flex-col items-center gap-2" data-cmd="draft">
-                                                <i class="fa-solid fa-person-rifle text-2xl"></i>
-                                                <span class="font-mono text-xs">TOGGLE DRAFT</span>
-                                            </button>
-                                            <button class="cmd-btn bg-rat-dark border border-rat-border p-4 rounded hover:border-rat-green text-white flex flex-col items-center gap-2" data-cmd="undraft">
-                                                <i class="fa-solid fa-person text-2xl"></i>
-                                                <span class="font-mono text-xs">UNDRAFT</span>
-                                            </button>
-                                            <!-- Future Expansion placeholders -->
-                                            <button class="cmd-btn bg-rat-dark border border-rat-border p-4 rounded opacity-50 cursor-not-allowed" disabled>
-                                                <i class="fa-solid fa-location-crosshairs text-2xl"></i>
-                                                <span class="font-mono text-xs">MOVE (WIP)</span>
-                                            </button>
-                                            <button class="cmd-btn bg-rat-dark border border-rat-border p-4 rounded opacity-50 cursor-not-allowed" disabled>
-                                                <i class="fa-solid fa-hand-fist text-2xl"></i>
-                                                <span class="font-mono text-xs">ATTACK (WIP)</span>
-                                            </button>
-                                        </div>
-
-                                        <div class="p-4 bg-black border border-rat-border rounded text-center">
-                                            <p class="text-rat-text-dim text-xs font-mono">Advanced controls (Map interaction) coming in Phase 6.</p>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>

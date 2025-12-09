@@ -15,7 +15,8 @@ namespace PlayerStoryteller
     public class MapCaptureManager
     {
         // Dependencies
-        private MapRenderer mapRenderer;
+        private MapRenderer fullMapRenderer;
+        private MapRenderer pawnViewRenderer;
 
         // Screen Capture State
         private Texture2D screenCaptureTexture;
@@ -23,16 +24,18 @@ namespace PlayerStoryteller
         private int lastScreenWidth = -1;
         private int lastScreenHeight = -1;
         
-        // General State
-        private bool isCapturing = false;
-        private bool asyncReadbackPending = false;
+        // Locks
+        private bool isCapturingScreen = false;
+        private bool isCapturingFullMap = false;
+        private bool isCapturingPawnViews = false;
 
         // Callback when image is ready (jpeg bytes)
         private Action<byte[]> onCaptureComplete;
 
         public MapCaptureManager()
         {
-            mapRenderer = new MapRenderer();
+            fullMapRenderer = new MapRenderer();
+            pawnViewRenderer = new MapRenderer();
         }
 
         public void SetCaptureCallback(Action<byte[]> callback)
@@ -45,8 +48,8 @@ namespace PlayerStoryteller
         /// </summary>
         public void CaptureScreenAsync(float scale = 1.0f, int quality = 75)
         {
-            if (isCapturing || asyncReadbackPending) return;
-            isCapturing = true;
+            if (isCapturingScreen) return;
+            isCapturingScreen = true;
 
             try
             {
@@ -66,17 +69,15 @@ namespace PlayerStoryteller
                 Graphics.Blit(screenCaptureTexture, screenTargetRT);
 
                 // 3. Request Async Readback
-                asyncReadbackPending = true;
                 AsyncGPUReadback.Request(screenTargetRT, 0, TextureFormat.RGB24, (request) => 
                 {
-                    OnReadbackComplete(request, targetWidth, targetHeight, quality);
+                    OnScreenReadbackComplete(request, targetWidth, targetHeight, quality);
                 });
             }
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Screen capture failed: {ex.Message}");
-                isCapturing = false;
-                asyncReadbackPending = false;
+                isCapturingScreen = false;
             }
         }
 
@@ -85,37 +86,99 @@ namespace PlayerStoryteller
         /// </summary>
         public void CaptureFullMapAsync(Map map, int width = 2048, int height = 2048, int quality = 70)
         {
-            if (isCapturing || asyncReadbackPending) return;
-            isCapturing = true;
+            if (isCapturingFullMap) return;
+            isCapturingFullMap = true;
 
             try
             {
-                if (!mapRenderer.IsInitialized)
+                if (!fullMapRenderer.IsInitialized)
                 {
-                    mapRenderer.Initialize(map, width, height);
+                    fullMapRenderer.Initialize(map, width, height);
                 }
 
                 // Render Map
-                RenderTexture mapRT = mapRenderer.RenderFullMap();
+                RenderTexture mapRT = fullMapRenderer.RenderFullMap();
                 
                 if (mapRT == null)
                 {
-                    isCapturing = false;
+                    isCapturingFullMap = false;
                     return;
                 }
 
                 // Async Readback
-                asyncReadbackPending = true;
                 AsyncGPUReadback.Request(mapRT, 0, TextureFormat.RGB24, (request) => 
                 {
-                    OnReadbackComplete(request, width, height, quality);
+                    OnFullMapReadbackComplete(request, width, height, quality);
                 });
             }
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Full Map capture failed: {ex.Message}");
-                isCapturing = false;
-                asyncReadbackPending = false;
+                isCapturingFullMap = false;
+            }
+        }
+
+        /// <summary>
+        /// Captures views for multiple pawns. 
+        /// Called from Main Thread Coroutine.
+        /// </summary>
+        public void CapturePawnViews(System.Collections.Generic.Dictionary<string, Pawn> pawns, Action<System.Collections.Generic.Dictionary<string, byte[]>> callback)
+        {
+            if (isCapturingPawnViews) return;
+            isCapturingPawnViews = true;
+
+            try
+            {
+                var results = new System.Collections.Generic.Dictionary<string, byte[]>();
+
+                // Initialize renderer if needed (using small size)
+                // We do this check loosely to avoid creating texture if not needed
+                if (!pawnViewRenderer.IsInitialized && pawns.Count > 0)
+                {
+                    // Find a valid map from the pawns
+                    foreach (var p in pawns.Values)
+                    {
+                        if (p != null && p.Map != null)
+                        {
+                            pawnViewRenderer.Initialize(p.Map, 300, 300);
+                            break;
+                        }
+                    }
+                }
+
+                foreach (var kvp in pawns)
+                {
+                    Pawn p = kvp.Value;
+                    if (p == null || !p.Spawned || p.Map == null) continue;
+
+                    // Render (15f ortho size ~ 30 tiles wide)
+                    RenderTexture rt = pawnViewRenderer.RenderPawnView(p, 300, 300, 15f);
+                    if (rt != null)
+                    {
+                        // Synchronous Readback (Fast for small textures)
+                        Texture2D tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+                        RenderTexture.active = rt;
+                        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+                        tex.Apply();
+                        RenderTexture.active = null;
+
+                        // Encode to JPG
+                        results[kvp.Key] = tex.EncodeToJPG(60);
+                        
+                        UnityEngine.Object.Destroy(tex);
+                    }
+                }
+                
+                // Callback immediately (Main Thread)
+                callback?.Invoke(results);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Pawn View Capture Error: {ex.Message}");
+            }
+            finally
+            {
+                isCapturingPawnViews = false;
             }
         }
 
@@ -136,68 +199,98 @@ namespace PlayerStoryteller
             }
         }
 
-        private void OnReadbackComplete(AsyncGPUReadbackRequest request, int width, int height, int quality)
+        private void OnScreenReadbackComplete(AsyncGPUReadbackRequest request, int width, int height, int quality)
         {
-            asyncReadbackPending = false;
-
             if (request.hasError)
             {
-                Log.Warning("[Player Storyteller] GPU Readback error.");
-                isCapturing = false;
+                Log.Warning("[Player Storyteller] Screen GPU Readback error.");
+                isCapturingScreen = false;
                 return;
             }
 
-            // Get raw data (Main Thread, but fast copy)
+            // Get raw data
             var rawData = request.GetData<byte>().ToArray();
 
-            // Offload JPEG encoding to thread pool
+            // Offload JPEG encoding
             Task.Run(() => 
             {
                 try
                 {
-                    byte[] jpegBytes;
-                    using (var stream = new MemoryStream())
-                    {
-                        var cinfo = new jpeg_compress_struct(new jpeg_error_mgr());
-                        cinfo.Image_width = width;
-                        cinfo.Image_height = height;
-                        cinfo.Input_components = 3;
-                        cinfo.In_color_space = J_COLOR_SPACE.JCS_RGB;
-
-                        cinfo.jpeg_set_defaults();
-                        cinfo.jpeg_set_quality(quality, true);
-                        cinfo.jpeg_stdio_dest(stream);
-                        cinfo.jpeg_start_compress(true);
-
-                        byte[][] rowData = new byte[1][];
-                        int rowStride = width * 3;
-
-                        // Flip vertically (Unity bottom-left vs JPEG top-left)
-                        while (cinfo.Next_scanline < cinfo.Image_height)
-                        {
-                            int rowOffset = (height - 1 - cinfo.Next_scanline) * rowStride;
-                            if (rowData[0] == null || rowData[0].Length != rowStride)
-                                rowData[0] = new byte[rowStride];
-                            
-                            Array.Copy(rawData, rowOffset, rowData[0], 0, rowStride);
-                            cinfo.jpeg_write_scanlines(rowData, 1);
-                        }
-
-                        cinfo.jpeg_finish_compress();
-                        jpegBytes = stream.ToArray();
-                    }
-
+                    byte[] jpegBytes = EncodeJpeg(rawData, width, height, quality);
                     onCaptureComplete?.Invoke(jpegBytes);
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Background encode failed: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Screen encode failed: {ex.Message}");
                 }
                 finally
                 {
-                    isCapturing = false;
+                    isCapturingScreen = false;
                 }
             });
+        }
+
+        private void OnFullMapReadbackComplete(AsyncGPUReadbackRequest request, int width, int height, int quality)
+        {
+            if (request.hasError)
+            {
+                Log.Warning("[Player Storyteller] Full Map GPU Readback error.");
+                isCapturingFullMap = false;
+                return;
+            }
+
+            var rawData = request.GetData<byte>().ToArray();
+
+            Task.Run(() => 
+            {
+                try
+                {
+                    byte[] jpegBytes = EncodeJpeg(rawData, width, height, quality);
+                    onCaptureComplete?.Invoke(jpegBytes);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Player Storyteller] Full Map encode failed: {ex.Message}");
+                }
+                finally
+                {
+                    isCapturingFullMap = false;
+                }
+            });
+        }
+
+        private byte[] EncodeJpeg(byte[] rawData, int width, int height, int quality)
+        {
+            using (var stream = new MemoryStream())
+            {
+                var cinfo = new jpeg_compress_struct(new jpeg_error_mgr());
+                cinfo.Image_width = width;
+                cinfo.Image_height = height;
+                cinfo.Input_components = 3;
+                cinfo.In_color_space = J_COLOR_SPACE.JCS_RGB;
+
+                cinfo.jpeg_set_defaults();
+                cinfo.jpeg_set_quality(quality, true);
+                cinfo.jpeg_stdio_dest(stream);
+                cinfo.jpeg_start_compress(true);
+
+                byte[][] rowData = new byte[1][];
+                int rowStride = width * 3;
+
+                // Flip vertically (Unity bottom-left vs JPEG top-left)
+                while (cinfo.Next_scanline < cinfo.Image_height)
+                {
+                    int rowOffset = (height - 1 - cinfo.Next_scanline) * rowStride;
+                    if (rowData[0] == null || rowData[0].Length != rowStride)
+                        rowData[0] = new byte[rowStride];
+                    
+                    Array.Copy(rawData, rowOffset, rowData[0], 0, rowStride);
+                    cinfo.jpeg_write_scanlines(rowData, 1);
+                }
+
+                cinfo.jpeg_finish_compress();
+                return stream.ToArray();
+            }
         }
 
         public void Cleanup()
@@ -214,13 +307,12 @@ namespace PlayerStoryteller
                 screenCaptureTexture = null;
             }
             
-            if (mapRenderer != null)
-            {
-                mapRenderer.Cleanup();
-            }
+            if (fullMapRenderer != null) fullMapRenderer.Cleanup();
+            if (pawnViewRenderer != null) pawnViewRenderer.Cleanup();
 
-            isCapturing = false;
-            asyncReadbackPending = false;
+            isCapturingScreen = false;
+            isCapturingFullMap = false;
+            isCapturingPawnViews = false;
         }
     }
 }

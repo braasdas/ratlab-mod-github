@@ -20,6 +20,7 @@ namespace PlayerStoryteller
         private string cachedPortraits = "{}";     // Colonist portraits - updates rarely
         private string cachedItemIcons = "{}";     // Item icons for action panel - updates rarely
         private string cachedDLCData = "{}";       // Active DLCs - set once
+        private string cachedPawnViews = "{}";     // Pawn views - updates frequently
 
         private readonly object dataLock = new object();
 
@@ -101,6 +102,14 @@ namespace PlayerStoryteller
             }
         }
 
+        public void SetPawnViews(string data)
+        {
+            lock (dataLock)
+            {
+                cachedPawnViews = data ?? "{}";
+            }
+        }
+
         public string GetFastData()
         {
             lock (dataLock)
@@ -154,6 +163,14 @@ namespace PlayerStoryteller
             lock (dataLock)
             {
                 return cachedItemIcons;
+            }
+        }
+
+        public string GetPawnViews()
+        {
+            lock (dataLock)
+            {
+                return cachedPawnViews;
             }
         }
 
@@ -233,7 +250,7 @@ namespace PlayerStoryteller
         /// Creates a thread-safe snapshot of all cached data.
         /// This method can be called from background threads.
         /// </summary>
-        public (string fast, string slow, string staticData, string portraits, string inventory, string storedResources, string itemIcons, string dlcData) GetSnapshot()
+        public (string fast, string slow, string staticData, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews) GetSnapshot()
         {
             lock (dataLock)
             {
@@ -245,7 +262,8 @@ namespace PlayerStoryteller
                     cachedInventoryData,
                     cachedStoredResources,
                     cachedItemIcons,
-                    cachedDLCData
+                    cachedDLCData,
+                    cachedPawnViews
                 );
             }
         }
@@ -266,11 +284,12 @@ namespace PlayerStoryteller
                 snapshot.storedResources,
                 snapshot.itemIcons,
                 snapshot.dlcData,
+                snapshot.pawnViews,
                 cameraBounds
             );
         }
 
-        private string MergeCachedDataOffThread(string fast, string slow, string staticStr, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string cameraBounds)
+        private string MergeCachedDataOffThread(string fast, string slow, string staticStr, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews, string cameraBounds)
         {
             // PERFORMANCE FIX: Use StringBuilder instead of string concatenation
             // This runs on a background thread - safe to do heavy string manipulation
@@ -358,6 +377,19 @@ namespace PlayerStoryteller
                 {
                     if (hasContent) sb.Append(',');
                     sb.Append("\"item_icons\":");
+                    sb.Append(trimmed);
+                    hasContent = true;
+                }
+            }
+
+            // Add pawn views
+            if (!string.IsNullOrEmpty(pawnViews) && pawnViews != "{}")
+            {
+                string trimmed = pawnViews.Trim();
+                if (trimmed.Length > 2)
+                {
+                    if (hasContent) sb.Append(',');
+                    sb.Append("\"pawn_views\":");
                     sb.Append(trimmed);
                     hasContent = true;
                 }

@@ -118,6 +118,15 @@ namespace PlayerStoryteller
             return null;
         }
 
+        /// <summary>
+        /// Returns a copy of the currently active viewer pawns.
+        /// </summary>
+        public Dictionary<string, Pawn> GetActivePawns()
+        {
+            ValidatePawnCache(); // Ensure we don't return dead pawns
+            return new Dictionary<string, Pawn>(runtimePawnCache);
+        }
+
         private void ValidatePawnCache()
         {
             // Remove dead or destroyed pawns from cache

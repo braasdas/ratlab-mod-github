@@ -17,3 +17,8 @@ bin/
 *.suo
 .DS_Store
 Thumbs.db
+
+# Ignore root-level scripts and notes
+/*.bat
+!/start.bat
+/*.txt

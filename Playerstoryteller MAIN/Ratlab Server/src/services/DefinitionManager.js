@@ -4,7 +4,12 @@ class DefinitionManager {
         this.sessionDefinitions = new Map();
     }
 
-    processAndStore(sessionId, data) {
+    processAndStore(sessionId, inputData) {
+        // Handle wrapped data (in case Mod didn't unwrap it or API changed)
+        const data = (inputData && inputData.data && (inputData.data.weather_defs || inputData.data.incidents_defs || inputData.data.pawn_kind_defs)) 
+            ? inputData.data 
+            : inputData;
+
         const processed = {
             weather: [],
             incidents: [],
@@ -36,12 +41,28 @@ class DefinitionManager {
         // 3. Animals (PawnKind)
         if (data.pawn_kind_defs) {
             processed.animals = data.pawn_kind_defs
-                .filter(d => d.race && d.race.animal) // Ensure it's an animal
+                .filter(d => {
+                    // Handle both old object format and new string format
+                    const raceName = (typeof d.race === 'string') ? d.race : (d.race ? d.race.def_name : null);
+                    
+                    if (!raceName) return false;
+
+                    // Exclude Humans and Mechs to isolate Animals
+                    if (raceName === 'Human') return false;
+                    if (raceName.startsWith('Mech_')) return false;
+
+                    // If old format has explicit flag, use it
+                    if (typeof d.race === 'object' && d.race.animal !== undefined) {
+                        return d.race.animal;
+                    }
+
+                    return true;
+                }) 
                 .map(d => ({
                     defName: d.def_name,
                     label: d.label,
                     combatPower: d.combat_power,
-                    race: d.race.def_name
+                    race: (typeof d.race === 'string') ? d.race : (d.race ? d.race.def_name : 'Unknown')
                 }));
         }
         

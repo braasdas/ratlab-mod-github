@@ -1594,11 +1594,12 @@ async function moveCameraToPosition(x, z, zoom = null) {
 
 // Select colonist in-game
 async function selectColonist(pawnId) {
+    console.log(`Selecting colonist: ${pawnId}`);
     try {
-        const RIMAPI_URL = 'http://localhost:8765/api/v1';
-        await fetch(`${RIMAPI_URL}/deselect?type=all`, { method: 'POST' });
-        await fetch(`${RIMAPI_URL}/select?type=pawn&id=${pawnId}`, { method: 'POST' });
-        console.log(`Selected colonist: ${pawnId}`);
+        await sendAction('colonist_command', JSON.stringify({
+            type: 'select',
+            pawnId: pawnId
+        }));
     } catch (error) {
         console.error('Failed to select colonist:', error);
     }
@@ -1998,31 +1999,174 @@ async function selectBrowserItem(id, type, cost, label) {
         });
         
         if (!purchaseRes.ok) {
-            showFeedback('error', 'PURCHASE FAILED');
-            return;
+            throw new Error('Purchase failed');
         }
 
-        // 2. Execute
-        const response = await fetch('/api/action', {
+        const resData = await purchaseRes.json();
+        
+        // 2. Send Action to Mod
+        await sendAction(action, id);
+
+        showFeedback('success', `ACTION QUEUED: ${label.toUpperCase()}`);
+        closeContentBrowser();
+
+    } catch (e) {
+        console.error('Purchase error:', e);
+        showFeedback('error', 'TRANSACTION FAILED');
+    }
+}
+
+// ============================================================================
+// MY PAWN (ADOPTION) LOGIC
+// ============================================================================
+
+let myPawnId = null;
+let myPawnData = null;
+let myPawnComponentLoaded = false;
+
+// Poll adoption status every 5 seconds
+setInterval(checkAdoptionStatus, 5000);
+
+async function checkAdoptionStatus() {
+    if (!currentSession || !username) return;
+
+    try {
+        const res = await fetch(`/api/adoptions/${currentSession}/status/${username}`);
+        const data = await res.json();
+        
+        const navBtn = document.getElementById('tab-btn-my-pawn');
+        const navBtnText = navBtn ? navBtn.querySelector('span') : null;
+        
+        // Use existing DOM elements from index.html
+        const adoptionCta = document.getElementById('adoption-cta');
+        const adoptionInterface = document.getElementById('adoption-interface');
+        const adoptBtnMain = document.getElementById('btn-adopt-request-main');
+
+        if (data.hasAdopted && data.adoption && data.adoption.pawnId) {
+            // User HAS a pawn
+            myPawnId = data.adoption.pawnId;
+            
+            // Update Navigation Button Text
+            if (navBtnText) navBtnText.textContent = "MY PAWN";
+
+            // Switch Views
+            if (adoptionCta) adoptionCta.classList.add('hidden');
+            if (adoptionInterface) {
+                adoptionInterface.classList.remove('hidden');
+                adoptionInterface.classList.add('flex'); // Ensure flex display
+            }
+            
+            // Ensure listeners are attached (idempotent)
+            if (!myPawnComponentLoaded) {
+                attachMyPawnListeners();
+                myPawnComponentLoaded = true;
+            }
+
+            // Update Data (if tab is active)
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (activeTab && activeTab.dataset.tab === 'my-pawn') {
+                updateMyPawnUI();
+            }
+
+        } else {
+            // User does NOT have a pawn
+            myPawnId = null;
+            
+            // Update Navigation Button Text
+            if (navBtnText) navBtnText.textContent = "ADOPT";
+
+            // Switch Views
+            if (adoptionInterface) {
+                adoptionInterface.classList.add('hidden');
+                adoptionInterface.classList.remove('flex');
+            }
+            if (adoptionCta) adoptionCta.classList.remove('hidden');
+            
+            myPawnComponentLoaded = false;
+        }
+        
+        // Always attach listener to the CTA button if it exists
+        if(adoptBtnMain) adoptBtnMain.onclick = requestAdoption;
+
+    } catch (e) {
+        console.error('Adoption check failed:', e);
+    }
+}
+
+async function requestAdoption() {
+    if (!currentSession || !username) return;
+    
+    if(!confirm("Initiate Neural Link? Cost: 1000 Credits.")) return;
+
+    try {
+        const res = await fetch(`/api/adoptions/${currentSession}/request`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                sessionId: currentSession, 
-                action: action, 
-                data: id, // The defName is the data
-                password: sessionPassword 
-            })
+            body: JSON.stringify({ username })
         });
-
-        if (response.ok) {
-            showFeedback('success', 'PROTOCOL EXECUTED');
-            closeContentBrowser();
+        
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showFeedback('success', 'NEURAL LINK ESTABLISHED');
+            checkAdoptionStatus(); // Immediate refresh
+            // Switch to tab
+            switchTab('my-pawn');
         } else {
-            showFeedback('error', 'COMMAND FAILED');
+            showFeedback('error', data.error || 'LINK FAILED');
         }
     } catch (e) {
         console.error(e);
-        showFeedback('error', 'NETWORK ERROR');
+        showFeedback('error', 'CONNECTION ERROR');
+    }
+}
+
+let lastGameState = null;
+
+function updateMyPawnUI() {
+    if (!myPawnId || !myPawnComponentLoaded || !lastGameState) return;
+    updateMyPawnView(lastGameState);
+}
+
+function attachMyPawnListeners() {
+    // Commands
+    document.querySelectorAll('.btn-cmd').forEach(btn => {
+        btn.onclick = async () => {
+            const cmd = btn.dataset.cmd;
+            console.log(`Sending command: ${cmd} to pawn ${myPawnId}`);
+            
+            let payload = {
+                type: cmd,
+                pawnId: myPawnId
+            };
+
+            // Map UI commands to Mod commands
+            if (cmd === 'draft') {
+                payload.type = 'toggle_draft';
+            } else if (cmd === 'goto') {
+                payload.type = 'move';
+                // Future: Activate map cursor to pick location
+            } else if (cmd === 'attack') {
+                 showFeedback('info', 'ATTACK: COMING SOON');
+                 return;
+            } else if (cmd === 'medical') {
+                 showFeedback('info', 'MEDICAL: COMING SOON');
+                 return;
+            }
+
+            try {
+                await sendAction('colonist_command', JSON.stringify(payload));
+            } catch (error) {
+                console.error('Command failed:', error);
+            }
+        };
+    });
+
+    // Force Equip Button
+    const forceEquipBtn = document.getElementById('btn-force-equip');
+    if (forceEquipBtn) {
+        forceEquipBtn.onclick = () => {
+            showFeedback('info', 'FEATURE IN DEVELOPMENT');
+        };
     }
 }
 
@@ -2211,10 +2355,15 @@ function fetchEconomyData(sessionId) {
 let hasLoggedInitialState = false;
 
 function updateGameState(gameState) {
+    lastGameState = gameState; // Store global state
+
     if (!hasLoggedInitialState) {
         console.log('Game State received:', gameState);
         hasLoggedInitialState = true;
     }
+
+    // Update My Pawn View if active
+    updateMyPawnUI();
 
     const colonists = gameState.colonists || [];
     const resources = gameState.resources || {};
@@ -3648,155 +3797,272 @@ function updateQueueList(queue) {
 
 // ADOPTION LOGIC
 
-const adoptionCta = document.getElementById('adoption-cta');
-const adoptionInterface = document.getElementById('adoption-interface');
-const btnAdoptRequest = document.getElementById('btn-adopt-request');
+// ============================================================================
+// MY PAWN UI UPDATER
+// ============================================================================
 
-// Elements for adopted pawn
-const myPawnName = document.getElementById('my-pawn-name');
-const myPawnPortrait = document.getElementById('my-pawn-portrait');
-const myPawnHealthTxt = document.getElementById('my-pawn-health-txt');
-const myPawnHealthBar = document.getElementById('my-pawn-health-bar');
-const myPawnMoodTxt = document.getElementById('my-pawn-mood-txt');
-const myPawnMoodBar = document.getElementById('my-pawn-mood-bar');
-const myPawnLog = document.getElementById('my-pawn-log');
-const myPawnDraftStatus = document.getElementById('my-pawn-draft-status');
+function updateMyPawnView(gameState) {
+    if (!myPawnId || !gameState.colonists) return;
 
-let adoptionPollInterval = null;
+    // Find our pawn
+    const myPawnEntry = gameState.colonists.find(c => {
+        const p = c.colonist || c;
+        return String(p.id || p.pawn_id) == String(myPawnId);
+    });
 
-function startAdoptionPolling() {
-    if (adoptionPollInterval) clearInterval(adoptionPollInterval);
-    checkAdoptionStatus(); // Initial check
-    adoptionPollInterval = setInterval(checkAdoptionStatus, 5000);
-}
+    if (!myPawnEntry) {
+        document.getElementById('my-pawn-name').textContent = "SIGNAL LOST (PAWN NOT FOUND)";
+        return;
+    }
 
-function stopAdoptionPolling() {
-    if (adoptionPollInterval) {
-        clearInterval(adoptionPollInterval);
-        adoptionPollInterval = null;
+    const pawn = myPawnEntry.colonist || myPawnEntry;
+    const workInfo = myPawnEntry.colonist_work_info || {};
+
+    // 1. Header Info
+    document.getElementById('my-pawn-name').textContent = (pawn.name || 'Unknown').toUpperCase();
+    document.getElementById('my-pawn-job').textContent = `ACTIVITY: ${(pawn.current_activity || workInfo.current_job || 'Idle').toUpperCase()}`;
+    const pos = pawn.position || {x:0, z:0};
+    document.getElementById('my-pawn-location').textContent = `LOC: [${pos.x}, ${pos.z}]`;
+
+    // 2. Vitals
+    const health = pawn.health !== undefined ? pawn.health : 0;
+    const mood = pawn.mood !== undefined ? pawn.mood : 0;
+    
+    document.getElementById('my-pawn-health-bar').style.width = `${health * 100}%`;
+    document.getElementById('my-pawn-mood-bar').style.width = `${mood * 100}%`;
+
+    // 3. Live Feed & Portrait
+    const portraitContainer = document.getElementById('my-pawn-portrait-container');
+    const liveViewPanel = document.getElementById('my-pawn-live-view-panel');
+    const liveViewContainer = document.getElementById('my-pawn-live-view-container');
+    
+    const pawnViewData = gameState.pawn_views ? gameState.pawn_views[String(myPawnId)] : null;
+    const portraitData = getColonistPortrait(String(myPawnId));
+
+    // Always set header portrait if available (as fallback/identity)
+    if (portraitData) {
+        portraitContainer.innerHTML = `<img src="data:image/png;base64,${portraitData}" class="w-full h-full object-cover">`;
+    } else {
+        portraitContainer.innerHTML = `<div class="w-full h-full flex items-center justify-center text-xs text-rat-green animate-pulse">SCANNING</div>`;
+    }
+
+    if (liveViewPanel && liveViewContainer) {
+        // Always Show Panel when adopted
+        liveViewPanel.classList.remove('hidden');
+
+        if (pawnViewData) {
+             // Render Live Image
+             liveViewContainer.innerHTML = `
+                <img src="data:image/jpeg;base64,${pawnViewData}" class="w-full h-full object-cover">
+                <div class="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                    <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80">CLICK TO ORDER</span>
+                </div>
+            `;
+            
+            // Attach Click Handler for Orders
+            const img = liveViewContainer.querySelector('img');
+            if (img) {
+                img.onclick = (e) => {
+                    e.stopPropagation();
+                    const rect = img.getBoundingClientRect();
+                    const relX = (e.clientX - rect.left) / rect.width;
+                    const relY = (e.clientY - rect.top) / rect.height;
+                    
+                    // World Calculation (Ortho 15 -> Size 30)
+                    const worldWidth = 30;
+                    const worldHeight = 30;
+                    
+                    // Pawn is at center of the captured view
+                    const targetX = Math.round(pos.x + (relX - 0.5) * worldWidth);
+                    const targetZ = Math.round(pos.z + (0.5 - relY) * worldHeight); // Y screen down = Z world down (usually)
+
+                    console.log(`Order: ${targetX}, ${targetZ}`);
+
+                    sendAction('colonist_command', JSON.stringify({
+                        type: 'order',
+                        pawnId: myPawnId,
+                        x: targetX,
+                        z: targetZ
+                    }));
+                    
+                    // Visual feedback (Ripple)
+                    const ripple = document.createElement('div');
+                    ripple.className = 'ping-ripple';
+                    ripple.style.position = 'fixed';
+                    ripple.style.left = e.clientX + 'px';
+                    ripple.style.top = e.clientY + 'px';
+                    document.body.appendChild(ripple);
+                    setTimeout(() => ripple.remove(), 1000);
+                    
+                    showFeedback('success', 'COORDINATES TRANSMITTED');
+                };
+            }
+        } else {
+             // Render Placeholder (No Signal)
+             liveViewContainer.innerHTML = `
+                <div class="absolute inset-0 flex items-center justify-center text-rat-text-dim text-xs flex-col gap-2">
+                    <i class="fa-solid fa-satellite-dish animate-pulse"></i>
+                    <span>NO OPTICAL SIGNAL</span>
+                </div>
+            `;
+        }
+    }
+
+    // 4. Needs
+    const needsList = document.getElementById('my-pawn-needs-list');
+    if (needsList) {
+        const needs = [
+            { label: 'NUTRITION', value: pawn.food || pawn.hunger },
+            { label: 'REST', value: myPawnEntry.sleep }, // sleep is often top-level
+            { label: 'RECREATION', value: pawn.joy || pawn.recreation },
+            { label: 'COMFORT', value: myPawnEntry.comfort }
+        ];
+
+        needsList.innerHTML = needs.map(n => {
+            if (n.value === undefined) return '';
+            const pct = Math.round(n.value * 100);
+            const colorClass = pct < 30 ? 'bg-rat-red' : (pct < 60 ? 'bg-rat-yellow' : 'bg-rat-green');
+            return `
+                <div>
+                    <div class="flex justify-between text-xs font-mono mb-1 text-rat-text-dim">
+                        <span>${n.label}</span>
+                        <span>${pct}%</span>
+                    </div>
+                    <div class="h-1 bg-rat-border rounded-full overflow-hidden">
+                        <div class="h-full ${colorClass}" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 5. Gear
+    // Reuse existing gear logic if possible, or simplified version
+    const gearContainer = document.getElementById('my-pawn-gear-layout');
+    if (gearContainer && gameState.inventory) {
+        // Fetch inventory
+        let inv = gameState.inventory[String(myPawnId)];
+        if (inv && inv.success && inv.data) inv = inv.data;
+        
+        let items = inv ? [...(inv.items || []), ...(inv.apparels || []), ...(inv.equipment || [])] : [];
+        const equipment = { weapon: null, helmet: null, shirt: null, bodyArmor: null, pants: null, shield: null, belt: null };
+
+        items.forEach(item => {
+            const defName = (item.defName || item.def_name || '').toLowerCase();
+            const label = (item.label || '').toLowerCase();
+            const categories = item.categories || [];
+
+            if (!equipment.weapon && (defName.includes('gun_') || defName.includes('weapon_') || defName.includes('melee') || categories.some(c => c.includes('weapon')))) equipment.weapon = item;
+            else if (!equipment.helmet && (defName.includes('helmet') || defName.includes('hat') || label.includes('helmet'))) equipment.helmet = item;
+            else if (!equipment.shield && (defName.includes('shield') || label.includes('shield'))) equipment.shield = item;
+            else if (!equipment.belt && (defName.includes('belt') || label.includes('belt'))) equipment.belt = item;
+            else if (!equipment.pants && (defName.includes('pants') || label.includes('pants'))) equipment.pants = item;
+            else if (!equipment.shirt && (defName.includes('shirt') || label.includes('shirt'))) equipment.shirt = item;
+            else if (!equipment.bodyArmor && (defName.includes('armor') || defName.includes('vest') || categories.some(c => c.includes('apparel')))) equipment.bodyArmor = item;
+        });
+
+        const renderSlot = (item, icon) => {
+            if (!item) return `<div class="equip-slot empty"><div class="equip-placeholder">${icon}</div></div>`;
+            const label = item.label || 'Unknown';
+            // Try to find icon
+            const def = item.defName || item.def_name;
+            const iconData = itemIcons[def] || itemIcons[label];
+            
+            if (iconData) {
+                return `<div class="equip-slot filled" title="${label}"><img src="data:image/png;base64,${iconData}" class="equip-icon"></div>`;
+            }
+            return `<div class="equip-slot filled" title="${label}"><div class="equip-placeholder">${icon}</div></div>`;
+        };
+
+        gearContainer.innerHTML = `
+            <div class="equip-row">${renderSlot(equipment.helmet, '🪖')}</div>
+            <div class="equip-row">
+                ${renderSlot(equipment.shirt, '👕')}
+                ${renderSlot(equipment.bodyArmor, '🦺')}
+                ${renderSlot(equipment.weapon, '⚔️')}
+            </div>
+            <div class="equip-row">
+                ${renderSlot(equipment.shield, '🛡️')}
+                ${renderSlot(equipment.belt, '📿')}
+                ${renderSlot(equipment.pants, '👖')}
+            </div>
+        `;
+    }
+
+    // 6. Work Priorities (Interactive)
+    const workList = document.getElementById('my-pawn-work-list');
+    const saveBtn = document.getElementById('btn-save-priorities');
+    
+    // Only render if list is empty or completely changed (to avoid wiping user input while typing)
+    const hasInputs = workList.querySelector('input');
+    
+    if (workList && workInfo.work_priorities && !hasInputs) {
+        // Sort by key for consistent order
+        const entries = Object.entries(workInfo.work_priorities).sort((a, b) => a[0].localeCompare(b[0]));
+
+        workList.innerHTML = entries.map(([job, rawPrio]) => {
+            // Handle potentially complex priority objects (e.g. from RimAPI)
+            let prio = rawPrio;
+            if (typeof rawPrio === 'object' && rawPrio !== null) {
+                prio = rawPrio.priority !== undefined ? rawPrio.priority : (rawPrio.value !== undefined ? rawPrio.value : 3);
+            }
+            
+            return `
+            <div class="flex justify-between items-center bg-rat-dark border border-rat-border px-2 py-1 rounded mb-1">
+                <span class="text-xs text-rat-text-dim">${job}</span>
+                <input type="number" min="0" max="4" value="${prio}" data-job="${job}" 
+                    class="work-priority-input w-12 bg-black border border-rat-border text-center text-rat-green font-bold text-xs focus:border-rat-green outline-none">
+            </div>
+            `;
+        }).join('');
+        
+        // Show save button
+        if(saveBtn) {
+            saveBtn.classList.remove('hidden');
+            saveBtn.onclick = saveWorkPriorities;
+        }
     }
 }
 
-async function checkAdoptionStatus() {
-    if (!currentSession || !username) return;
+async function saveWorkPriorities() {
+    if (!currentSession || !username || !myPawnId) return;
+    
+    const inputs = document.querySelectorAll('.work-priority-input');
+    const priorities = {};
+    
+    inputs.forEach(input => {
+        const job = input.dataset.job;
+        const val = parseInt(input.value);
+        if (!isNaN(val)) {
+            priorities[job] = val;
+        }
+    });
+
+    const btn = document.getElementById('btn-save-priorities');
+    btn.disabled = true;
+    btn.textContent = 'TRANSMITTING...';
 
     try {
-        const res = await fetch(`/api/adoptions/${encodeURIComponent(currentSession)}/status/${encodeURIComponent(username)}`);
-        const data = await res.json();
-        updateAdoptionUI(data);
-    } catch (e) {
-        console.error("Adoption status check failed:", e);
-    }
-}
+        const res = await fetch(`/api/adoptions/${encodeURIComponent(currentSession)}/command`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                username, 
+                command: 'set_work_priorities', 
+                data: { priorities } 
+            })
+        });
 
-function updateAdoptionUI(data) {
-    if (data.hasAdopted) {
-        adoptionCta.classList.add('hidden');
-        adoptionInterface.classList.remove('hidden');
-        
-        // Update Info
-        const adoption = data.adoption;
-        const pawn = data.pawnData; // from gameState via server
-
-        if (pawn) {
-            const pData = pawn.colonist || pawn;
-            myPawnName.textContent = pData.name || adoption.name;
-            
-            // Health
-            const health = pData.health !== undefined ? pData.health : 1;
-            myPawnHealthTxt.textContent = Math.round(health * 100) + '%';
-            myPawnHealthBar.style.width = (health * 100) + '%';
-            
-            // Mood
-            const mood = pData.mood !== undefined ? pData.mood : 0.5;
-            myPawnMoodTxt.textContent = Math.round(mood * 100) + '%';
-            myPawnMoodBar.style.width = (mood * 100) + '%';
-
-            // Portrait
-            const portraitBase64 = colonistPortraits[String(pData.id || pData.pawn_id)];
-            if (portraitBase64) {
-                myPawnPortrait.innerHTML = `<img src="data:image/png;base64,${portraitBase64}" class="w-full h-full object-cover">`;
-            }
-
-            // Draft Status (Mock for now, assumes server might send it later or we infer)
-            // myPawnDraftStatus.style.opacity = pData.isDrafted ? 1 : 0; 
+        if (res.ok) {
+            showFeedback('success', 'PRIORITIES UPDATED');
         } else {
-            myPawnName.textContent = adoption.name + " (Offline)";
+            showFeedback('error', 'UPDATE FAILED');
         }
-
-    } else {
-        adoptionInterface.classList.add('hidden');
-        adoptionCta.classList.remove('hidden');
+    } catch (e) {
+        console.error(e);
+        showFeedback('error', 'NETWORK ERROR');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'SAVE PRIORITY CHANGES';
     }
 }
-
-if (btnAdoptRequest) {
-    btnAdoptRequest.addEventListener('click', async () => {
-        if (!currentSession) return;
-        
-        btnAdoptRequest.disabled = true;
-        btnAdoptRequest.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> PROCESSING';
-
-        try {
-            const res = await fetch(`/api/adoptions/${encodeURIComponent(currentSession)}/request`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username })
-            });
-            const result = await res.json();
-
-            if (res.ok) {
-                showFeedback('success', 'Adoption Successful');
-                checkAdoptionStatus();
-            } else {
-                showFeedback('error', result.error || 'Adoption Failed');
-            }
-        } catch (e) {
-            showFeedback('error', 'Network Error');
-        } finally {
-            btnAdoptRequest.disabled = false;
-            btnAdoptRequest.innerHTML = '<span>INITIATE UPLINK</span><span class="bg-black/20 px-2 py-1 rounded text-sm">1000c</span>';
-        }
-    });
-}
-
-// Command Buttons
-document.querySelectorAll('.cmd-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        const command = btn.dataset.cmd;
-        if (!command) return;
-
-        try {
-            const res = await fetch(`/api/adoptions/${encodeURIComponent(currentSession)}/command`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, command })
-            });
-            
-            if (res.ok) {
-                showFeedback('success', 'Command Sent');
-                const logEntry = document.createElement('p');
-                logEntry.textContent = `> Sent command: ${command.toUpperCase()}`;
-                myPawnLog.prepend(logEntry);
-            } else {
-                showFeedback('error', 'Command Failed');
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    });
-});
-
-// Hook into existing session start to poll
-const originalStartSession = startSessionConnection;
-startSessionConnection = function(sessionId) {
-    originalStartSession(sessionId);
-    startAdoptionPolling();
-};
-
-// Hook into back button
-const originalBackButton = backButton.onclick; // It was added via addEventListener, so we can't override easily without wrapper or just adding another listener.
-// Better: just add another listener to stop polling
-backButton.addEventListener('click', () => {
-    stopAdoptionPolling();
-});

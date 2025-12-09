@@ -182,7 +182,8 @@ export default {
                 console.log('[Video] MediaSource opened');
 
                 try {
-                    this.sourceBuffer = this.mediaSource.addSourceBuffer('video/mp4; codecs="avc1.42E01E"');
+                    // Use High Profile (avc1.640028) to match hardware encoders (AMF/NVENC)
+                    this.sourceBuffer = this.mediaSource.addSourceBuffer('video/mp4; codecs="avc1.640028"');
                     this.sourceBuffer.mode = 'sequence';
 
                     this.sourceBuffer.addEventListener('updateend', () => {

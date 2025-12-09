@@ -758,7 +758,7 @@ module.exports = (io, definitionManager) => {
     // Send Command
     router.post('/api/adoptions/:sessionId/command', (req, res) => {
         const { sessionId } = req.params;
-        const { username, command, target } = req.body; // command: 'draft', 'undraft', 'move', 'attack'
+        const { username, command, target, data } = req.body; // command: 'draft', 'set_work_priorities', etc.
 
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -771,13 +771,17 @@ module.exports = (io, definitionManager) => {
         // Rate limit commands specifically?
         // For now, rely on global action limit or trusting the polling speed.
 
+        // Construct payload supporting complex data (like priorities)
+        const payload = {
+            pawnId: adoption.pawnId,
+            type: command,
+            target: target,
+            ...data // Merge extra data like 'priorities'
+        };
+
         session.actions.push({
             action: 'colonist_command',
-            data: JSON.stringify({
-                pawnId: adoption.pawnId,
-                type: command,
-                target: target
-            }),
+            data: JSON.stringify(payload),
             timestamp: new Date()
         });
 

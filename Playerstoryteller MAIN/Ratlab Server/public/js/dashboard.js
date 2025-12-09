@@ -403,6 +403,139 @@ async function saveSettings() {
     return res.ok;
 }
 
+// CONTENT SETTINGS LOGIC (STREAMER)
+
+async function openContentSettings(category) {
+    const modal = document.getElementById('content-browser-modal');
+    const title = document.getElementById('browser-title');
+    const grid = document.getElementById('browser-grid');
+    const filterSelect = document.getElementById('browser-filter');
+    const searchInput = document.getElementById('browser-search');
+    
+    // Reset
+    grid.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">Fetching configuration data...</p>';
+    filterSelect.innerHTML = '<option value="all">ALL CATEGORIES</option>';
+    searchInput.value = '';
+    
+    modal.classList.remove('hidden');
+
+    if (!definitions) {
+        try {
+            const res = await fetch(`/api/definitions/${sessionId}`);
+            if (res.ok) {
+                definitions = await res.json();
+            } else {
+                throw new Error('API Error');
+            }
+        } catch (e) {
+            grid.innerHTML = '<p class="text-rat-red font-mono col-span-full text-center py-10">Failed to load game data.</p>';
+            return;
+        }
+    }
+
+    let items = [];
+    let filters = [];
+
+    if (category === 'weather') {
+        title.textContent = 'CONFIGURE WEATHER';
+        items = (definitions.weather || []).map(w => ({
+            id: `weather_${w.defName}`, // Prefix to match setting key style
+            label: w.label,
+            desc: w.description,
+            category: 'Weather',
+            defaultCost: 500
+        }));
+    } else if (category === 'events') {
+        title.textContent = 'CONFIGURE EVENTS';
+        items = (definitions.incidents || []).map(i => ({
+            id: `event_${i.defName}`,
+            label: i.label,
+            desc: i.category,
+            category: i.category,
+            defaultCost: 1000
+        }));
+        filters = [...new Set(items.map(i => i.category))];
+    } else if (category === 'animals') {
+        title.textContent = 'CONFIGURE SPAWNER';
+        items = (definitions.animals || []).map(a => ({
+            id: `spawn_${a.defName}`,
+            label: a.label,
+            desc: a.race,
+            category: a.race || 'Unknown',
+            defaultCost: Math.max(100, Math.floor((a.combatPower || 10) * 2))
+        }));
+    }
+
+    // Populate Filters
+    if (filters.length > 0) {
+        filters.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.textContent = f;
+            filterSelect.appendChild(opt);
+        });
+        filterSelect.disabled = false;
+    } else {
+        filterSelect.disabled = true;
+    }
+
+    renderSettingsItems(items, grid);
+
+    // Search & Filter Handlers
+    const updateView = () => {
+        const query = searchInput.value.toLowerCase();
+        const cat = filterSelect.value;
+        const filtered = items.filter(i => 
+            (cat === 'all' || i.category === cat) &&
+            (i.label.toLowerCase().includes(query) || i.id.toLowerCase().includes(query))
+        );
+        renderSettingsItems(filtered, grid);
+    };
+
+    searchInput.oninput = updateView;
+    filterSelect.onchange = updateView;
+}
+
+function renderSettingsItems(items, container) {
+    document.getElementById('browser-count').textContent = `${items.length} ITEMS`;
+    
+    if (items.length === 0) {
+        container.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">No items found.</p>';
+        return;
+    }
+
+    container.innerHTML = items.map(item => {
+        // Check current settings
+        const isEnabled = currentSettings.actions ? currentSettings.actions[item.id] !== false : true;
+        const cost = currentEconomy.actionCosts && currentEconomy.actionCosts[item.id] !== undefined 
+            ? currentEconomy.actionCosts[item.id] 
+            : item.defaultCost;
+
+        return `
+        <div class="bg-rat-black border border-rat-border rounded p-4 hover:border-rat-green transition-colors">
+            <div class="flex justify-between items-start mb-3">
+                <div class="overflow-hidden mr-2">
+                    <h3 class="font-mono text-rat-green text-sm truncate" title="${item.label}">${item.label}</h3>
+                    <p class="text-[10px] text-rat-text-dim font-mono truncate">${item.desc || item.id}</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" class="sr-only peer action-toggle" data-action="${item.id}" ${isEnabled ? 'checked' : ''}>
+                    <div class="w-9 h-5 bg-rat-dark peer-focus:outline-none border border-rat-border rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rat-green"></div>
+                </label>
+            </div>
+            <div class="flex items-center gap-2 pt-2 border-t border-rat-border">
+                <span class="text-[10px] text-rat-text-dim font-mono uppercase">COST:</span>
+                <input type="number" class="price-input bg-rat-dark border border-rat-border rounded px-2 py-1 text-right text-rat-yellow font-mono text-xs flex-1 min-w-0 focus:border-rat-green outline-none" 
+                    min="0" step="10" value="${cost}" data-action="${item.id}">
+                <span class="text-[10px] text-rat-text-dim">c</span>
+            </div>
+        </div>
+    `}).join('');
+}
+
+// Expose global
+window.openContentSettings = openContentSettings;
+
 // CONTENT BROWSER LOGIC
 
 let definitions = null;

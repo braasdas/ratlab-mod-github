@@ -54,7 +54,7 @@ namespace PlayerStoryteller
         #region Slow Data (Resources, power, creatures - moderately changing)
 
         /// <summary>
-        /// Updates slow-changing data (resources, power, creatures).
+        /// Updates slow-changing data (resources, power, creatures, quests, zones).
         /// Should be called every 5-10 seconds.
         /// </summary>
         public async void UpdateSlowDataAsync()
@@ -63,27 +63,33 @@ namespace PlayerStoryteller
             {
                 int mapId = map.uniqueID;
 
-                // PERFORMANCE FIX: Fetch all 3 in parallel for speed
+                // PERFORMANCE FIX: Fetch all in parallel for speed
                 var resourcesTask = apiClient.GetResourcesSummary(mapId);
                 var powerTask = apiClient.GetPowerInfo(mapId);
                 var creaturesTask = apiClient.GetCreaturesSummary(mapId);
+                var questsTask = apiClient.GetQuests(mapId);
+                var zonesTask = apiClient.GetMapZones(mapId);
 
                 // Wait for all to complete in parallel
-                await Task.WhenAll(resourcesTask, powerTask, creaturesTask);
+                await Task.WhenAll(resourcesTask, powerTask, creaturesTask, questsTask, zonesTask);
 
                 // Check if we got at least some data before updating cache
                 string resourcesJson = await resourcesTask;
                 string powerJson = await powerTask;
                 string creaturesJson = await creaturesTask;
+                string questsJson = await questsTask;
+                string zonesJson = await zonesTask;
 
                 // If all failed, don't update cache
-                if (string.IsNullOrEmpty(resourcesJson) && string.IsNullOrEmpty(powerJson) && string.IsNullOrEmpty(creaturesJson))
+                if (string.IsNullOrEmpty(resourcesJson) && string.IsNullOrEmpty(powerJson) && 
+                    string.IsNullOrEmpty(creaturesJson) && string.IsNullOrEmpty(questsJson) && 
+                    string.IsNullOrEmpty(zonesJson))
                 {
                     return;
                 }
 
                 // PERFORMANCE FIX: Use StringBuilder for JSON construction
-                var sb = new StringBuilder(capacity: 512);
+                var sb = new StringBuilder(capacity: 1024);
                 sb.Append("{");
                 bool hasContent = false;
 
@@ -107,6 +113,22 @@ namespace PlayerStoryteller
                     if (hasContent) sb.Append(',');
                     sb.Append("\"creatures\":");
                     sb.Append(creaturesJson);
+                    hasContent = true;
+                }
+
+                if (!string.IsNullOrEmpty(questsJson))
+                {
+                    if (hasContent) sb.Append(',');
+                    sb.Append("\"quests\":");
+                    sb.Append(questsJson);
+                    hasContent = true;
+                }
+
+                if (!string.IsNullOrEmpty(zonesJson))
+                {
+                    if (hasContent) sb.Append(',');
+                    sb.Append("\"zones\":");
+                    sb.Append(zonesJson);
                 }
 
                 sb.Append("}");
@@ -257,13 +279,15 @@ namespace PlayerStoryteller
 
                 // PERFORMANCE FIX: Fetch all in parallel
                 var researchTask = apiClient.GetResearchProgress();
+                var researchSummaryTask = apiClient.GetResearchSummary();
                 var factionsTask = apiClient.GetFactions();
                 var modsTask = apiClient.GetModsInfo();
 
                 // Wait for all to complete in parallel
-                await Task.WhenAll(researchTask, factionsTask, modsTask);
+                await Task.WhenAll(researchTask, researchSummaryTask, factionsTask, modsTask);
 
                 string researchJson = await researchTask;
+                string researchSummaryJson = await researchSummaryTask;
                 string factionsJson = await factionsTask;
                 string modsJson = await modsTask;
 
@@ -282,6 +306,14 @@ namespace PlayerStoryteller
                 {
                     sb.Append("\"research\":");
                     sb.Append(researchJson);
+                    hasContent = true;
+                }
+
+                if (!string.IsNullOrEmpty(researchSummaryJson))
+                {
+                    if (hasContent) sb.Append(',');
+                    sb.Append("\"research_summary\":");
+                    sb.Append(researchSummaryJson);
                     hasContent = true;
                 }
 

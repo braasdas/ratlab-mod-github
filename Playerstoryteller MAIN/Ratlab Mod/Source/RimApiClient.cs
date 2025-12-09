@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Verse;
@@ -114,7 +115,7 @@ namespace PlayerStoryteller
         /// </summary>
         public async Task<string> GetColonistPortrait(string colonistId)
         {
-            return await SafeFetchAsync($"{RimApiBaseUrl}/colonist/portrait?id={colonistId}", $"portrait_{colonistId}");
+            return await SafeFetchAsync($"{RimApiBaseUrl}/pawn/portrait/image?id={colonistId}", $"portrait_{colonistId}");
         }
 
         /// <summary>
@@ -122,7 +123,106 @@ namespace PlayerStoryteller
         /// </summary>
         public async Task<string> GetItemIcon(string defName)
         {
-            return await SafeFetchAsync($"{RimApiBaseUrl}/item/icon?def={defName}", $"icon_{defName}");
+            return await SafeFetchAsync($"{RimApiBaseUrl}/item/image?defName={defName}", $"icon_{defName}");
+        }
+
+        /// <summary>
+        /// Fetches quests data from RimAPI.
+        /// </summary>
+        public async Task<string> GetQuests(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/quests?map_id={mapId}", "quests");
+        }
+
+        /// <summary>
+        /// Fetches map zones from RimAPI.
+        /// </summary>
+        public async Task<string> GetMapZones(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/map/zones?map_id={mapId}", "zones");
+        }
+
+        /// <summary>
+        /// Fetches research summary from RimAPI.
+        /// </summary>
+        public async Task<string> GetResearchSummary()
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/research/summary", "research_summary");
+        }
+
+        /// <summary>
+        /// Sets schedule (time assignment) for a colonist.
+        /// assignmentType: "Work", "Joy", "Sleep", "Anything", "Meditate"
+        /// </summary>
+        public async Task<bool> SetColonistSchedule(string pawnId, int hour, string assignmentType)
+        {
+            try 
+            {
+                var payload = new 
+                {
+                    id = pawnId,
+                    hour = hour,
+                    assignment = assignmentType
+                };
+                
+                var json = JsonConvert.SerializeObject(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                
+                var response = await httpClient.PostAsync($"{RimApiBaseUrl}/colonist/time-assignment", content);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to set schedule: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Selects a colonist in the game via RimAPI.
+        /// </summary>
+        public async Task<bool> SelectColonist(string pawnId)
+        {
+            try 
+            {
+                // First deselect all
+                await httpClient.PostAsync($"{RimApiBaseUrl}/deselect?type=all", null);
+
+                // Then select the pawn
+                var response = await httpClient.PostAsync($"{RimApiBaseUrl}/select?type=pawn&id={pawnId}", null);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to select colonist: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Sets work priorities for a colonist.
+        /// </summary>
+        public async Task<bool> SetColonistWorkPriorities(string pawnId, Dictionary<string, int> priorities)
+        {
+            try 
+            {
+                var payload = new 
+                {
+                    id = pawnId,
+                    priorities = priorities
+                };
+                
+                var json = JsonConvert.SerializeObject(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                
+                var response = await httpClient.PostAsync($"{RimApiBaseUrl}/colonist/work-priority", content);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to set work priorities: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>
@@ -151,13 +251,73 @@ namespace PlayerStoryteller
                 {
                     longClient.Timeout = TimeSpan.FromSeconds(10);
                     var response = await longClient.GetStringAsync($"{RimApiBaseUrl}/def/all");
-                    return ExtractDataFromResponse(response);
+                    string data = ExtractDataFromResponse(response);
+
+                    if (!string.IsNullOrEmpty(data))
+                    {
+                        // COMPATIBILITY PATCH: Ensure 'race' is an object for older servers
+                        return PatchDefinitionsForOldServer(data);
+                    }
+                    return data;
                 }
             }
             catch (Exception ex)
             {
                 Log.Warning($"[Player Storyteller] Failed to fetch definitions: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Transforms the definitions JSON to ensure backward compatibility.
+        /// Specifically, converts 'race' string in pawn_kind_defs to an object { def_name, animal }.
+        /// </summary>
+        private string PatchDefinitionsForOldServer(string json)
+        {
+            try
+            {
+                // Quick check to avoid parsing if not needed or if it looks wrong
+                if (!json.Contains("pawn_kind_defs")) return json;
+
+                var root = JToken.Parse(json);
+                if (root is JObject obj)
+                {
+                    var pawns = obj["pawn_kind_defs"] as JArray;
+                    if (pawns != null)
+                    {
+                        bool modified = false;
+                        foreach (var pawn in pawns)
+                        {
+                            var raceToken = pawn["race"];
+                            // If race is just a string (new API format), convert it to object (old API format)
+                            if (raceToken != null && raceToken.Type == JTokenType.String)
+                            {
+                                string raceName = raceToken.ToString();
+                                
+                                // Heuristic: Humans and Mechs are not "animals" for this list
+                                bool isAnimal = raceName != "Human" && !raceName.StartsWith("Mech_");
+
+                                var newRaceObj = new JObject();
+                                newRaceObj["def_name"] = raceName;
+                                newRaceObj["animal"] = isAnimal;
+
+                                pawn["race"] = newRaceObj;
+                                modified = true;
+                            }
+                        }
+                        
+                        if (modified)
+                        {
+                            return obj.ToString(Formatting.None);
+                        }
+                    }
+                }
+                return json;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Error patching definitions: {ex.Message}");
+                return json; // Fallback to original
             }
         }
 
@@ -213,7 +373,7 @@ namespace PlayerStoryteller
 
         /// <summary>
         /// Extracts the "data" field from the new RimAPI response format.
-        /// Format: {"success":true, "data": ...}
+        /// Format: {"success":true, "data": ...} or just {"data": ...}
         /// </summary>
         private string ExtractDataFromResponse(string response)
         {
@@ -222,8 +382,8 @@ namespace PlayerStoryteller
                 // Try to parse as JObject first
                 var jToken = JToken.Parse(response);
 
-                // Check if it's an object with success and data fields
-                if (jToken is JObject jObject && jObject["success"] != null && jObject["data"] != null)
+                // Check if it's an object with data field
+                if (jToken is JObject jObject && jObject["data"] != null)
                 {
                     // Extract the data field and serialize it back to JSON
                     var dataToken = jObject["data"];

@@ -32,6 +32,7 @@ namespace PlayerStoryteller
         private Coroutine sidecarMonitorCoroutine;
         private Coroutine settingsPollCoroutine;
         private Coroutine mapCaptureCoroutine;
+        private Coroutine pawnViewCoroutine;
 
         // HELPER CLASSES
         private SidecarManager sidecarManager;
@@ -47,6 +48,7 @@ namespace PlayerStoryteller
         
         // MAP CAPTURE
         private MapCaptureManager mapCaptureManager;
+        private ViewerManager viewerManager; // Added
 
         public PlayerStorytellerMapComponent(Map map) : base(map)
         {
@@ -108,6 +110,9 @@ namespace PlayerStoryteller
             gameDataCache = new GameDataCache();
             apiClient = new RimApiClient(); // Assumes default URL
 
+            // Get Viewer Manager (MapComponent)
+            viewerManager = map.GetComponent<ViewerManager>();
+
             // Initialize Logic Classes
             gameDataPoller = new GameDataPoller(apiClient, gameDataCache, map);
             actionSecurityManager = new ActionSecurityManager();
@@ -160,12 +165,53 @@ namespace PlayerStoryteller
                 sidecarMonitorCoroutine = handlerComponent.StartCoroutine(SidecarMonitorCoroutine());
                 settingsPollCoroutine = handlerComponent.StartCoroutine(SettingsPollCoroutine());
                 mapCaptureCoroutine = handlerComponent.StartCoroutine(MapCaptureCoroutine());
+                pawnViewCoroutine = handlerComponent.StartCoroutine(PawnViewCoroutine());
             }
         }
 
         // ============================================
         // COROUTINES (Delegating to Helpers)
         // ============================================
+
+        private IEnumerator PawnViewCoroutine()
+        {
+            yield return new WaitForSeconds(5f);
+            while (true)
+            {
+                try
+                {
+                    if (viewerManager != null)
+                    {
+                        var pawns = viewerManager.GetActivePawns();
+                        if (pawns.Count > 0)
+                        {
+                            mapCaptureManager.CapturePawnViews(pawns, (results) => 
+                            {
+                                // Serialize results to JSON
+                                var sb = new StringBuilder();
+                                sb.Append("{");
+                                bool first = true;
+                                foreach (var kvp in results)
+                                {
+                                    if (!first) sb.Append(",");
+                                    sb.Append($"\"{kvp.Key}\":\"{Convert.ToBase64String(kvp.Value)}\"");
+                                    first = false;
+                                }
+                                sb.Append("}");
+                                
+                                // Store in cache
+                                gameDataCache.SetPawnViews(sb.ToString());
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Player Storyteller] Error in PawnViewCoroutine: {ex.Message}");
+                }
+                yield return new WaitForSeconds(2f); // Update pawn views every 2 seconds
+            }
+        }
 
         private IEnumerator MapCaptureCoroutine()
         {
