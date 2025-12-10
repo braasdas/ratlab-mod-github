@@ -41,7 +41,8 @@ function initializeWebSocket(sessionId) {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     // Direct WebSocket Stream (Binary fMP4)
-    STATE.streamWebSocket = new WebSocket(`${protocol}//${window.location.host}/stream?sessionId=${sessionId}`);
+    // NOTE: Server expects 'session' param, not 'sessionId'
+    STATE.streamWebSocket = new WebSocket(`${protocol}//${window.location.host}/stream?session=${sessionId}`);
     STATE.streamWebSocket.binaryType = 'arraybuffer'; // Crucial for MSE
 
     STATE.streamWebSocket.onopen = () => {
