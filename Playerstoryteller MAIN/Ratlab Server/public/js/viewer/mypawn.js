@@ -48,7 +48,61 @@ export function initializeMyPawn() {
     // Start Polling
     setInterval(checkAdoptionStatus, 5000);
     
+    // Initialize Action Buttons
+    initializeActionButtons();
+
     isMyPawnInitialized = true;
+}
+
+function initializeActionButtons() {
+    document.querySelectorAll('.btn-cmd').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!STATE.myPawnId) return;
+            
+            const cmd = btn.dataset.cmd;
+            let type = 'draft'; 
+            // Map cmd to type/action
+            if (cmd === 'draft') type = 'draft'; // Toggle
+            else if (cmd === 'goto') type = 'order_move'; // Requires target? usually context sensitive
+            else if (cmd === 'attack') type = 'order_attack';
+            else if (cmd === 'medical') type = 'order_tend';
+
+            // For 'goto' and 'attack', usually we need a target.
+            // If the user clicks the button, maybe we enter a "targeting mode"?
+            // For now, let's assume 'draft' is a toggle and others might trigger a generic "Fire/Go" or need args.
+            // Based on legacy logic, 'draft' is a simple toggle. 
+            // 'goto' might expect a click on the map/live view (which is handled in updateMyPawnUI).
+            // Let's implement 'draft' specifically and generic others.
+            
+            if (cmd === 'draft') {
+                 sendAction('colonist_command', JSON.stringify({
+                    type: 'draft',
+                    pawnId: STATE.myPawnId
+                }));
+                showFeedback('info', 'TOGGLING DRAFT STATUS...');
+            } else if (cmd === 'medical') {
+                 sendAction('colonist_command', JSON.stringify({
+                    type: 'job',
+                    job: 'tend_self',
+                    pawnId: STATE.myPawnId
+                }));
+                showFeedback('info', 'MEDICAL OVERRIDE INITIATED');
+            } else {
+                showFeedback('info', 'SELECT TARGET ON LIVE FEED');
+                // Set a state? For now just feedback.
+            }
+        });
+    });
+
+    const btnForceEquip = document.getElementById('btn-force-equip');
+    if (btnForceEquip) {
+        btnForceEquip.addEventListener('click', () => {
+             if (!STATE.myPawnId) return;
+             // Open browser or prompt?
+             // For now, simple feedback as placeholder or browser open
+             window.openContentBrowser('weapons'); // Assuming weapons category exists
+        });
+    }
 }
 
 export async function checkAdoptionStatus() {
