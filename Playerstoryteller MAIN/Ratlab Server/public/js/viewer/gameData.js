@@ -1,5 +1,5 @@
 import { STATE } from './state.js';
-import { updateColonistsList } from './colonists.js';
+import { updateColonistsList, getColonistPortrait } from './colonists.js';
 import { updateMyPawnUI } from './mypawn.js';
 import { updateMapOverlays } from './map.js';
 import { sendAction } from './interactions.js';
@@ -24,15 +24,11 @@ export function updateGameState(gameState) {
     if (gameState.colonist_portraits) Object.assign(STATE.colonistPortraits, gameState.colonist_portraits);
     if (gameState.item_icons) {
         Object.assign(STATE.itemIcons, gameState.item_icons);
-        // loadActionItemIcons() implementation logic here if needed, or just rely on state
     }
 
     // 1. Core Data Extraction
     const colonists = gameState.colonists || [];
     const resources = gameState.resources || {};
-    // const power = gameState.power || {};
-    // const creatures = gameState.creatures || {};
-    // const research = gameState.research || {};
     const factions = gameState.factions || [];
     const mods = gameState.mods || [];
 
@@ -49,6 +45,8 @@ export function updateGameState(gameState) {
     if (colonists.length > 0) {
         updateColonistsList(colonists, gameState);
         updateMapOverlays(gameState);
+        // Also update Personal Inventory in Inventory Tab
+        updateInventoryList(colonists, gameState);
     } else {
          const list = document.getElementById('colonists-list');
          if(list) list.innerHTML = '<p class="loading col-span-full text-center">No active subjects found</p>';
@@ -66,7 +64,9 @@ export function updateGameState(gameState) {
     if (gameState.research) updateResearchStats(gameState.research);
     if (factions.length > 0) updateFactionsList(factions);
     if (mods.length > 0) updateModsList(mods);
-    if (gameState.stored_resources) updateStoredResources(gameState.stored_resources);
+    // Update stored resources (Storage Zone)
+    if (resources.stored) updateStoredResources(resources.stored); // Assuming structure is resources.stored or top level stored_resources
+    else if (gameState.stored_resources) updateStoredResources(gameState.stored_resources);
 }
 
 function updateDLCIndicators(activeDlcs) {
@@ -239,8 +239,8 @@ function createMedicalAlertHtml(alert) {
 function updatePowerStats(power) {
     const powerStats = document.getElementById('power-stats');
     if (!powerStats) return;
-    const prod = power.produced || 0;
-    const cons = power.consumed || 0;
+    const prod = power.produced || power.current_power || 0; // Fallback key
+    const cons = power.consumed || power.total_consumption || 0; // Fallback key
     const pct = prod > 0 ? Math.min(100, (cons / prod) * 100) : 0;
     const color = pct > 90 ? 'text-rat-red' : (pct > 70 ? 'text-rat-yellow' : 'text-rat-green');
 
@@ -263,23 +263,29 @@ function updateCreatureStats(creatures) {
     const creatureStats = document.getElementById('creature-stats');
     if (!creatures || !creatureStats) return;
     
+    // Map keys from potential different sources
+    const tame = creatures.colony_animals || creatures.animals_count || 0;
+    const wild = creatures.wild_animals || 0;
+    const hostile = creatures.hostile_creatures || creatures.enemies_count || 0;
+    const insects = creatures.insects || 0;
+
     creatureStats.innerHTML = `
         <div class="grid grid-cols-2 gap-2 text-xs">
             <div class="bg-rat-dark p-2 rounded border border-rat-border text-center">
                 <div class="text-rat-text-dim text-[10px]">TAME</div>
-                <div class="text-rat-green font-bold text-lg">${creatures.colony_animals || 0}</div>
+                <div class="text-rat-green font-bold text-lg">${tame}</div>
             </div>
             <div class="bg-rat-dark p-2 rounded border border-rat-border text-center">
                 <div class="text-rat-text-dim text-[10px]">WILD</div>
-                <div class="text-rat-yellow font-bold text-lg">${creatures.wild_animals || 0}</div>
+                <div class="text-rat-yellow font-bold text-lg">${wild}</div>
             </div>
             <div class="bg-rat-dark p-2 rounded border border-rat-border text-center">
                 <div class="text-rat-text-dim text-[10px]">HOSTILE</div>
-                <div class="text-rat-red font-bold text-lg">${creatures.hostile_creatures || 0}</div>
+                <div class="text-rat-red font-bold text-lg">${hostile}</div>
             </div>
             <div class="bg-rat-dark p-2 rounded border border-rat-border text-center">
                 <div class="text-rat-text-dim text-[10px]">INSECTS</div>
-                <div class="text-rat-red font-bold text-lg">${creatures.insects || 0}</div>
+                <div class="text-rat-red font-bold text-lg">${insects}</div>
             </div>
         </div>
     `;
@@ -289,13 +295,16 @@ function updateResearchStats(research) {
     const researchStats = document.getElementById('research-stats');
     if (!research || !researchStats) return;
 
-    if (research.current_project) {
+    // Normalize keys
+    const currentProject = research.current_project || research.label || research.name;
+    
+    if (currentProject) {
         const progress = research.progress || 0;
         const total = research.cost || 1;
-        const pct = Math.round((progress / total) * 100);
+        const pct = research.progress_percent || Math.round((progress / total) * 100);
 
         researchStats.innerHTML = `
-            <div class="text-xs text-rat-green mb-1 truncate" title="${research.current_project}">${research.current_project}</div>
+            <div class="text-xs text-rat-green mb-1 truncate" title="${currentProject}">${currentProject}</div>
             <div class="h-1 bg-rat-border rounded-full overflow-hidden mb-1">
                 <div class="h-full bg-rat-green animate-pulse" style="width: ${pct}%"></div>
             </div>
@@ -320,7 +329,6 @@ function updateFactionsList(factions) {
         if (el.dataset.factionName) existingMap.set(el.dataset.factionName, el);
     });
     
-    // Deduplicate
     const processed = new Set();
     const uniqueFactions = factions.filter(f => {
          const slug = f.name.replace(/\s+/g, '-').toLowerCase();
@@ -334,21 +342,30 @@ function updateFactionsList(factions) {
         const relationColor = faction.relation === 'Hostile' ? 'text-rat-red' :
                               faction.relation === 'Neutral' ? 'text-rat-yellow' : 'text-rat-green';
         
+        // Add interaction buttons
         const content = `
-            <div class="flex justify-between items-center">
-                <span class="text-xs font-bold text-rat-text truncate pr-2" title="${faction.name}">${faction.name}</span>
-                <span class="text-[10px] font-mono ${relationColor}">${faction.goodwill}</span>
+            <div>
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-rat-text truncate pr-2" title="${faction.name}">${faction.name}</span>
+                    <span class="text-[10px] font-mono ${relationColor}">${faction.goodwill}</span>
+                </div>
+                <div class="text-[10px] text-rat-text-dim">${faction.type || faction.relation}</div>
             </div>
-            <div class="text-[10px] text-rat-text-dim">${faction.type || faction.relation}</div>
+            <div class="flex gap-1 ml-2">
+                 <button class="btn-faction-goodwill w-6 h-6 flex items-center justify-center bg-rat-dark border border-rat-border hover:border-rat-red text-rat-red rounded text-[10px]" data-faction="${faction.name}" data-amount="-15" title="Sabotage relations">-</button>
+                 <button class="btn-faction-goodwill w-6 h-6 flex items-center justify-center bg-rat-dark border border-rat-border hover:border-rat-green text-rat-green rounded text-[10px]" data-faction="${faction.name}" data-amount="15" title="Improve relations">+</button>
+            </div>
         `;
 
         if (existingMap.has(slug)) {
              const el = existingMap.get(slug);
-             if (el.innerHTML !== content) el.innerHTML = content;
+             // Check content roughly to avoid full re-render if static
+             // But for now, just replace to ensure buttons work
+             el.innerHTML = content;
              existingMap.delete(slug);
         } else {
              const el = document.createElement('div');
-             el.className = "bg-rat-dark border border-rat-border p-2 rounded hover:border-rat-green/30 transition-colors";
+             el.className = "bg-rat-dark border border-rat-border p-2 rounded hover:border-rat-green/30 transition-colors flex justify-between items-center";
              el.dataset.factionName = slug;
              el.innerHTML = content;
              container.appendChild(el);
@@ -356,6 +373,34 @@ function updateFactionsList(factions) {
     });
 
     existingMap.forEach(el => el.remove());
+
+    // Attach listeners
+    container.querySelectorAll('.btn-faction-goodwill').forEach(btn => {
+        // Remove old listener to avoid dupes if re-rendering constantly (though replacing innerHTML clears them on that element)
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            const factionName = btn.dataset.faction;
+            const amount = parseInt(btn.dataset.amount);
+            btn.disabled = true;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                await sendAction('changeFactionGoodwill', {
+                    faction: factionName,
+                    amount: amount
+                });
+                showFeedback('success', `Diplomatic signal sent`);
+            } catch (error) {
+                showFeedback('error', `Transmission failed`);
+            } finally {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHTML;
+                }, 1000);
+            }
+        };
+    });
 }
 
 function updateModsList(mods) {
@@ -418,11 +463,180 @@ function updateStoredResources(resources) {
     } else {
         items = Object.entries(resources).map(([label, count]) => ({ label, count }));
     }
+    
+    // Clear loading text
+    Array.from(container.children).forEach(el => {
+        if (!el.dataset.resourceLabel) el.remove();
+    });
 
-    container.innerHTML = items.map(item => `
-        <div class="bg-rat-dark border border-rat-border p-2 rounded flex justify-between items-center hover:border-rat-green/30 transition-colors">
-            <span class="text-xs text-rat-text truncate pr-2" title="${item.label}">${item.label}</span>
+    // Check if empty
+    if (items.length === 0) {
+        container.innerHTML = '<div class="col-span-full text-center text-xs text-rat-text-dim italic">Stockpile empty</div>';
+        return;
+    }
+
+    const existingMap = new Map();
+    Array.from(container.children).forEach(el => {
+        if (el.dataset.resourceLabel) existingMap.set(el.dataset.resourceLabel, el);
+    });
+
+    items.forEach(item => {
+        // Try to get icon
+        // resource label is typically the DefName or Label
+        const iconData = STATE.itemIcons[item.label] || STATE.itemIcons[item.defName];
+        const iconHtml = iconData 
+            ? `<img src="data:image/png;base64,${iconData}" class="w-6 h-6 object-contain mr-2">`
+            : '';
+
+        const content = `
+            <div class="flex items-center">
+                ${iconHtml}
+                <span class="text-xs text-rat-text truncate pr-2" title="${item.label}">${item.label}</span>
+            </div>
             <span class="text-rat-green font-mono font-bold text-sm">${item.count.toLocaleString()}</span>
-        </div>
-    `).join('');
+        `;
+
+        if (existingMap.has(item.label)) {
+            const el = existingMap.get(item.label);
+            if (el.innerHTML !== content) el.innerHTML = content;
+            existingMap.delete(item.label);
+        } else {
+            const el = document.createElement('div');
+            el.className = "bg-rat-dark border border-rat-border p-2 rounded flex justify-between items-center hover:border-rat-green/30 transition-colors";
+            el.dataset.resourceLabel = item.label;
+            el.innerHTML = content;
+            container.appendChild(el);
+        }
+    });
+    
+    existingMap.forEach(el => el.remove());
+}
+
+function updateInventoryList(colonists, gameState) {
+    const inventoryContainer = document.getElementById('inventory-container');
+    if (!inventoryContainer) return;
+
+    // Clear loading text
+    Array.from(inventoryContainer.children).forEach(el => {
+        if (!el.dataset.pawnId) el.remove();
+    });
+
+    const existingRows = new Map();
+    Array.from(inventoryContainer.children).forEach(row => {
+        if (row.dataset.pawnId) existingRows.set(row.dataset.pawnId, row);
+    });
+
+    colonists.forEach((c, index) => {
+        const data = c.colonist || c;
+        const pawnId = String(data.id || data.pawn_id || index);
+        const name = data.name || 'Unknown';
+        
+        let isExpanded = false;
+        if (existingRows.has(pawnId)) {
+            isExpanded = existingRows.get(pawnId).classList.contains('expanded');
+        }
+
+        // Get inventory
+        const inventoryData = gameState.inventory || {};
+        let inv = inventoryData[pawnId];
+        if (inv && inv.success && inv.data) inv = inv.data;
+
+        let items = inv ? [
+            ...(inv.items || []),
+            ...(inv.apparels || []),
+            ...(inv.equipment || [])
+        ] : [];
+
+        // Group items
+        const groupedItems = new Map();
+        items.forEach(item => {
+            const defName = item.defName || item.def_name || item.label;
+            const stackCount = item.stackCount || item.stack_count || 1;
+            
+            if (groupedItems.has(defName)) {
+                const existing = groupedItems.get(defName);
+                existing.stackCount += stackCount;
+            } else {
+                groupedItems.set(defName, { ...item, stackCount: stackCount });
+            }
+        });
+        const groupedItemsArray = Array.from(groupedItems.values());
+
+        const itemsHtml = groupedItemsArray.length === 0 ? 
+            '<div class="p-3 text-xs text-rat-text-dim italic">No equipment carried</div>' : 
+            groupedItemsArray.map(item => {
+                const defName = item.defName || item.def_name || item.label;
+                const iconData = STATE.itemIcons[defName];
+                const iconHtml = iconData ? `<img src="data:image/png;base64,${iconData}" class="w-6 h-6 object-contain mr-3" />` : '';
+                return `
+                    <div class="flex items-center p-2 bg-rat-black border-b border-rat-border/50 last:border-0">
+                        ${iconHtml}
+                        <span class="text-sm text-rat-text flex-1">${item.label || item.defName}</span>
+                        <span class="font-mono text-rat-green text-xs ml-2">x${item.stackCount}</span>
+                    </div>
+                `;
+            }).join('');
+
+        const portraitData = getColonistPortrait(pawnId);
+        const portraitHtml = portraitData ? 
+            `<img src="data:image/png;base64,${portraitData}" class="w-8 h-8 rounded object-cover mr-3 border border-rat-border" />` : 
+            `<div class="w-8 h-8 rounded bg-rat-dark mr-3 border border-rat-border flex items-center justify-center text-xs">?</div>`;
+
+        const createRowContent = () => `
+            <div class="inventory-colonist-header bg-rat-panel p-3 flex items-center cursor-pointer hover:bg-rat-dark transition-colors">
+                ${portraitHtml}
+                <span class="font-mono text-sm flex-1">${name}</span>
+                <span class="text-xs bg-rat-dark px-2 py-1 rounded text-rat-text-dim mr-2">${groupedItemsArray.length} items</span>
+                <i class="fa-solid fa-chevron-down text-xs transition-transform ${isExpanded ? 'rotate-180' : ''}"></i>
+            </div>
+            <div class="inventory-items-list ${isExpanded ? 'block' : 'hidden'} bg-rat-dark/50 border-t border-rat-border">
+                ${itemsHtml}
+            </div>
+        `;
+
+        if (existingRows.has(pawnId)) {
+            const row = existingRows.get(pawnId);
+            const listDiv = row.querySelector('.inventory-items-list');
+            const header = row.querySelector('.inventory-colonist-header');
+            
+            // Check if content needs update (simplified)
+            // Ideally we compare data, but re-injecting innerHTML of the list is cheap enough here
+            if (listDiv.innerHTML !== itemsHtml) {
+                listDiv.innerHTML = itemsHtml;
+            }
+            
+            // Update Header counts
+            const countBadge = header.querySelector('.text-xs.bg-rat-dark');
+            if(countBadge) countBadge.textContent = `${groupedItemsArray.length} items`;
+
+            existingRows.delete(pawnId);
+        } else {
+            const row = document.createElement('div');
+            row.className = `inventory-colonist-row border border-rat-border rounded overflow-hidden mb-2 ${isExpanded ? 'expanded' : ''}`;
+            row.dataset.pawnId = pawnId;
+            row.innerHTML = createRowContent();
+            inventoryContainer.appendChild(row);
+            
+            // Toggle Logic
+            row.querySelector('.inventory-colonist-header').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const list = row.querySelector('.inventory-items-list');
+                const chevron = row.querySelector('.fa-chevron-down');
+                
+                if (list.classList.contains('hidden')) {
+                    list.classList.remove('hidden');
+                    list.classList.add('block');
+                    chevron.classList.add('rotate-180');
+                    row.classList.add('expanded');
+                } else {
+                    list.classList.add('hidden');
+                    list.classList.remove('block');
+                    chevron.classList.remove('rotate-180');
+                    row.classList.remove('expanded');
+                }
+            });
+        }
+    });
+
+    existingRows.forEach(row => row.remove());
 }

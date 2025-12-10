@@ -248,7 +248,7 @@ function createColonistCardHtml(colonistDetailed, index, gameState) {
         : `<div class="portrait-placeholder w-full h-full flex items-center justify-center text-rat-text-dim">?</div>`;
 
     return `
-    <div class="colonist-card group bg-rat-panel border border-rat-border hover:border-rat-green transition-all relative overflow-hidden flex flex-col h-[280px]" data-pawn-id="${pawnId}">
+    <div class="colonist-card group bg-rat-panel border border-rat-border hover:border-rat-green transition-all relative overflow-hidden flex flex-col min-h-[280px]" data-pawn-id="${pawnId}">
         
         <!-- Header -->
         <div class="p-2 border-b border-rat-border bg-rat-dark flex justify-between items-start z-10 relative">
