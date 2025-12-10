@@ -40,123 +40,38 @@ function initializeWebSocket(sessionId) {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // The go-sidecar usually runs on a different port or proxied. 
-    // Assuming the Node server proxies it or we connect to a known port.
-    // Looking at original app.js, it might have been connecting to `location.host`.
-    // Let's assume the Node server proxies /ws/stream or similar, OR we connect to the go-sidecar port.
-    // WAIT: The memory says "go-sidecar sends fMP4 streams via WebSocket to Ratlab Server".
-    // So the Client connects to Ratlab Server.
-    
-    // In original app.js, there was `videoSignalSocket` for WebRTC signaling.
-    // But for direct fMP4 via WebSocket, we need the endpoint.
-    // If the server forwards it, great. 
-    // Let's assume a standard path or the same socket connection logic if it was built-in.
-    
-    // RE-READING APP.JS (from context memory/search):
-    // It seems the original app.js had `videoSignalSocket` for WebRTC.
-    // BUT, the go-sidecar memory says "fMP4 streams via WebSocket".
-    // If we are strictly porting the working MSE logic found in `app.js` (lines 680+), 
-    // we need to see how `handleH264Data` was called.
-    // It was called from `webrtcDataChannel.onmessage` in the `app.js` snippet I read.
-    // "webrtcDataChannel.onmessage = (e) => { handleH264Data(e.data); };"
-    
-    // SO: The current implementation uses WebRTC Data Channels to transport the fMP4 atoms.
-    // We need to port the WebRTC setup too.
-    
-    initializeWebRTC(sessionId);
-}
+    // Direct WebSocket Stream (Binary fMP4)
+    STATE.streamWebSocket = new WebSocket(`${protocol}//${window.location.host}/stream?sessionId=${sessionId}`);
+    STATE.streamWebSocket.binaryType = 'arraybuffer'; // Crucial for MSE
 
-let webrtcPeerConnection = null;
-let webrtcDataChannel = null;
-let videoSignalSocket = null;
-
-function initializeWebRTC(sessionId) {
-    if (videoSignalSocket) {
-        videoSignalSocket.close();
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    videoSignalSocket = new WebSocket(`${protocol}//${window.location.host}/stream?sessionId=${sessionId}`);
-
-    videoSignalSocket.onopen = () => {
-        console.log('[WebRTC] Signaling Connected');
+    STATE.streamWebSocket.onopen = () => {
+        console.log('[Stream] WebSocket Connected');
+        STATE.streamConnected = true;
+        STATE.useWebSocket = true;
+        updateStreamStatus(true);
+        hideLoading();
+        showFeedback('success', 'Live Stream Connected');
+        
+        // Initialize MSE immediately
+        initializeMediaSource();
     };
 
-    videoSignalSocket.onmessage = async (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'offer') {
-            await handleSFUOffer(msg.offer, sessionId);
-        }
+    STATE.streamWebSocket.onmessage = (event) => {
+        // Direct binary data from server (relayed from go-sidecar)
+        handleH264Data(event.data);
     };
     
-    videoSignalSocket.onclose = () => {
-         console.log('[WebRTC] Signaling Closed');
-    };
-}
-
-async function handleSFUOffer(offer, sessionId) {
-    if (webrtcPeerConnection) {
-        webrtcPeerConnection.close();
-    }
-
-    webrtcPeerConnection = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-    });
-
-    webrtcPeerConnection.onicecandidate = (event) => {
-        if (event.candidate && videoSignalSocket.readyState === WebSocket.OPEN) {
-            videoSignalSocket.send(JSON.stringify({
-                type: 'ice-candidate',
-                candidate: event.candidate,
-                sessionId: sessionId
-            }));
-        }
+    STATE.streamWebSocket.onclose = () => {
+         console.log('[Stream] WebSocket Closed');
+         STATE.streamConnected = false;
+         updateStreamStatus(false);
+         cleanupMediaSource(true);
     };
 
-    webrtcPeerConnection.onconnectionstatechange = () => {
-        console.log('[WebRTC] Connection State:', webrtcPeerConnection.connectionState);
-        if (webrtcPeerConnection.connectionState === 'connected') {
-            STATE.streamConnected = true;
-            STATE.useWebSocket = true; // Use this flag to suppress socket.io screenshots
-            hideLoading();
-            updateStreamStatus(true);
-            showFeedback('success', 'Live Stream Connected');
-        } else if (['failed', 'disconnected', 'closed'].includes(webrtcPeerConnection.connectionState)) {
-            STATE.streamConnected = false;
-            STATE.useWebSocket = false;
-            updateStreamStatus(false);
-            cleanupMediaSource(true);
-        }
+    STATE.streamWebSocket.onerror = (error) => {
+        console.error('[Stream] WebSocket Error:', error);
+        showFeedback('error', 'Stream Connection Error');
     };
-
-    webrtcPeerConnection.ondatachannel = (event) => {
-        webrtcDataChannel = event.channel;
-        webrtcDataChannel.binaryType = 'arraybuffer';
-
-        webrtcDataChannel.onopen = () => {
-            console.log('[WebRTC] Data Channel Open -> Init MSE');
-            initializeMediaSource();
-        };
-
-        webrtcDataChannel.onmessage = (e) => {
-            handleH264Data(e.data);
-        };
-    };
-
-    await webrtcPeerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await webrtcPeerConnection.createAnswer();
-    await webrtcPeerConnection.setLocalDescription(answer);
-
-    if (videoSignalSocket.readyState === WebSocket.OPEN) {
-        videoSignalSocket.send(JSON.stringify({
-            type: 'answer',
-            answer: answer,
-            sessionId: sessionId
-        }));
-    }
 }
 
 // ============================================================================
