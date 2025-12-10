@@ -107,17 +107,6 @@ export function closeContentBrowser() {
 }
 
 export function selectBrowserItem(id, type, cost, label) {
-    // Escape label for JS string safety
-    const safeLabel = label.replace(/'/g, "'\'");
-    
-    // Create the "Are you sure?" confirmation or direct send logic
-    // For this refactor, let's trigger a custom event or call sendAction directly
-    // Since we need to invoke `sendAction`, we need to import it, but circular deps might occur if sendAction imports UI which imports this.
-    // Let's use `window.sendAction` if exposed, or dynamic import?
-    // Actually, `contentBrowser` triggers `interactions.js`.
-    // Let's defer execution or pass a callback?
-    // Better: dispatch a custom event on window.
-    
     const event = new CustomEvent('ratlab:action', {
         detail: {
             action: type === 'weather' ? id : (type === 'animal' ? 'spawn_animal' : 'trigger_event'),
@@ -138,7 +127,12 @@ function renderBrowserItems(items, container) {
     }
 
     container.innerHTML = items.map(item => `
-        <div class="bg-rat-panel border border-rat-border rounded p-4 hover:border-rat-green transition-colors group relative cursor-pointer" onclick="window.selectBrowserItem('${item.id}', '${item.type}', ${item.cost}, '${item.label.replace(/'/g, "'\'"')}')">
+        <div class="browser-item-card bg-rat-panel border border-rat-border rounded p-4 hover:border-rat-green transition-colors group relative cursor-pointer" 
+             data-id="${item.id}"
+             data-type="${item.type}"
+             data-cost="${item.cost}"
+             data-label="${(item.label || '').replace(/"/g, '&quot;')}"
+        >
             <div class="flex justify-between items-start mb-2">
                 <h4 class="font-bold text-rat-text group-hover:text-rat-green text-sm truncate pr-2" title="${item.label}">${item.label}</h4>
                 <span class="text-[10px] font-mono text-rat-yellow bg-rat-dark px-1.5 py-0.5 rounded border border-rat-border">${item.cost}c</span>
@@ -150,4 +144,16 @@ function renderBrowserItems(items, container) {
             </div>
         </div>
     `).join('');
+
+    // Attach listeners
+    container.querySelectorAll('.browser-item-card').forEach(card => {
+        card.onclick = () => {
+            selectBrowserItem(
+                card.dataset.id,
+                card.dataset.type,
+                parseInt(card.dataset.cost),
+                card.dataset.label
+            );
+        };
+    });
 }
