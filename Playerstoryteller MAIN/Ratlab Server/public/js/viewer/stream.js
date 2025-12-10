@@ -76,7 +76,7 @@ function initializeWebRTC(sessionId) {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    videoSignalSocket = new WebSocket(`${protocol}//${window.location.host}/ws/stream?sessionId=${sessionId}`);
+    videoSignalSocket = new WebSocket(`${protocol}//${window.location.host}/stream?sessionId=${sessionId}`);
 
     videoSignalSocket.onopen = () => {
         console.log('[WebRTC] Signaling Connected');
