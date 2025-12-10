@@ -41,6 +41,8 @@ function startModServer(io) {
             session = sessionStore.createSession(sessionId, {
                 streamKey, interactionPassword, isPublic
             });
+            // Broadcast new session list
+            broadcastSessionList(io);
         } else {
             // SECURITY CHECK
             if (session.streamKey && session.streamKey !== streamKey) {
@@ -55,6 +57,8 @@ function startModServer(io) {
                 isPublic,
                 streamKey // Ensure map is updated
             });
+            // Broadcast updated session list (e.g. status change)
+            broadcastSessionList(io);
         }
 
         log('info', `[WS Mod] Connected for session: ${sessionId}`);
@@ -145,6 +149,37 @@ function processModMessage(message, sessionId, io) {
     } catch (e) {
         console.error('[WS Mod] Error processing message:', e);
     }
+}
+
+function broadcastSessionList(io) {
+    const sessions = Array.from(sessionStore.gameSessions.entries())
+        .filter(([id, data]) => data.isPublic !== false)
+        .map(([id, data]) => {
+            const gameState = data.gameState || {};
+            const colonists = gameState.colonists || [];
+            const resources = gameState.resources || {};
+            const power = gameState.power || {};
+            const creatures = gameState.creatures || {};
+            const research = gameState.research || {};
+
+            return {
+                sessionId: id,
+                isPrivate: false,
+                requiresPassword: !!data.interactionPassword,
+                colonistCount: colonists.length || creatures.colonists_count || 0,
+                mapName: gameState.mapName || 'Colony',
+                wealth: resources.total_market_value || 0,
+                lastUpdate: data.lastUpdate,
+                playerCount: data.players.length,
+                networkQuality: gameState.networkQuality || 'medium',
+                powerGenerated: power.current_power || 0,
+                powerConsumed: power.total_consumption || 0,
+                enemiesCount: creatures.enemies_count || 0,
+                currentResearch: research.label || research.name || 'None'
+            };
+        });
+
+    io.emit('sessions-list', { sessions });
 }
 
 module.exports = startModServer;
