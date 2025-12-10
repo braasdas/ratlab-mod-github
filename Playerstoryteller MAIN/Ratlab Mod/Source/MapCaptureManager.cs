@@ -127,58 +127,84 @@ namespace PlayerStoryteller
             if (isCapturingPawnViews) return;
             isCapturingPawnViews = true;
 
+            int pending = 0;
+            var results = new System.Collections.Generic.Dictionary<string, byte[]>();
+            object resultsLock = new object();
+
             try
             {
-                var results = new System.Collections.Generic.Dictionary<string, byte[]>();
-
-                // Initialize renderer if needed (using small size)
-                // We do this check loosely to avoid creating texture if not needed
-                if (!pawnViewRenderer.IsInitialized && pawns.Count > 0)
-                {
-                    // Find a valid map from the pawns
-                    foreach (var p in pawns.Values)
-                    {
-                        if (p != null && p.Map != null)
-                        {
-                            pawnViewRenderer.Initialize(p.Map, 300, 300);
-                            break;
-                        }
-                    }
-                }
-
                 foreach (var kvp in pawns)
                 {
                     Pawn p = kvp.Value;
                     if (p == null || !p.Spawned || p.Map == null) continue;
 
+                    // Ensure renderer is using the correct map
+                    pawnViewRenderer.Initialize(p.Map, 300, 300);
+
                     // Render (15f ortho size ~ 30 tiles wide)
                     RenderTexture rt = pawnViewRenderer.RenderPawnView(p, 300, 300, 15f);
                     if (rt != null)
                     {
-                        // Synchronous Readback (Fast for small textures)
-                        Texture2D tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
-                        RenderTexture.active = rt;
-                        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
-                        tex.Apply();
-                        RenderTexture.active = null;
+                        System.Threading.Interlocked.Increment(ref pending);
+                        string pawnId = kvp.Key;
+                        int width = rt.width;
+                        int height = rt.height;
 
-                        // Encode to JPG
-                        results[kvp.Key] = tex.EncodeToJPG(60);
-                        
-                        UnityEngine.Object.Destroy(tex);
+                        // Async Readback
+                        AsyncGPUReadback.Request(rt, 0, TextureFormat.RGB24, (request) => 
+                        {
+                            if (request.hasError)
+                            {
+                                Log.Warning($"[Player Storyteller] Pawn view readback error for {pawnId}");
+                                if (System.Threading.Interlocked.Decrement(ref pending) == 0)
+                                {
+                                    isCapturingPawnViews = false;
+                                    callback?.Invoke(results);
+                                }
+                                return;
+                            }
+
+                            var rawData = request.GetData<byte>().ToArray();
+
+                            Task.Run(() => 
+                            {
+                                try
+                                {
+                                    byte[] jpegBytes = EncodeJpeg(rawData, width, height, 60);
+                                    lock (resultsLock)
+                                    {
+                                        results[pawnId] = jpegBytes;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Error($"[Player Storyteller] Pawn encode failed: {ex.Message}");
+                                }
+                                finally
+                                {
+                                    if (System.Threading.Interlocked.Decrement(ref pending) == 0)
+                                    {
+                                        isCapturingPawnViews = false;
+                                        callback?.Invoke(results);
+                                    }
+                                }
+                            });
+                        });
                     }
                 }
                 
-                // Callback immediately (Main Thread)
-                callback?.Invoke(results);
+                // If no valid pawns were found or rendered
+                if (pending == 0)
+                {
+                    isCapturingPawnViews = false;
+                    callback?.Invoke(results);
+                }
             }
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Pawn View Capture Error: {ex.Message}");
-            }
-            finally
-            {
                 isCapturingPawnViews = false;
+                callback?.Invoke(results);
             }
         }
 
