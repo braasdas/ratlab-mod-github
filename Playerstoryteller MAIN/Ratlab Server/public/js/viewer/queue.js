@@ -49,7 +49,7 @@ function handleNewRequest() {
     const suggestion = prompt("Enter your suggestion for the next colony action:");
     if (!suggestion || suggestion.trim().length === 0) return;
 
-    fetch(`/api/queue/${encodeURIComponent(STATE.currentSession)}/request`, {
+    fetch(`/api/queue/${encodeURIComponent(STATE.currentSession)}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
