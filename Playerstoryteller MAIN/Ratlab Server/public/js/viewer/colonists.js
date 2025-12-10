@@ -248,7 +248,7 @@ function createColonistCardHtml(colonistDetailed, index, gameState) {
         : `<div class="portrait-placeholder w-full h-full flex items-center justify-center text-rat-text-dim">?</div>`;
 
     return `
-    <div class="colonist-card group bg-rat-panel border border-rat-border hover:border-rat-green transition-all relative overflow-hidden flex flex-col min-h-[280px]" data-pawn-id="${pawnId}">
+    <div class="colonist-card group bg-rat-panel border border-rat-border hover:border-rat-green transition-all relative overflow-hidden flex flex-col min-h-[280px] cursor-pointer" data-pawn-id="${pawnId}">
         
         <!-- Header -->
         <div class="p-2 border-b border-rat-border bg-rat-dark flex justify-between items-start z-10 relative">
@@ -256,11 +256,6 @@ function createColonistCardHtml(colonistDetailed, index, gameState) {
                 <h4 class="font-bold text-rat-green text-sm truncate max-w-[120px]" title="${name}">${name}</h4>
                 <div class="text-[10px] text-rat-text-dim font-mono">SUBJECT #${index + 1}</div>
             </div>
-            
-            <!-- Snapshot Button -->
-            <button class="btn-snapshot text-rat-text-dim hover:text-white transition-colors" data-colonist-index="${index}" title="View Details">
-                <i class="fa-solid fa-expand text-xs"></i>
-            </button>
         </div>
 
         <!-- Body -->
@@ -268,7 +263,7 @@ function createColonistCardHtml(colonistDetailed, index, gameState) {
             
             <div class="flex gap-2 h-20">
                  <!-- Portrait -->
-                <div class="colonist-portrait w-16 h-20 bg-black border border-rat-border shrink-0 cursor-pointer hover:border-rat-green transition-colors" data-pawn-id="${pawnId}">
+                <div class="colonist-portrait w-16 h-20 bg-black border border-rat-border shrink-0 transition-colors" data-pawn-id="${pawnId}">
                     ${portraitHtml}
                 </div>
 
@@ -321,36 +316,20 @@ function createColonistCardHtml(colonistDetailed, index, gameState) {
 }
 
 function attachColonistCardEventListeners(colonists) {
-    document.querySelectorAll('.btn-snapshot').forEach(btn => {
-        const oldHandler = btn.__snapshotClickHandler;
-        if (oldHandler) btn.removeEventListener('click', oldHandler);
+    document.querySelectorAll('.colonist-card').forEach(card => {
+        const oldHandler = card.__cardClickHandler;
+        if (oldHandler) card.removeEventListener('click', oldHandler);
 
         const newHandler = (e) => {
             e.stopPropagation();
-            const colonistIndex = parseInt(btn.dataset.colonistIndex);
-            const colonist = colonists[colonistIndex];
-            const colonistData = colonist.colonist || colonist;
-            const pawnId = colonistData.id || colonistData.pawn_id || colonistIndex;
-            showColonistSnapshot(colonist, pawnId);
-        };
-        btn.addEventListener('click', newHandler);
-        btn.__snapshotClickHandler = newHandler;
-    });
-
-    document.querySelectorAll('.colonist-portrait').forEach(portrait => {
-        const oldHandler = portrait.__portraitClickHandler;
-        if (oldHandler) portrait.removeEventListener('click', oldHandler);
-
-        const newHandler = (e) => {
-            e.stopPropagation();
-            const pawnId = portrait.dataset.pawnId;
+            const pawnId = card.dataset.pawnId;
             const colonist = colonists.find(c => String(c.colonist?.id || c.colonist?.pawn_id) === pawnId);
             if (colonist) {
                 showColonistSnapshot(colonist, pawnId);
             }
         };
-        portrait.addEventListener('click', newHandler);
-        portrait.__portraitClickHandler = newHandler;
+        card.addEventListener('click', newHandler);
+        card.__cardClickHandler = newHandler;
     });
 }
 
@@ -453,9 +432,6 @@ export async function showColonistSnapshot(colonistDetailed, pawnId) {
 
                 <div class="flex flex-col gap-2">
                     <div class="text-xs font-mono text-rat-text-dim uppercase mb-1">Direct Neural Interface</div>
-                    <button class="w-full py-3 bg-rat-green text-black font-bold font-mono rounded hover:bg-white transition-colors flex items-center justify-center gap-2" id="btn-select-snapshot">
-                        <i class="fa-solid fa-crosshairs"></i> SELECT SUBJECT
-                    </button>
                     <button class="w-full py-3 bg-rat-dark border border-rat-yellow text-rat-yellow font-bold font-mono rounded hover:bg-rat-yellow hover:text-black transition-colors flex items-center justify-center gap-2" id="btn-adopt-snapshot">
                         <i class="fa-solid fa-heart"></i> ADOPT SUBJECT (2000c)
                     </button>
@@ -518,20 +494,6 @@ export async function showColonistSnapshot(colonistDetailed, pawnId) {
     `;
 
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-    // Attach listeners
-    document.getElementById('btn-select-snapshot').onclick = async () => {
-        showFeedback('info', 'TRANSMITTING SELECTION...');
-        try {
-            await sendAction('colonist_command', JSON.stringify({
-                type: 'select',
-                pawnId: pawnId
-            }));
-            showFeedback('success', 'SUBJECT SELECTED');
-        } catch (error) {
-            showFeedback('error', 'SELECTION FAILED');
-        }
-    };
 
     document.getElementById('btn-adopt-snapshot').onclick = async () => {
          // Trigger Adoption Flow
