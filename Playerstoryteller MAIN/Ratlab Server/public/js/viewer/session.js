@@ -3,6 +3,7 @@ import { updateConnectionStatus, showLoading, hideLoading } from './ui.js';
 import { initializeStream, stopStream } from './stream.js';
 import { socket } from './socket.js';
 import { updateGameState } from './gameData.js';
+import { loadActionPanel } from './actions.js';
 
 export function renderSessionsList() {
     const sessionsList = document.getElementById('sessions-list');
@@ -103,6 +104,9 @@ function startSessionConnection(sessionId) {
     stopStream();
 
     socket.emit('select-session', { sessionId, username: STATE.username });
+    
+    // Load Action Panel
+    loadActionPanel();
     
     // Check viewer count to decide protocol
     const session = STATE.sessions.find(s => s.sessionId === sessionId);

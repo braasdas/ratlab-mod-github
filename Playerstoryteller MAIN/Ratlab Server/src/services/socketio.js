@@ -8,6 +8,10 @@ function setupSocketIO(io) {
         // Send current sessions list (PUBLIC ONLY)
         sendSessionList(socket);
 
+        socket.on('get-sessions', () => {
+            sendSessionList(socket);
+        });
+
         // Handle viewer selecting a game session
         socket.on('select-session', (payload) => {
             // Support both string (legacy) and object payloads

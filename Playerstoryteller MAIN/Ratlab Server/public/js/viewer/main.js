@@ -6,6 +6,7 @@ import { handleMapImageUpdate } from './map.js';
 import { sendAction } from './interactions.js';
 import { selectSession, renderSessionsList } from './session.js';
 import { openContentBrowser, closeContentBrowser, selectBrowserItem } from './contentBrowser.js';
+import { updateActionButtonsCosts } from './actions.js';
 
 // ============================================
 // GLOBAL EVENT LISTENERS
@@ -145,7 +146,7 @@ socket.on('coin-update', (data) => {
 socket.on('economy-config-update', (data) => {
     if (data.actionCosts) {
         STATE.actionCosts = data.actionCosts;
-        // updateActionButtonsCosts(); 
+        updateActionButtonsCosts(); 
     }
 });
 

@@ -4,6 +4,7 @@ import { updateMyPawnUI } from './mypawn.js';
 import { updateMapOverlays } from './map.js';
 import { sendAction } from './interactions.js';
 import { showFeedback } from './ui.js';
+import { updateActionButtonsCosts } from './actions.js';
 
 let hasLoggedInitialState = false;
 
