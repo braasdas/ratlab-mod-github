@@ -2,6 +2,53 @@ import { STATE } from './state.js';
 import { showFeedback } from './ui.js';
 import { sendAction } from './interactions.js';
 
+let isMyPawnInitialized = false;
+
+export function initializeMyPawn() {
+    if (isMyPawnInitialized) return;
+    
+    const adoptBtnMain = document.getElementById('btn-adopt-request-main');
+    if (adoptBtnMain) {
+        adoptBtnMain.onclick = async () => {
+             if (!STATE.username) {
+                 showFeedback('error', 'LOGIN REQUIRED');
+                 return;
+             }
+             
+             adoptBtnMain.disabled = true;
+             const originalText = adoptBtnMain.innerHTML;
+             adoptBtnMain.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> PROCESSING';
+             
+             try {
+                // Request Adoption (Random/Next Available)
+                const res = await fetch(`/api/adoptions/${encodeURIComponent(STATE.currentSession)}/request`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: STATE.username })
+                });
+                
+                const result = await res.json();
+                
+                if (result.success) {
+                    showFeedback('success', 'UPLINK ESTABLISHED');
+                    // Force immediate status check if available, or wait for next poll/update
+                    // We assume main loop will handle UI switch
+                } else {
+                    showFeedback('error', result.error || 'CONNECTION FAILED');
+                }
+             } catch (e) {
+                 showFeedback('error', 'NETWORK ERROR');
+                 console.error(e);
+             } finally {
+                 adoptBtnMain.disabled = false;
+                 adoptBtnMain.innerHTML = originalText;
+             }
+        };
+    }
+    
+    isMyPawnInitialized = true;
+}
+
 export function updateMyPawnUI(gameState) {
     if (!STATE.myPawnId || !gameState.colonists) return;
 

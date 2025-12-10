@@ -7,6 +7,7 @@ import { sendAction } from './interactions.js';
 import { selectSession, renderSessionsList } from './session.js';
 import { openContentBrowser, closeContentBrowser, selectBrowserItem } from './contentBrowser.js';
 import { updateActionButtonsCosts } from './actions.js';
+import { initializeMyPawn } from './mypawn.js';
 
 // ============================================
 // GLOBAL EVENT LISTENERS
@@ -14,6 +15,9 @@ import { updateActionButtonsCosts } from './actions.js';
 
 // Window Load
 window.addEventListener('load', () => {
+    // Initialize My Pawn module (button listeners)
+    initializeMyPawn();
+
     // Check for direct session link
     const urlParams = new URLSearchParams(window.location.search);
     const directSessionId = urlParams.get('session');
@@ -147,6 +151,13 @@ socket.on('economy-config-update', (data) => {
     if (data.actionCosts) {
         STATE.actionCosts = data.actionCosts;
         updateActionButtonsCosts(); 
+    }
+});
+
+socket.on('viewer-count-update', (data) => {
+    if (STATE.currentSession && data.sessionId === STATE.currentSession) {
+        const countEl = document.getElementById('viewer-count');
+        if (countEl) countEl.textContent = `${data.viewerCount} WATCHING`;
     }
 });
 
