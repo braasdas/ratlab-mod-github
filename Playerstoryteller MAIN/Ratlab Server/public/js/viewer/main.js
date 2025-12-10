@@ -8,6 +8,7 @@ import { selectSession, renderSessionsList } from './session.js';
 import { openContentBrowser, closeContentBrowser, selectBrowserItem } from './contentBrowser.js';
 import { updateActionButtonsCosts } from './actions.js';
 import { initializeMyPawn } from './mypawn.js';
+import { initializeQueue } from './queue.js';
 
 // ============================================
 // GLOBAL EVENT LISTENERS
@@ -17,6 +18,9 @@ import { initializeMyPawn } from './mypawn.js';
 window.addEventListener('load', () => {
     // Initialize My Pawn module (button listeners)
     initializeMyPawn();
+    
+    // Initialize Queue module
+    initializeQueue();
 
     // Check for direct session link
     const urlParams = new URLSearchParams(window.location.search);
