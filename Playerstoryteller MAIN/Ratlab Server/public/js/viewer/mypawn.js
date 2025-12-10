@@ -31,8 +31,7 @@ export function initializeMyPawn() {
                 
                 if (result.success) {
                     showFeedback('success', 'UPLINK ESTABLISHED');
-                    // Force immediate status check if available, or wait for next poll/update
-                    // We assume main loop will handle UI switch
+                    checkAdoptionStatus(); // Immediate check
                 } else {
                     showFeedback('error', result.error || 'CONNECTION FAILED');
                 }
@@ -46,7 +45,50 @@ export function initializeMyPawn() {
         };
     }
     
+    // Start Polling
+    setInterval(checkAdoptionStatus, 5000);
+    
     isMyPawnInitialized = true;
+}
+
+export async function checkAdoptionStatus() {
+    if (!STATE.currentSession || !STATE.username) return;
+
+    try {
+        const res = await fetch(`/api/adoptions/${encodeURIComponent(STATE.currentSession)}/status/${encodeURIComponent(STATE.username)}`);
+        const data = await res.json();
+        
+        const cta = document.getElementById('adoption-cta');
+        const interfaceEl = document.getElementById('adoption-interface');
+
+        if (data.hasAdopted && data.adoption && data.adoption.pawnId) {
+            STATE.myPawnId = data.adoption.pawnId;
+            
+            if (cta) cta.classList.add('hidden');
+            if (interfaceEl) {
+                interfaceEl.classList.remove('hidden');
+                interfaceEl.classList.add('flex');
+            }
+            
+            // Also update tab button text if needed
+            const navBtnText = document.querySelector('[data-tab="my-pawn"] span');
+            if (navBtnText) navBtnText.textContent = "MY PAWN";
+
+        } else {
+            STATE.myPawnId = null;
+            
+            if (interfaceEl) {
+                interfaceEl.classList.add('hidden');
+                interfaceEl.classList.remove('flex');
+            }
+            if (cta) cta.classList.remove('hidden');
+             
+            const navBtnText = document.querySelector('[data-tab="my-pawn"] span');
+            if (navBtnText) navBtnText.textContent = "ADOPT";
+        }
+    } catch (e) {
+        console.error('Adoption check failed:', e);
+    }
 }
 
 export function updateMyPawnUI(gameState) {
