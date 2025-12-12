@@ -2,6 +2,13 @@ import { STATE } from './state.js';
 import { showFeedback } from './ui.js';
 import { sendAction } from './interactions.js';
 
+const PROFANITY_LIST = ['admin', 'system', 'moderator', 'nigger', 'faggot', 'retard', 'kike', 'spic', 'chink']; // Basic filter
+
+function containsProfanity(text) {
+    const lower = text.toLowerCase();
+    return PROFANITY_LIST.some(word => lower.includes(word));
+}
+
 let isMyPawnInitialized = false;
 
 export function initializeMyPawn() {
@@ -15,6 +22,14 @@ export function initializeMyPawn() {
                  return;
              }
              
+             const nicknameInput = document.getElementById('adoption-nickname');
+             let nickname = nicknameInput ? nicknameInput.value.trim() : null;
+
+             if (nickname && containsProfanity(nickname)) {
+                 showFeedback('error', 'INVALID NAME DETECTED');
+                 return;
+             }
+
              adoptBtnMain.disabled = true;
              const originalText = adoptBtnMain.innerHTML;
              adoptBtnMain.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> PROCESSING';
@@ -24,7 +39,10 @@ export function initializeMyPawn() {
                 const res = await fetch(`/api/adoptions/${encodeURIComponent(STATE.currentSession)}/request`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: STATE.username })
+                    body: JSON.stringify({ 
+                        username: STATE.username,
+                        nickname: nickname
+                    })
                 });
                 
                 const result = await res.json();
@@ -55,6 +73,33 @@ export function initializeMyPawn() {
 }
 
 function initializeActionButtons() {
+    // Rename Button
+    const btnRename = document.getElementById('btn-rename-pawn');
+    if (btnRename) {
+        btnRename.onclick = () => {
+            if (!STATE.myPawnId) return;
+            const newName = prompt("ENTER NEW IDENTITY ALIAS:");
+            if (newName) {
+                const cleanName = newName.trim();
+                if (cleanName.length < 2 || cleanName.length > 16) {
+                    showFeedback('error', 'INVALID LENGTH (2-16 CHARS)');
+                    return;
+                }
+                if (containsProfanity(cleanName)) {
+                    showFeedback('error', 'NAME REJECTED BY PROTOCOL');
+                    return;
+                }
+                
+                sendAction('colonist_command', JSON.stringify({
+                    type: 'rename',
+                    pawnId: STATE.myPawnId,
+                    newName: cleanName
+                }));
+                showFeedback('info', 'TRANSMITTING ALIAS UPDATE...');
+            }
+        };
+    }
+
     document.querySelectorAll('.btn-cmd').forEach(btn => {
         btn.addEventListener('click', () => {
             if (!STATE.myPawnId) return;

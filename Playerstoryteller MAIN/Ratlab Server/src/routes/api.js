@@ -351,7 +351,7 @@ module.exports = (io, definitionManager) => {
     // Player Action
     router.post('/api/action', (req, res) => {
         try {
-            const { sessionId, action, data, password } = req.body;
+            const { sessionId, action, data, password, username } = req.body;
             const clientIp = req.ip || req.connection.remoteAddress;
 
             // Rate Limit
@@ -377,18 +377,30 @@ module.exports = (io, definitionManager) => {
 
                 // Check if action is enabled
                 if (session.settings && session.settings.actions) {
-                    // Map JS action names to Mod setting names if necessary, or assume 1:1
-                    // The frontend sends camelCase (e.g. 'healColonist'), Mod uses snake_case (e.g. 'heal_colonist')
-                    // Or wait, in `sessionStore.js` defaults, they are snake_case.
-                    // Frontend `app.js` action buttons likely use camelCase or snake_case depending on `data-action`.
-                    // Let's convert camelCase to snake_case for lookup.
                     const settingKey = action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-                    
-                    // Special handling for mapped names if needed, but consistent naming is better.
-                    // Assuming session.settings.actions uses the keys from sessionStore.js (snake_case).
                     
                     if (session.settings.actions[settingKey] === false || session.settings.actions[action] === false) {
                          return res.status(403).json({ success: false, message: 'Action disabled by streamer.' });
+                    }
+
+                    // === ECONOMY CHECK ===
+                    if (session.economy && username) {
+                        const costs = session.economy.actionCosts || {};
+                        const cost = costs[action] !== undefined ? costs[action] : (costs[settingKey] !== undefined ? costs[settingKey] : 0);
+                        
+                        if (cost > 0) {
+                            const profile = session.economy.viewers.get(username);
+                            if (!profile) {
+                                return res.status(400).json({ success: false, message: 'User wallet not found. Please log in.' });
+                            }
+                            if (profile.coins < cost) {
+                                return res.status(402).json({ success: false, message: `Insufficient funds. Required: ${cost}, Balance: ${profile.coins}` });
+                            }
+                            
+                            // Deduct funds
+                            profile.coins -= cost;
+                            io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
+                        }
                     }
                 }
 
@@ -404,7 +416,7 @@ module.exports = (io, definitionManager) => {
                     timestamp: new Date()
                 });
                 
-                console.log(`Action queued for session ${sessionId}: ${action}`);
+                console.log(`Action queued for session ${sessionId}: ${action} (User: ${username || 'Anon'})`);
                 res.json({ success: true, message: 'Action queued.' });
             } else {
                 res.status(404).json({ success: false, message: 'Session not found.' });
@@ -597,6 +609,49 @@ module.exports = (io, definitionManager) => {
         res.json({ success: true });
     });
 
+    // Force Trigger Queue (Streamer)
+    router.post('/api/queue/:sessionId/force-trigger', (req, res) => {
+        const { sessionId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+        
+        const session = sessionStore.getSession(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (session.streamKey && session.streamKey !== streamKey) return res.status(403).json({ error: 'Unauthorized' });
+        
+        // Find top voted request
+        const pending = session.queue.requests.filter(r => r.status === 'pending');
+        if (pending.length === 0) return res.json({ success: true, message: 'Queue empty' });
+        
+        // Sort by votes (descending)
+        pending.sort((a, b) => {
+            const votesA = a.votes ? a.votes.filter(v => v.type === 'upvote').length - a.votes.filter(v => v.type === 'downvote').length : 0;
+            const votesB = b.votes ? b.votes.filter(v => v.type === 'upvote').length - b.votes.filter(v => v.type === 'downvote').length : 0;
+            return votesB - votesA;
+        });
+        
+        const winner = pending[0];
+        const index = session.queue.requests.indexOf(winner);
+        
+        if (index !== -1) {
+            // Execute Action
+            session.actions.push({
+                action: winner.action,
+                data: winner.data,
+                timestamp: new Date()
+            });
+            
+            // Remove from queue
+            session.queue.requests.splice(index, 1);
+            
+            // Broadcast update
+            io.to(sessionId).emit('queue-update', { queue: session.queue, triggered: true });
+            
+            log('info', `Queue forced: Executed ${winner.action} for session ${sessionId}`);
+        }
+        
+        res.json({ success: true });
+    });
+
     // Approve (Streamer)
     router.post('/api/queue/:sessionId/approve/:requestId', (req, res) => {
         const { sessionId, requestId } = req.params;
@@ -701,7 +756,7 @@ module.exports = (io, definitionManager) => {
     // Request Adoption
     router.post('/api/adoptions/:sessionId/request', (req, res) => {
         const { sessionId } = req.params;
-        const { username } = req.body;
+        const { username, nickname } = req.body;
         
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -724,9 +779,15 @@ module.exports = (io, definitionManager) => {
         io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
 
         // 4. Send Action to Game (Spawn new pawn)
+        // Payload: username and optional nickname
+        const payload = { 
+            username: username, 
+            nickname: nickname || null 
+        };
+
         session.actions.push({
             action: 'buyPawn',
-            data: username,
+            data: JSON.stringify(payload),
             timestamp: new Date()
         });
 

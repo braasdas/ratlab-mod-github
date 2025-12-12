@@ -462,6 +462,18 @@ namespace PlayerStoryteller
                             pawn.drafter.Drafted = !pawn.drafter.Drafted;
                         }
                         break;
+                    case "rename":
+                        if (!string.IsNullOrEmpty(data.newName))
+                        {
+                            string cleanName = SanitizeUserInput(data.newName);
+                            if (cleanName.Length > 0)
+                            {
+                                NameTriple currentName = pawn.Name as NameTriple;
+                                pawn.Name = new NameTriple(currentName?.First ?? "Viewer", cleanName, currentName?.Last ?? "Player");
+                                Messages.Message($"{currentName?.ToStringShort ?? "Colonist"} renamed to {cleanName}.", MessageTypeDefOf.NeutralEvent);
+                            }
+                        }
+                        break;
                 }
             }
             catch (Exception ex)
@@ -478,24 +490,41 @@ namespace PlayerStoryteller
         {
             try
             {
-                // Data format: "username" (simple string) or JSON {"username":"ben"}
                 string username = data;
+                string nickname = data;
+
+                // Attempt JSON parse
                 if (data.Trim().StartsWith("{"))
                 {
-                    // Simple manual JSON parse to avoid dependency issues
-                    if (data.Contains("\"username\""))
+                    try 
                     {
-                        int start = data.IndexOf("\"username\"") + 10;
-                        int valStart = data.IndexOf("\"", start) + 1;
-                        int valEnd = data.IndexOf("\"", valStart);
-                        if (valStart > 0 && valEnd > valStart)
+                        var buyData = JsonConvert.DeserializeObject<BuyPawnData>(data);
+                        if (buyData != null && !string.IsNullOrEmpty(buyData.username))
                         {
-                            username = data.Substring(valStart, valEnd - valStart);
+                            username = buyData.username;
+                            nickname = !string.IsNullOrEmpty(buyData.nickname) ? buyData.nickname : buyData.username;
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback to manual parsing
+                        if (data.Contains("\"username\""))
+                        {
+                             int start = data.IndexOf("\"username\"") + 10;
+                             int valStart = data.IndexOf("\"", start) + 1;
+                             int valEnd = data.IndexOf("\"", valStart);
+                             if (valStart > 0 && valEnd > valStart)
+                             {
+                                 username = data.Substring(valStart, valEnd - valStart);
+                                 nickname = username;
+                             }
                         }
                     }
                 }
                 
                 username = SanitizeUserInput(username);
+                nickname = SanitizeUserInput(nickname);
+                
                 if (string.IsNullOrEmpty(username)) return;
 
                 ViewerManager viewerManager = map.GetComponent<ViewerManager>();
@@ -529,7 +558,7 @@ namespace PlayerStoryteller
 
                 // Rename Pawn
                 NameTriple oldName = newPawn.Name as NameTriple;
-                newPawn.Name = new NameTriple(oldName?.First ?? "Viewer", username, oldName?.Last ?? "Player");
+                newPawn.Name = new NameTriple(oldName?.First ?? "Viewer", nickname, oldName?.Last ?? "Player");
 
                 // Spawn
                 IntVec3 spawnLoc;
@@ -542,7 +571,7 @@ namespace PlayerStoryteller
 
                     // Notify
                     string label = "Viewer Joined";
-                    string text = $"Viewer {username} has bought a ticket to the Rim! They have joined the colony.";
+                    string text = $"Viewer {username} has bought a ticket to the Rim! They have joined the colony as '{nickname}'.";
                     Find.LetterStack.ReceiveLetter(label, text, LetterDefOf.PositiveEvent, newPawn);
                     Messages.Message($"Viewer {username} has joined!", MessageTypeDefOf.PositiveEvent);
                 }
@@ -1366,11 +1395,19 @@ namespace PlayerStoryteller
     }
 
     [Serializable]
+    public class BuyPawnData
+    {
+        public string username;
+        public string nickname;
+    }
+
+    [Serializable]
     public class ColonistCommandData
     {
         public string pawnId;
         public string type;
         public string target; // Optional
+        public string newName; // Optional, for rename
         public Dictionary<string, int> priorities; // Optional
         public int hour; // Optional, for schedule
         public string assignment; // Optional, for schedule

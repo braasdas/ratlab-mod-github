@@ -75,7 +75,13 @@ function initializeActionPanel() {
 export function updateActionButtonsCosts() {
     document.querySelectorAll('.action-btn').forEach(btn => {
         const action = btn.dataset.action;
-        const cost = STATE.actionCosts[action];
+        let cost = STATE.actionCosts[action];
+        
+        // Fallback to snake_case if not found (e.g. healColonist -> heal_colonist)
+        if (cost === undefined) {
+            const snakeKey = action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            cost = STATE.actionCosts[snakeKey];
+        }
         
         // Check if badge already exists
         let badge = btn.querySelector('.cost-badge');

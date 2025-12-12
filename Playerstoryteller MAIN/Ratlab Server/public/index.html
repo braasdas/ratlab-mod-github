@@ -260,7 +260,7 @@
                                     <!-- Viewport Wrapper -->
                                     <div id="visual-viewport" class="relative flex-1 bg-black overflow-hidden">
                                         
-                                        <!-- CAMERA VIEW -->
+                                        <!-- CAMERA VIEW (Default Visible) -->
                                         <div class="view-layer absolute inset-0 flex items-center justify-center" id="view-camera">
                                             
                                             <!-- RESTORED ID: screenshot-frame for JS sizing -->
@@ -370,6 +370,12 @@
                                 <i class="fa-solid fa-user-astronaut text-6xl text-rat-green mb-6"></i>
                                 <h2 class="font-mono text-2xl text-white mb-2">ADOPT A COLONIST</h2>
                                 <p class="text-rat-text-dim mb-8">Take direct control of a subject. Monitor their vitals, manage their inventory, and guide their actions.</p>
+                                
+                                <div class="mb-6 w-full max-w-xs mx-auto">
+                                    <label class="block text-rat-text-dim text-xs font-mono mb-2 text-left">SUBJECT NICKNAME (OPTIONAL):</label>
+                                    <input type="text" id="adoption-nickname" class="w-full bg-black border border-rat-border rounded px-4 py-2 text-rat-green font-mono focus:border-rat-green outline-none uppercase text-center" placeholder="ENTER NICKNAME" maxlength="16">
+                                </div>
+
                                 <button id="btn-adopt-request-main" class="bg-rat-green text-black font-mono font-bold text-lg py-3 px-8 rounded hover:bg-white transition-all uppercase tracking-widest flex items-center gap-2 mx-auto">
                                     <span>INITIATE UPLINK</span>
                                     <span class="bg-black/20 px-2 py-1 rounded text-sm">1000c</span>
@@ -386,7 +392,12 @@
                                         <div class="w-full h-full flex items-center justify-center text-xs text-rat-green animate-pulse">SCANNING</div>
                                     </div>
                                     <div>
-                                        <h2 id="my-pawn-name" class="font-mono text-xl text-rat-green font-bold">UNKNOWN SUBJECT</h2>
+                                        <div class="flex items-center gap-3">
+                                            <h2 id="my-pawn-name" class="font-mono text-xl text-rat-green font-bold">UNKNOWN SUBJECT</h2>
+                                            <button id="btn-rename-pawn" class="text-rat-text-dim hover:text-white transition-colors" title="Rename Subject">
+                                                <i class="fa-solid fa-pen-nib"></i>
+                                            </button>
+                                        </div>
                                         <div class="flex gap-4 text-xs font-mono text-rat-text-dim mt-1">
                                             <span id="my-pawn-job" class="text-rat-yellow">ACTIVITY: IDLE</span>
                                             <span id="my-pawn-location">LOC: UNKNOWN</span>
@@ -418,7 +429,7 @@
                                     <!-- Live Feed Panel -->
                                     <div id="my-pawn-live-view-panel" class="bg-rat-panel border border-rat-border rounded p-4 hidden">
                                         <h3 class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
-                                            <span>LIVE OPTICAL FEED</span>
+                                            <span>LIVE OPTICAL FEED <span class="text-[10px] text-rat-text-dim italic normal-case ml-2">(WIP) temporarily disabled for performance</span></span>
                                             <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
                                         </h3>
                                         <div id="my-pawn-live-view-container" class="aspect-square bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
@@ -471,7 +482,7 @@
                                             <h3 class="font-mono text-rat-yellow text-sm">WORK PRIORITIES</h3>
                                             <span class="text-[10px] text-rat-text-dim uppercase">Drag to reorder</span>
                                         </div>
-                                        <div id="my-pawn-work-list" class="flex flex-col gap-1 text-xs font-mono h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                        <div id="my-pawn-work-list" class="flex flex-col gap-1 text-xs font-mono h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                                             <!-- Work types injected here -->
                                             <div class="p-2 bg-rat-dark text-rat-text-dim text-center">Fetching work data...</div>
                                         </div>
@@ -509,7 +520,7 @@
                                     <!-- Personal Log -->
                                     <div class="bg-rat-panel border border-rat-border rounded p-4 flex-1 flex flex-col">
                                         <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">PERSONAL LOG</h3>
-                                        <div id="my-pawn-log" class="flex-1 bg-black p-2 font-mono text-[10px] text-rat-text-dim overflow-y-auto custom-scrollbar h-[200px] border border-rat-border/50 rounded">
+                                        <div id="my-pawn-log" class="flex-1 bg-black p-2 font-mono text-[10px] text-rat-text-dim overflow-y-auto custom-scrollbar h-[150px] border border-rat-border/50 rounded">
                                             <div class="text-rat-green">> System linked.</div>
                                             <div class="text-rat-green">> Awaiting biometric data...</div>
                                         </div>

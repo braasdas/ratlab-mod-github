@@ -37,9 +37,31 @@ namespace PlayerStoryteller
                 // PERFORMANCE FIX: Simplified - only fetch colonists detailed
                 string colonistsJson = await apiClient.GetColonistsDetailed(mapId);
 
+                // Get Adoptions
+                var viewerManager = map.GetComponent<ViewerManager>();
+                string adoptionsJson = "";
+                if (viewerManager != null)
+                {
+                    var adoptions = viewerManager.GetAdoptionsList();
+                    if (adoptions.Count > 0)
+                    {
+                        var sb = new StringBuilder();
+                        sb.Append(",\"adoptions\":[");
+                        bool first = true;
+                        foreach (var kvp in adoptions)
+                        {
+                            if (!first) sb.Append(",");
+                            sb.Append($"{{\"username\":\"{kvp.Key}\",\"pawnId\":\"{kvp.Value}\"}}");
+                            first = false;
+                        }
+                        sb.Append("]");
+                        adoptionsJson = sb.ToString();
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(colonistsJson))
                 {
-                    string result = "{\"colonists\":" + colonistsJson + "}";
+                    string result = "{\"colonists\":" + colonistsJson + adoptionsJson + "}";
                     dataCache.SetFastData(result);
                 }
             }

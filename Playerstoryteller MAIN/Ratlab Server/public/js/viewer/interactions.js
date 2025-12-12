@@ -33,24 +33,7 @@ export async function sendAction(action, data, buttonElement) {
     }
 
     try {
-        if (cost > 0) {
-            const purchaseRes = await fetch(`/api/economy/${encodeURIComponent(STATE.currentSession)}/purchase`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: STATE.username, action, cost })
-            });
-            
-            if (!purchaseRes.ok) {
-                const errData = await purchaseRes.json();
-                showFeedback('error', errData.error || 'PURCHASE FAILED');
-                if (buttonElement) {
-                    buttonElement.disabled = false;
-                    buttonElement.classList.remove('sending');
-                }
-                return;
-            }
-        }
-
+        // Economy handled by server in /api/action now
         const response = await fetch('/api/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

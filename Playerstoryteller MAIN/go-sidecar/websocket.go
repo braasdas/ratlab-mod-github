@@ -110,7 +110,7 @@ func (w *WebSocketManager) readLoop() {
 	}
 }
 
-// SendData sends binary data over WebSocket with automatic chunking
+// SendData sends binary data over WebSocket
 func (w *WebSocketManager) SendData(data []byte) error {
 	w.connMutex.Lock()
 	defer w.connMutex.Unlock()
@@ -119,28 +119,7 @@ func (w *WebSocketManager) SendData(data []byte) error {
 		return fmt.Errorf("websocket not connected")
 	}
 
-	// WebSocket doesn't have the same message size limits as WebRTC DataChannel
-	// But we'll keep chunking for consistency and to avoid very large frames
-	const maxChunkSize = 60000 // 60KB chunks
-
-	if len(data) <= maxChunkSize {
-		return w.conn.WriteMessage(websocket.BinaryMessage, data)
-	}
-
-	// Send large segments in chunks
-	for offset := 0; offset < len(data); offset += maxChunkSize {
-		end := offset + maxChunkSize
-		if end > len(data) {
-			end = len(data)
-		}
-		chunk := data[offset:end]
-
-		if err := w.conn.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
-			return fmt.Errorf("failed to send chunk at offset %d: %v", offset, err)
-		}
-	}
-
-	return nil
+	return w.conn.WriteMessage(websocket.BinaryMessage, data)
 }
 
 // IsReady returns true if WebSocket is connected

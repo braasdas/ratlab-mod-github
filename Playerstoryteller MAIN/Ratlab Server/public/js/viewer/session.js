@@ -3,7 +3,7 @@ import { updateConnectionStatus, showLoading, hideLoading } from './ui.js';
 import { initializeStream, stopStream } from './stream.js';
 import { socket } from './socket.js';
 import { updateGameState } from './gameData.js';
-import { loadActionPanel } from './actions.js';
+import { loadActionPanel, updateActionButtonsCosts } from './actions.js';
 
 export function renderSessionsList() {
     const sessionsList = document.getElementById('sessions-list');
@@ -157,7 +157,7 @@ function fetchEconomyData(sessionId) {
         .then(data => {
             if (data.prices) {
                 STATE.actionCosts = data.prices;
-                // updateActionButtonsCosts(); // TODO: Implement if needed for statically rendered buttons
+                updateActionButtonsCosts(); 
             }
         })
         .catch(e => console.error('Error fetching prices:', e));

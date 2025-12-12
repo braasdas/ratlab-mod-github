@@ -133,6 +133,21 @@ namespace PlayerStoryteller
             return new Dictionary<string, Pawn>(runtimePawnCache);
         }
 
+        public Dictionary<string, string> GetAdoptionsList()
+        {
+            ValidatePawnCache();
+            var adoptions = new Dictionary<string, string>();
+            
+            foreach (var kvp in runtimePawnCache)
+            {
+                if (kvp.Value != null)
+                {
+                    adoptions[kvp.Key] = kvp.Value.thingIDNumber.ToString();
+                }
+            }
+            return adoptions;
+        }
+
         private void RebuildPawnCache()
         {
             if (viewerToPawnMap == null || map == null) return;

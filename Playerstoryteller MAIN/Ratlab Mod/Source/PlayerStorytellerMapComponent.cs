@@ -180,7 +180,7 @@ namespace PlayerStoryteller
                 bool shouldCapture = false;
                 try
                 {
-                    shouldCapture = PlayerStorytellerMod.settings.enableLiveScreen;
+                    shouldCapture = PlayerStorytellerMod.settings.enableMapRender;
                 }
                 catch (Exception ex)
                 {

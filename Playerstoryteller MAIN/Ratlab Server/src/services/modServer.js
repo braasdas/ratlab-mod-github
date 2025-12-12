@@ -127,7 +127,23 @@ function processModMessage(message, sessionId, io) {
             try {
                 session.gameState = JSON.parse(jsonString);
                 
-                // RECONCILIATION: Check for spawned viewers
+                // 1. SYNC: Process explicit adoptions from Mod (Manual & Auto)
+                if (session.gameState.adoptions && Array.isArray(session.gameState.adoptions)) {
+                    session.gameState.adoptions.forEach(adopt => {
+                        if (adopt.username && adopt.pawnId) {
+                            if (!session.adoptions.active.has(adopt.username)) {
+                                console.log(`[WS Mod] Syncing adoption: ${adopt.username} -> ${adopt.pawnId}`);
+                                session.adoptions.active.set(adopt.username, {
+                                    pawnId: adopt.pawnId,
+                                    name: 'Adopted Pawn', // Mod doesn't send name here, but frontend fetches it via ID
+                                    adoptedAt: new Date()
+                                });
+                            }
+                        }
+                    });
+                }
+
+                // 2. RECONCILIATION: Check for spawned viewers (Legacy/Fallback)
                 if (session.gameState.colonists && Array.isArray(session.gameState.colonists)) {
                     session.gameState.colonists.forEach(c => {
                         const colonist = c.colonist || c;

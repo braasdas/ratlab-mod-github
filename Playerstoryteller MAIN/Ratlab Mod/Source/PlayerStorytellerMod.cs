@@ -133,6 +133,17 @@ namespace PlayerStoryteller
 
             listingStandard.Gap(12f);
 
+            // Queue Control
+            if (listingStandard.ButtonText("Trigger Queue Now"))
+            {
+                TriggerQueueNow();
+            }
+            Text.Font = GameFont.Tiny;
+            listingStandard.Label("Immediately executes the top-voted action and resets the timer.");
+            Text.Font = GameFont.Small;
+
+            listingStandard.Gap(12f);
+
             // Server URL Config
             listingStandard.Label("Server URL:");
             settings.serverUrl = listingStandard.TextEntry(settings.serverUrl);
@@ -143,6 +154,7 @@ namespace PlayerStoryteller
             
             listingStandard.Gap(6f);
             listingStandard.CheckboxLabeled("Dev Mode (Use localhost:3000)", ref settings.devMode);
+            listingStandard.CheckboxLabeled("Enable Map Render (may cause visual glitches)", ref settings.enableMapRender);
 
             listingStandard.Gap(24f);
 
@@ -573,6 +585,38 @@ namespace PlayerStoryteller
             return "default-session";
         }
 
+        public static async void TriggerQueueNow()
+        {
+            try
+            {
+                string sessionId = GetSessionId();
+                if (string.IsNullOrEmpty(sessionId)) return;
+
+                string serverUrl = GetServerUrl();
+                string url = $"{serverUrl}/api/queue/{Uri.EscapeDataString(sessionId)}/force-trigger";
+
+                var request = new HttpRequestMessage(HttpMethod.Post, url);
+                request.Headers.Add("x-stream-key", settings.secretKey);
+
+                var response = await httpClient.SendAsync(request);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Messages.Message("Queue triggered successfully.", MessageTypeDefOf.PositiveEvent);
+                }
+                else
+                {
+                    Messages.Message("Failed to trigger queue.", MessageTypeDefOf.RejectInput);
+                    Log.Error($"[Player Storyteller] Failed to trigger queue. Status: {response.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error triggering queue: {ex.Message}");
+                Messages.Message("Error triggering queue.", MessageTypeDefOf.RejectInput);
+            }
+        }
+
         public static async Task<List<PlayerAction>> GetPlayerActionsAsync()
         {
             try
@@ -872,6 +916,7 @@ namespace PlayerStoryteller
         public float staticDataInterval = 45.0f;
 
         public bool enableLiveScreen = true;
+        public bool enableMapRender = false;
 
         // Stream privacy settings
         public bool isPublicStream = true;
@@ -1049,6 +1094,7 @@ namespace PlayerStoryteller
             Scribe_Values.Look(ref staticDataInterval, "staticDataInterval", 45.0f);
 
             Scribe_Values.Look(ref enableLiveScreen, "enableLiveScreen", true);
+            Scribe_Values.Look(ref enableMapRender, "enableMapRender", false);
             Scribe_Values.Look(ref isPublicStream, "isPublicStream", true);
             Scribe_Values.Look(ref privateStreamId, "privateStreamId", "");
             Scribe_Values.Look(ref devMode, "devMode", false);
