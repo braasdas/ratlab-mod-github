@@ -1,15 +1,16 @@
 import { STATE } from './state.js';
 import { CONFIG } from './config.js';
 import { showFeedback, hideLoading } from './ui.js';
-import { updateConnectionStatus } from './ui.js';
+
+// Local state for stream logic (mirrors the old global variables)
+let stuckCounter = 0;
+let lastVideoTime = 0;
+let streamMonitorInterval = null;
 
 export function initializeStream(sessionId) {
     if (STATE.useHLS) {
         initializeHLS(sessionId);
     } else {
-        // Fallback or explicit WebSocket/WebRTC (Currently WS/MSE is the primary low-latency method)
-        // Note: The original app.js had WebRTC code, but based on recent memories/commits, 
-        // the go-sidecar sends fMP4 via WebSocket. So we implement the WebSocket + MSE logic here.
         initializeWebSocket(sessionId);
     }
 }
@@ -23,6 +24,11 @@ export function stopStream() {
     if (STATE.hls) {
         STATE.hls.destroy();
         STATE.hls = null;
+    }
+
+    if (streamMonitorInterval) {
+        clearInterval(streamMonitorInterval);
+        streamMonitorInterval = null;
     }
 
     cleanupMediaSource(true);
@@ -41,7 +47,6 @@ function initializeWebSocket(sessionId) {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     // Direct WebSocket Stream (Binary fMP4)
-    // NOTE: Server expects 'session' param, not 'sessionId'
     STATE.streamWebSocket = new WebSocket(`${protocol}//${window.location.host}/stream?session=${sessionId}`);
     STATE.streamWebSocket.binaryType = 'arraybuffer'; // Crucial for MSE
 
@@ -55,6 +60,7 @@ function initializeWebSocket(sessionId) {
         
         // Initialize MSE immediately
         initializeMediaSource();
+        startStreamMonitor();
     };
 
     STATE.streamWebSocket.onmessage = (event) => {
@@ -62,11 +68,24 @@ function initializeWebSocket(sessionId) {
         handleH264Data(event.data);
     };
     
-    STATE.streamWebSocket.onclose = () => {
-         console.log('[Stream] WebSocket Closed');
+    STATE.streamWebSocket.onclose = (event) => {
+         console.log(`[Stream] WebSocket Closed (Code: ${event.code})`);
          STATE.streamConnected = false;
          updateStreamStatus(false);
          cleanupMediaSource(true);
+         
+         if (streamMonitorInterval) {
+            clearInterval(streamMonitorInterval);
+            streamMonitorInterval = null;
+        }
+
+         // Simple auto-reconnect
+         if (STATE.currentSession && !STATE.useHLS) {
+             setTimeout(() => {
+                 console.log('[Stream] Attempting to reconnect...');
+                 initializeWebSocket(sessionId);
+             }, 2000);
+         }
     };
 
     STATE.streamWebSocket.onerror = (error) => {
@@ -80,9 +99,11 @@ function initializeWebSocket(sessionId) {
 // ============================================================================
 
 function initializeMediaSource() {
+    // Baseline Profile Level 3.0 (Most compatible)
     const mimeCodec = 'video/mp4; codecs="avc1.42E01E"'; 
     
     if (!window.MediaSource || !MediaSource.isTypeSupported(mimeCodec)) {
+        console.error(`[MSE] MimeType ${mimeCodec} not supported`);
         showFeedback('error', 'Video streaming not supported');
         return;
     }
@@ -102,9 +123,11 @@ function initializeMediaSource() {
     }
     video.src = URL.createObjectURL(STATE.mediaSource);
     video.style.display = 'block';
+    
+    // Force video element to be visible and ready
     video.controls = false;
     video.autoplay = true;
-    video.muted = true;
+    video.muted = true; // Required for autoplay
     video.playsInline = true;
 
     const streamDisabledOverlay = document.getElementById('stream-disabled');
@@ -114,6 +137,7 @@ function initializeMediaSource() {
     }
 
     STATE.mediaSource.addEventListener('sourceopen', () => {
+        console.log(`[MSE] Media Source opened (readyState: ${STATE.mediaSource.readyState})`);
         try {
             if (STATE.sourceBuffer) return; 
 
@@ -121,17 +145,27 @@ function initializeMediaSource() {
             STATE.sourceBuffer.mode = 'segments';
             
             STATE.sourceBuffer.addEventListener('updateend', () => {
-                if (STATE.sourceBuffer && !STATE.sourceBuffer.updating && STATE.mediaSource.readyState === 'open') {
-                    const video = document.getElementById('game-screenshot');
-                    if (STATE.sourceBuffer.buffered.length > 0 && video.paused && video.readyState >= 2) {
-                        video.play().catch(e => {});
+                try {
+                    if (STATE.sourceBuffer && !STATE.sourceBuffer.updating && STATE.mediaSource.readyState === 'open') {
+                        const video = document.getElementById('game-screenshot');
+                        // Automatically start playback when buffer is available
+                        if (STATE.sourceBuffer.buffered.length > 0 && video.paused && video.readyState >= 2) {
+                            video.play().catch(e => console.log('[MSE] Play prevented:', e));
+                        }
                     }
+                } catch(e) {
+                     console.warn('[MSE] Error in updateend:', e);
                 }
                 processH264Queue();
             });
 
+            STATE.sourceBuffer.addEventListener('error', (e) => {
+                console.error('[MSE] SourceBuffer error:', e);
+            });
+
             // Re-append Init Segment on restart/late join
             if (STATE.cachedInitSegment) {
+                console.log(`[MSE] Restoring Init Segment (${STATE.cachedInitSegment.byteLength} bytes)`);
                 STATE.h264Queue.unshift(STATE.cachedInitSegment);
             }
 
@@ -151,7 +185,9 @@ function initializeMediaSource() {
 
 function handleH264Data(arrayBuffer) {
     try {
+        // Recovery: Restart MediaSource if closed but we have buffer state
         if (!STATE.mediaSource || (STATE.mediaSource.readyState === 'closed' && STATE.sourceBuffer)) {
+            console.warn('[MSE] MediaSource is closed. Attempting restart...');
             cleanupMediaSource();
             initializeMediaSource();
             STATE.stickyBuffer = new Uint8Array(0);
@@ -166,6 +202,13 @@ function handleH264Data(arrayBuffer) {
              newBuffer.set(chunk, STATE.stickyBuffer.length);
              STATE.stickyBuffer = newBuffer;
              return;
+        }
+
+        // Diagnostic: First Packet
+        if (!STATE.initSegmentReceived && STATE.stickyBuffer.length === 0) {
+             const debugView = new Uint8Array(arrayBuffer.slice(0, 8));
+             const asciiHeader = Array.from(debugView).map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
+             console.log(`[MSE DEBUG] First Packet Received (${arrayBuffer.byteLength} bytes). Header: ${asciiHeader}`);
         }
 
         const chunk = new Uint8Array(arrayBuffer);
@@ -201,6 +244,7 @@ function parseAtoms() {
         const atomType = String.fromCharCode(atom[4], atom[5], atom[6], atom[7]);
         
         if (atomType === 'ftyp' || atomType === 'moov') {
+            console.log(`[MSE] Received Init Atom: ${atomType} (${atomSize} bytes)`);
             STATE.initSegmentReceived = true;
 
             if (atomType === 'ftyp') {
@@ -217,6 +261,7 @@ function parseAtoms() {
         } 
         else if (atomType === 'moof') {
              if (!STATE.initSegmentReceived && !STATE.cachedInitSegment) {
+                 // Drop packet if no init segment yet
                  continue; 
              }
         }
@@ -255,30 +300,47 @@ function processH264Queue() {
     } catch (err) {
         console.error('[MSE] Error appending buffer:', err);
         if (err.name === 'QuotaExceededError') {
+            console.warn('[MSE] Buffer full. Cleaning up...');
             removeOldBuffer();
-            STATE.h264Queue.unshift(nextChunk);
+            STATE.h264Queue.unshift(nextChunk); // Retry
         } else if (err.name === 'InvalidStateError') {
+            console.error('[MSE] Invalid State. Resetting.');
             cleanupMediaSource();
+            initializeMediaSource();
         }
     }
 }
 
 function removeOldBuffer() {
-    if (STATE.sourceBuffer && !STATE.sourceBuffer.updating && STATE.sourceBuffer.buffered.length > 0) {
-        try {
-            const start = STATE.sourceBuffer.buffered.start(0);
-            const end = STATE.sourceBuffer.buffered.end(0);
-            if (end - start > 10) {
-                STATE.sourceBuffer.remove(start, end - 5);
+    if (!STATE.sourceBuffer || STATE.sourceBuffer.updating) return;
+    
+    const video = document.getElementById('game-screenshot');
+    if (!video) return;
+
+    try {
+        const buffered = STATE.sourceBuffer.buffered;
+        if (buffered.length > 0) {
+            const start = buffered.start(0);
+            const currentTime = video.currentTime;
+            
+            // Keep last 30 seconds
+            const removeUntil = Math.max(start, currentTime - 30);
+            
+            if (removeUntil > start) {
+                console.log(`[MSE] Removing buffer from ${start.toFixed(2)} to ${removeUntil.toFixed(2)}`);
+                STATE.sourceBuffer.remove(start, removeUntil);
             }
-        } catch (e) {}
+        }
+    } catch (e) {
+        console.error('[MSE] Error removing buffer:', e);
     }
 }
 
 function cleanupMediaSource(full = false) {
+    console.log(`[MSE] Cleaning up (Full: ${full})`);
     if (STATE.sourceBuffer) {
         try {
-            if (STATE.mediaSource.readyState === 'open') {
+            if (STATE.mediaSource && STATE.mediaSource.readyState === 'open') {
                 STATE.mediaSource.removeSourceBuffer(STATE.sourceBuffer);
             }
         } catch(e) {}
@@ -292,37 +354,112 @@ function cleanupMediaSource(full = false) {
     }
 }
 
+function startStreamMonitor() {
+    if (streamMonitorInterval) clearInterval(streamMonitorInterval);
+
+    stuckCounter = 0;
+    lastVideoTime = 0;
+
+    streamMonitorInterval = setInterval(() => {
+        const video = document.getElementById('game-screenshot');
+        if (!video || !STATE.sourceBuffer || !STATE.useWebSocket) return;
+
+        try {
+            const buffered = STATE.sourceBuffer.buffered;
+            if (buffered.length > 0) {
+                const bufferEnd = buffered.end(buffered.length - 1);
+                const currentTime = video.currentTime;
+                const latency = bufferEnd - currentTime;
+
+                // Detect stuck playback
+                if (!video.paused) {
+                    if (Math.abs(currentTime - lastVideoTime) < 0.01) {
+                        stuckCounter++;
+                        if (stuckCounter > 2) { // Stuck for 2+ seconds
+                            console.warn('[MSE] Playback stuck! Attempting recovery...');
+                            video.currentTime = bufferEnd - 0.1;
+                            stuckCounter = 0;
+                        }
+                    } else {
+                        stuckCounter = 0;
+                    }
+                } else {
+                    // Try to auto-resume if paused
+                    console.log('[MSE] Video paused with buffer. Attempting play...');
+                    video.play().catch(() => {
+                        if (!video.muted) {
+                             video.muted = true;
+                             video.play().catch(() => {});
+                        }
+                    });
+                    
+                    if (latency > 1.0) {
+                        video.currentTime = bufferEnd - 0.1;
+                    }
+                }
+                lastVideoTime = currentTime;
+
+                // Aggressive latency control
+                if (latency > 0.6 && !video.paused) {
+                    console.log(`[MSE] Latency high (${latency.toFixed(2)}s), seeking to live edge`);
+                    video.currentTime = bufferEnd - 0.1;
+                }
+            }
+        } catch (e) {
+            // console.error('[MSE] Monitor error:', e);
+        }
+    }, 1000);
+}
+
 function updateStreamStatus(active) {
-    // Logic to update UI indicator if it exists
-    // Currently handled mostly by feedback toasts
+    // Logic to update UI indicator
 }
 
 function initializeHLS(sessionId) {
     const video = document.getElementById('game-screenshot');
-    const hlsUrl = `${CONFIG.BUNNY_PULL_ZONE}/${sessionId}/stream.m3u8`;
+    // Using sessionId as the stream key (folder name) in Pull Zone
+    const hlsUrl = `${CONFIG.BUNNY_PULL_ZONE}/${sessionId}/playlist.m3u8`;
 
     if (Hls.isSupported()) {
         if (STATE.hls) STATE.hls.destroy();
         
         STATE.hls = new Hls({
-            lowLatencyMode: true,
-            backBufferLength: 90
+            lowLatencyMode: false, // Stable mode
+            backBufferLength: 60,
+            maxBufferLength: 60,
+            maxMaxBufferLength: 120,
+            manifestLoadingTimeOut: 10000
         });
         
         STATE.hls.loadSource(hlsUrl);
         STATE.hls.attachMedia(video);
         
+        STATE.hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+             video.muted = true;
+             video.play().catch(() => {});
+        });
+
         STATE.hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch(() => {});
             hideLoading();
-            showFeedback('success', 'HLS Stream Connected');
+            showFeedback('success', 'CDN Stream Connected');
             STATE.streamConnected = true;
         });
         
         STATE.hls.on(Hls.Events.ERROR, (event, data) => {
             if (data.fatal) {
-                 showFeedback('error', 'Stream Error');
-                 STATE.streamConnected = false;
+                 switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.log('[HLS] Network error, trying to recover...');
+                        STATE.hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.log('[HLS] Media error, trying to recover...');
+                        STATE.hls.recoverMediaError();
+                        break;
+                    default:
+                        STATE.hls.destroy();
+                        break;
+                }
             }
         });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

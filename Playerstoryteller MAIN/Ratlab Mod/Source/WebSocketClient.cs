@@ -18,7 +18,7 @@ namespace PlayerStoryteller
         private string wsUrl;
         private bool isPublic;
         private bool isConnecting;
-        private volatile bool isSending; // Prevent overlapping sends (Backpressure)
+        private SemaphoreSlim sendLock = new SemaphoreSlim(1, 1); // Allow 1 concurrent send
         private CancellationTokenSource cts;
         private byte[] sessionBytes;
         private long lastConnectAttempt;
@@ -98,10 +98,9 @@ namespace PlayerStoryteller
 
         public async void SendImage(byte[] imageDataBuffer, int length)
         {
-            if (isSending) return; // Drop frame if previous send is still in progress
             if (!IsConnected) { Connect(); return; }
 
-            isSending = true;
+            await sendLock.WaitAsync();
             try
             {
                 // Combine header and data into ONE packet
@@ -124,18 +123,22 @@ namespace PlayerStoryteller
             }
             finally
             {
-                isSending = false;
+                sendLock.Release();
             }
         }
 
         public async void SendMapImage(byte[] imageDataBuffer, int length)
         {
-            if (isSending) return; 
-            if (!IsConnected) return;
+            if (!IsConnected) 
+            {
+                Log.Warning("[Player Storyteller] SendMapImage: WebSocket not connected. Dropping map update.");
+                return; // Don't auto-connect on heavy payload to avoid spam loop
+            }
 
-            isSending = true;
+            await sendLock.WaitAsync();
             try
             {
+                // Log.Message($"[Player Storyteller] Sending Map Packet via WS. Len: {length}");
                 int headerLen = 1 + sessionBytes.Length;
                 byte[] packet = new byte[headerLen + length];
                 
@@ -144,24 +147,29 @@ namespace PlayerStoryteller
                 Array.Copy(imageDataBuffer, 0, packet, headerLen, length);
 
                 await ws.SendAsync(new ArraySegment<byte>(packet), WebSocketMessageType.Binary, true, cts.Token);
+                // Log.Message("[Player Storyteller] Map Packet Sent.");
             }
-            catch
+            catch (Exception ex)
             {
+                 Log.Error($"[Player Storyteller] SendMapImage Failed: {ex.Message}");
                  try { ws.Dispose(); } catch {}
                  ws = null;
             }
             finally
             {
-                isSending = false;
+                sendLock.Release();
             }
         }
 
         public async void SendGameState(string json)
         {
-            if (isSending) return; // Drop update if busy
             if (!IsConnected) return;
 
-            isSending = true;
+            // Optional: Skip lock wait if busy for game state (drop frame strategy)
+            // if (!sendLock.Wait(0)) return; 
+            // Better to wait but with timeout? No, just queue it.
+            
+            await sendLock.WaitAsync();
             try
             {
                 byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
@@ -185,7 +193,7 @@ namespace PlayerStoryteller
             }
             finally
             {
-                isSending = false;
+                sendLock.Release();
             }
         }
     }

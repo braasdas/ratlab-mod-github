@@ -107,10 +107,21 @@ export function closeContentBrowser() {
 }
 
 export function selectBrowserItem(id, type, cost, label) {
+    let actionName = '';
+    let actionData = id; // Default to passing ID string
+
+    if (type === 'weather') {
+        actionName = 'change_weather_dynamic';
+    } else if (type === 'animal') {
+        actionName = 'spawn_pawn_dynamic';
+    } else {
+        actionName = 'trigger_incident_dynamic';
+    }
+
     const event = new CustomEvent('ratlab:action', {
         detail: {
-            action: type === 'weather' ? id : (type === 'animal' ? 'spawn_animal' : 'trigger_event'),
-            data: type === 'animal' ? { defName: id, count: 1 } : { defName: id },
+            action: actionName,
+            data: actionData,
             cost: cost
         }
     });

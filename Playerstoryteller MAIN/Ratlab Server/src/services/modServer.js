@@ -126,6 +126,43 @@ function processModMessage(message, sessionId, io) {
             const jsonString = jsonBuffer.toString('utf8');
             try {
                 session.gameState = JSON.parse(jsonString);
+                
+                // RECONCILIATION: Check for spawned viewers
+                if (session.gameState.colonists && Array.isArray(session.gameState.colonists)) {
+                    session.gameState.colonists.forEach(c => {
+                        const colonist = c.colonist || c;
+                        const nickname = colonist.name ? (colonist.name.nick || colonist.name) : null;
+                        const pawnId = colonist.id || colonist.pawn_id;
+
+                        if (nickname && pawnId) {
+                            // Check if this pawn is named after a viewer who isn't registered as adopting yet
+                            // (e.g. they bought the pawn, action sent, pawn spawned, now we link them)
+                            
+                            // We check if the nickname matches a known viewer profile
+                            // AND if that viewer doesn't already have an active adoption record linked
+                            
+                            if (session.economy.viewers.has(nickname) && !session.adoptions.active.has(nickname)) {
+                                console.log(`[WS Mod] Auto-linking viewer ${nickname} to pawn ${pawnId}`);
+                                session.adoptions.active.set(nickname, {
+                                    pawnId: pawnId,
+                                    name: colonist.name,
+                                    adoptedAt: new Date()
+                                });
+                            }
+                            
+                            // Self-healing: Update ID if name matches but ID changed (e.g. save reload?)
+                            if (session.adoptions.active.has(nickname)) {
+                                const record = session.adoptions.active.get(nickname);
+                                if (String(record.pawnId) !== String(pawnId)) {
+                                    // console.log(`[WS Mod] Updating ID for ${nickname}: ${record.pawnId} -> ${pawnId}`);
+                                    record.pawnId = pawnId;
+                                    record.name = colonist.name;
+                                }
+                            }
+                        }
+                    });
+                }
+
                 io.emit('gamestate-update', {
                     sessionId,
                     gameState: session.gameState,

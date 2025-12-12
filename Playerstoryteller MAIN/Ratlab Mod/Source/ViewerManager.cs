@@ -123,8 +123,46 @@ namespace PlayerStoryteller
         /// </summary>
         public Dictionary<string, Pawn> GetActivePawns()
         {
+            // Try to recover cache from persistent data if it seems empty but we have records
+            if (runtimePawnCache.Count < viewerToPawnMap.Count)
+            {
+                RebuildPawnCache();
+            }
+
             ValidatePawnCache(); // Ensure we don't return dead pawns
             return new Dictionary<string, Pawn>(runtimePawnCache);
+        }
+
+        private void RebuildPawnCache()
+        {
+            if (viewerToPawnMap == null || map == null) return;
+
+            // Only look for pawns on this map to avoid cross-map issues
+            // and ensure we only render what this map component controls
+            var potentialPawns = map.mapPawns.AllPawnsSpawned;
+
+            foreach (var kvp in viewerToPawnMap)
+            {
+                string username = kvp.Key;
+                
+                // Skip if already valid in cache
+                if (runtimePawnCache.TryGetValue(username, out Pawn cached) && cached != null && !cached.Dead && !cached.Destroyed)
+                {
+                    continue;
+                }
+
+                string savedName = kvp.Value;
+                
+                // Try to find matching pawn on this map by name
+                // Name.ToString() usually returns "First 'Nick' Last" or "First Last"
+                Pawn match = potentialPawns.FirstOrDefault(p => p.Name != null && p.Name.ToString() == savedName);
+                
+                if (match != null)
+                {
+                    runtimePawnCache[username] = match;
+                    Log.Message($"[Player Storyteller] Reconnected viewer {username} to pawn {match.Name.ToStringShort}");
+                }
+            }
         }
 
         private void ValidatePawnCache()

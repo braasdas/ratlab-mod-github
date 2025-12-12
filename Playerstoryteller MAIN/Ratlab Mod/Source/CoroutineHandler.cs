@@ -91,13 +91,13 @@ namespace PlayerStoryteller
 
         private class CoroutineInstance : Coroutine
         {
-            private IEnumerator routine;
+            private Stack<IEnumerator> executionStack = new Stack<IEnumerator>();
             private float waitUntilTime;
             public bool stopped;
 
             public CoroutineInstance(IEnumerator routine)
             {
-                this.routine = routine;
+                executionStack.Push(routine);
                 this.waitUntilTime = 0f; // Ready to run immediately
             }
 
@@ -110,16 +110,36 @@ namespace PlayerStoryteller
             public bool MoveNext(float currentTime)
             {
                 if (stopped) return false;
+                if (executionStack.Count == 0) return false;
 
-                // Move to next yield
-                if (!routine.MoveNext())
+                // Process the top of the stack
+                IEnumerator top = executionStack.Peek();
+
+                if (!top.MoveNext())
                 {
-                    return false; // Coroutine finished
+                    // This routine finished, pop it and continue parent
+                    executionStack.Pop();
+                    
+                    if (executionStack.Count == 0) return false; // All done
+                    
+                    // Immediately try to move parent (or handle its current state)
+                    // But usually, we just wait for next tick. 
+                    // Actually, if we just popped, we should probably run the parent immediately 
+                    // to avoid 1-tick gaps, but for simplicity let's wait.
+                    waitUntilTime = currentTime;
+                    return true;
                 }
 
-                // Process the yield instruction and set next wake time
-                var current = routine.Current;
-                if (current is WaitForSeconds waitForSeconds)
+                // Process the yield instruction
+                var current = top.Current;
+
+                if (current is IEnumerator nested)
+                {
+                    // Nested coroutine detected: Push to stack
+                    executionStack.Push(nested);
+                    waitUntilTime = currentTime; // Run nested immediately next tick
+                }
+                else if (current is WaitForSeconds waitForSeconds)
                 {
                     waitUntilTime = currentTime + GetWaitTime(waitForSeconds);
                 }
@@ -130,7 +150,7 @@ namespace PlayerStoryteller
                 }
                 else
                 {
-                    // No yield or null, ready immediately
+                    // No yield or null (or just a frame wait), ready immediately
                     waitUntilTime = currentTime;
                 }
 

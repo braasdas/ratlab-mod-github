@@ -145,6 +145,56 @@ export async function checkAdoptionStatus() {
     }
 }
 
+// Standard RimWorld Work Types Mapping (Display Names)
+const WORK_TYPE_MAPPING = {
+    "1": "Firefight",
+    "2": "Patient",
+    "3": "Doctor",
+    "4": "Bed Rest",
+    "5": "Haul+",
+    "6": "Basic",
+    "7": "Warden",
+    "8": "Handle",
+    "9": "Cook",
+    "10": "Hunt",
+    "11": "Construct",
+    "12": "Grow",
+    "13": "Mine",
+    "14": "Plant Cut",
+    "15": "Smith",
+    "16": "Tailor",
+    "17": "Art",
+    "18": "Craft",
+    "19": "Haul",
+    "20": "Clean",
+    "21": "Research"
+};
+
+// RimWorld WorkTypeDef Names (Backend Keys)
+const WORK_DEF_MAPPING = {
+    "1": "Firefighter",
+    "2": "Patient",
+    "3": "Doctor",
+    "4": "PatientBedRest",
+    "5": "HaulUrgent", // Common modded work type (Allow Tool)
+    "6": "BasicWorker",
+    "7": "Warden",
+    "8": "Handling",
+    "9": "Cooking",
+    "10": "Hunting",
+    "11": "Construction",
+    "12": "Growing",
+    "13": "Mining",
+    "14": "PlantCutting",
+    "15": "Smithing",
+    "16": "Tailoring",
+    "17": "Art",
+    "18": "Crafting",
+    "19": "Hauling",
+    "20": "Cleaning",
+    "21": "Research"
+};
+
 export function updateMyPawnUI(gameState) {
     if (!STATE.myPawnId || !gameState.colonists) return;
 
@@ -346,11 +396,17 @@ export function updateMyPawnUI(gameState) {
     const saveBtn = document.getElementById('btn-save-priorities');
     
     // Only render if list is empty or completely changed (to avoid wiping user input while typing)
-    const hasInputs = workList.querySelector('input');
+    const hasInputs = workList.querySelector('.work-priority-input');
     
     if (workList && workInfo.work_priorities && !hasInputs) {
         // Sort by key for consistent order
-        const entries = Object.entries(workInfo.work_priorities).sort((a, b) => a[0].localeCompare(b[0]));
+        // Use numeric sort if keys are numbers
+        const entries = Object.entries(workInfo.work_priorities).sort((a, b) => {
+             const nA = parseInt(a[0]);
+             const nB = parseInt(b[0]);
+             if (!isNaN(nA) && !isNaN(nB)) return nA - nB;
+             return a[0].localeCompare(b[0]);
+        });
 
         workList.innerHTML = entries.map(([job, rawPrio]) => {
             let prio = rawPrio;
@@ -358,11 +414,20 @@ export function updateMyPawnUI(gameState) {
                 prio = rawPrio.priority !== undefined ? rawPrio.priority : (rawPrio.value !== undefined ? rawPrio.value : 3);
             }
             
+            // Map Job Name
+            const jobName = WORK_TYPE_MAPPING[job] || job;
+            
             return `
             <div class="flex justify-between items-center bg-rat-dark border border-rat-border px-2 py-1 rounded mb-1">
-                <span class="text-xs text-rat-text-dim">${job}</span>
-                <input type="number" min="0" max="4" value="${prio}" data-job="${job}" 
-                    class="work-priority-input w-12 bg-black border border-rat-border text-center text-rat-green font-bold text-xs focus:border-rat-green outline-none">
+                <span class="text-xs text-rat-text-dim">${jobName}</span>
+                <select data-job="${job}" 
+                    class="work-priority-input w-12 bg-black border border-rat-border text-center text-rat-green font-bold text-xs focus:border-rat-green outline-none appearance-none">
+                    <option value="0" ${prio == 0 ? 'selected' : ''}>-</option>
+                    <option value="1" ${prio == 1 ? 'selected' : ''}>1</option>
+                    <option value="2" ${prio == 2 ? 'selected' : ''}>2</option>
+                    <option value="3" ${prio == 3 ? 'selected' : ''}>3</option>
+                    <option value="4" ${prio == 4 ? 'selected' : ''}>4</option>
+                </select>
             </div>
             `;
         }).join('');
@@ -385,7 +450,10 @@ async function saveWorkPriorities() {
         const job = input.dataset.job;
         const val = parseInt(input.value);
         if (!isNaN(val)) {
-            priorities[job] = val;
+            // Translate the numeric ID (from frontend) to the DefName (for backend)
+            // If no mapping found, fallback to original key (though unlikely to work if backend needs DefName)
+            const defName = WORK_DEF_MAPPING[job] || job;
+            priorities[defName] = val;
         }
     });
 

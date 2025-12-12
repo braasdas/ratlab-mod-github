@@ -519,6 +519,7 @@ export async function showColonistSnapshot(colonistDetailed, pawnId) {
                 // In a real implementation, you might have a dedicated adoption endpoint
                 
                 await sendAction('adopt_colonist', JSON.stringify({
+                    username: STATE.username,
                     pawnId: pawnId,
                     cost: cost
                 }));

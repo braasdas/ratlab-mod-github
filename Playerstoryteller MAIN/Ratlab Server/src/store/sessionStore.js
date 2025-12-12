@@ -173,9 +173,10 @@ class SessionStore extends EventEmitter {
             },
             queue: {
                 requests: [], // Array of pending requests
+                lastProcessed: new Date(),
                 settings: {
                     voteDuration: 600,
-                    autoExecute: false,
+                    autoExecute: true,
                     maxQueueSize: 20,
                     allowedTypes: ['action', 'suggestion']
                 }

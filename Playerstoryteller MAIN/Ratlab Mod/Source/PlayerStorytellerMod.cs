@@ -337,7 +337,13 @@ namespace PlayerStoryteller
 
         public static void SendMapUpdateAsync(byte[] image)
         {
-            if (image == null || image.Length == 0) return;
+            if (image == null || image.Length == 0) 
+            {
+                Log.Warning("[Player Storyteller] SendMapUpdateAsync called with empty image.");
+                return;
+            }
+
+            Log.Message($"[Player Storyteller] Sending Map Update. Size: {image.Length} bytes.");
 
             string serverUrl = GetServerUrl();
             string currentSessionId = GetSessionId();

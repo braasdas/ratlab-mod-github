@@ -206,10 +206,11 @@ namespace PlayerStoryteller
         {
             try 
             {
+                // API likely expects "work_priorities" based on the GET response structure
                 var payload = new 
                 {
                     id = pawnId,
-                    priorities = priorities
+                    work_priorities = priorities
                 };
                 
                 var json = JsonConvert.SerializeObject(payload);

@@ -32,7 +32,6 @@ namespace PlayerStoryteller
         private Coroutine sidecarMonitorCoroutine;
         private Coroutine settingsPollCoroutine;
         private Coroutine mapCaptureCoroutine;
-        private Coroutine pawnViewCoroutine;
 
         // HELPER CLASSES
         private SidecarManager sidecarManager;
@@ -165,7 +164,6 @@ namespace PlayerStoryteller
                 sidecarMonitorCoroutine = handlerComponent.StartCoroutine(SidecarMonitorCoroutine());
                 settingsPollCoroutine = handlerComponent.StartCoroutine(SettingsPollCoroutine());
                 mapCaptureCoroutine = handlerComponent.StartCoroutine(MapCaptureCoroutine());
-                pawnViewCoroutine = handlerComponent.StartCoroutine(PawnViewCoroutine());
             }
         }
 
@@ -173,64 +171,33 @@ namespace PlayerStoryteller
         // COROUTINES (Delegating to Helpers)
         // ============================================
 
-        private IEnumerator PawnViewCoroutine()
-        {
-            yield return new WaitForSeconds(5f);
-            while (true)
-            {
-                try
-                {
-                    if (viewerManager != null)
-                    {
-                        var pawns = viewerManager.GetActivePawns();
-                        if (pawns.Count > 0)
-                        {
-                            mapCaptureManager.CapturePawnViews(pawns, (results) => 
-                            {
-                                // Serialize results to JSON
-                                var sb = new StringBuilder();
-                                sb.Append("{");
-                                bool first = true;
-                                foreach (var kvp in results)
-                                {
-                                    if (!first) sb.Append(",");
-                                    sb.Append($"\"{kvp.Key}\":\"{Convert.ToBase64String(kvp.Value)}\"");
-                                    first = false;
-                                }
-                                sb.Append("}");
-                                
-                                // Store in cache
-                                gameDataCache.SetPawnViews(sb.ToString());
-                            });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error($"[Player Storyteller] Error in PawnViewCoroutine: {ex.Message}");
-                }
-                yield return new WaitForSeconds(2f); // Update pawn views every 2 seconds
-            }
-        }
-
         private IEnumerator MapCaptureCoroutine()
         {
+            Log.Message("[Player Storyteller] MapCaptureCoroutine started.");
             yield return new WaitForSeconds(5f);
             while (true)
             {
+                bool shouldCapture = false;
                 try
                 {
-                    if (PlayerStorytellerMod.settings.enableLiveScreen)
-                    {
-                        // Use 4K resolution (4096x4096) and slightly higher JPEG quality (75)
-                        // This ensures markers and terrain are crisp when zooming in on the dashboard
-                        mapCaptureManager?.CaptureFullMapAsync(map, 4096, 4096, 75);
-                    }
+                    shouldCapture = PlayerStorytellerMod.settings.enableLiveScreen;
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in MapCaptureCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error checking map capture settings: {ex.Message}");
                 }
+
+                if (shouldCapture && mapCaptureManager != null)
+                {
+                    // Log.Message("[Player Storyteller] Triggering CaptureFullMapRoutine...");
+                    yield return mapCaptureManager.CaptureFullMapRoutine(map, 2048, 2048, 75);
+                }
+                else
+                {
+                    if (!shouldCapture) Log.Message("[Player Storyteller] Map capture skipped (Disabled in settings).");
+                    if (mapCaptureManager == null) Log.Error("[Player Storyteller] Map capture skipped (Manager is null!)");
+                }
+
                 yield return new WaitForSeconds(5f);
             }
         }

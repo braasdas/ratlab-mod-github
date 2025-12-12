@@ -719,40 +719,21 @@ module.exports = (io, definitionManager) => {
             return res.status(402).json({ error: `Insufficient funds. Cost: ${cost}` });
         }
 
-        // 3. Find available colonist (Simplistic: random unadopted one)
-        // A robust system would let the user pick or streamer assign. 
-        // For now: Auto-assign first available.
-        const allColonists = session.gameState.colonists || [];
-        const adoptedIds = Array.from(session.adoptions.active.values()).map(a => String(a.pawnId));
-        
-        const available = allColonists.filter(c => {
-            const data = c.colonist || c;
-            const id = String(data.id || data.pawn_id);
-            return !adoptedIds.includes(id);
-        });
-
-        if (available.length === 0) {
-            return res.status(409).json({ error: 'No colonists available for adoption!' });
-        }
-
-        const target = available[Math.floor(Math.random() * available.length)];
-        const targetData = target.colonist || target;
-        const pawnId = targetData.id || targetData.pawn_id;
-        const pawnName = targetData.name;
-
-        // 4. Process Transaction
+        // 3. Process Transaction
         profile.coins -= cost;
         io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
 
-        // 5. Assign
-        const adoptionRecord = {
-            pawnId: pawnId,
-            name: pawnName,
-            adoptedAt: new Date()
-        };
-        session.adoptions.active.set(username, adoptionRecord);
+        // 4. Send Action to Game (Spawn new pawn)
+        session.actions.push({
+            action: 'buyPawn',
+            data: username,
+            timestamp: new Date()
+        });
 
-        res.json({ success: true, adoption: adoptionRecord });
+        // We don't set the adoption record yet. 
+        // The game will spawn the pawn -> send GameState -> modServer will reconcile and link the ID.
+
+        res.json({ success: true, message: 'Request transmitted. Stand by for orbital drop.' });
     });
 
     // Send Command

@@ -291,6 +291,9 @@ namespace PlayerStoryteller
                     case "buyPawn":
                         BuyPawn(action.data);
                         break;
+                    case "adopt_colonist":
+                        AdoptColonist(action.data);
+                        break;
                     case "colonist_command":
                         ExecuteColonistCommand(action.data);
                         break;
@@ -306,17 +309,81 @@ namespace PlayerStoryteller
             }
         }
 
+        private void AdoptColonist(string json)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(json)) return;
+                var data = JsonConvert.DeserializeObject<AdoptColonistData>(json);
+                if (data == null || string.IsNullOrEmpty(data.username) || string.IsNullOrEmpty(data.pawnId))
+                {
+                    Log.Warning("[Player Storyteller] AdoptColonist: Invalid data.");
+                    return;
+                }
+
+                string username = SanitizeUserInput(data.username);
+                Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber.ToString() == data.pawnId);
+
+                if (pawn == null)
+                {
+                    Messages.Message($"Could not find pawn for adoption (ID: {data.pawnId})", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+
+                ViewerManager viewerManager = map.GetComponent<ViewerManager>();
+                if (viewerManager == null) return;
+
+                if (viewerManager.ViewerHasActivePawn(username))
+                {
+                    Messages.Message($"Viewer {username} already has a pawn!", MessageTypeDefOf.RejectInput);
+                    return;
+                }
+
+                // Register
+                viewerManager.RegisterPawn(username, pawn);
+
+                // Optionally rename nickname to match viewer? 
+                // data.rename (bool) could be passed, but for now let's just notify.
+                // Or maybe we force nickname to match viewer if it's "Unknown"? 
+                // Let's just notify for now to be safe.
+                
+                string label = "Colonist Adopted";
+                string text = $"Viewer {username} has adopted {pawn.Name.ToStringShort} via the Neural Link.";
+                Find.LetterStack.ReceiveLetter(label, text, LetterDefOf.PositiveEvent, pawn);
+                Messages.Message($"{pawn.Name.ToStringShort} is now controlled by {username}!", MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error adopting colonist: {ex.Message}");
+            }
+        }
+
         private void ExecuteColonistCommand(string json)
         {
             try
             {
+                if (map == null)
+                {
+                    Log.Error("[Player Storyteller] ExecuteColonistCommand: Map is null!");
+                    return;
+                }
+
                 // Robust JSON parsing with Newtonsoft
                 if (string.IsNullOrEmpty(json)) return;
                 var data = JsonConvert.DeserializeObject<ColonistCommandData>(json);
                 if (data == null) return;
+                if (string.IsNullOrEmpty(data.pawnId)) return;
 
-                Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber.ToString() == data.pawnId || p.Name.ToStringFull == data.pawnId); // Try ID then Name
-                if (pawn == null) return;
+                Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => 
+                    p.thingIDNumber.ToString() == data.pawnId || 
+                    (p.Name != null && p.Name.ToStringFull == data.pawnId)
+                ); 
+
+                if (pawn == null) 
+                {
+                    // Silent fail or debug log if pawn not found (common if pawn died/left)
+                    return;
+                }
 
                 switch (data.type)
                 {
@@ -336,10 +403,15 @@ namespace PlayerStoryteller
                             // Basic move order logic (Simplified to fix build errors)
                             // To restore context logic, ensure FloatMenuMakerMap is accessible or replicate logic
                             
-                            if (pawn.Drafted)
+                            bool isDrafted = pawn.drafter != null && pawn.drafter.Drafted;
+
+                            if (isDrafted)
                             {
-                                Job job = JobMaker.MakeJob(JobDefOf.Goto, target);
-                                pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc);
+                                if (pawn.jobs != null)
+                                {
+                                    Job job = JobMaker.MakeJob(JobDefOf.Goto, target);
+                                    pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc);
+                                }
                                 
                                 // Feedback
                                 ThingDef moteDef = ThingDef.Named("Mote_FeedbackGoto");
@@ -358,10 +430,19 @@ namespace PlayerStoryteller
                         }
                         break;
                     case "set_work_priorities":
-                        if (data.priorities != null)
+                        if (data.priorities != null && pawn.workSettings != null)
                         {
-                            // Fire and forget async call to RimAPI
-                            _ = rimApiClient.SetColonistWorkPriorities(data.pawnId, data.priorities);
+                            foreach (var kvp in data.priorities)
+                            {
+                                // Attempt to find the WorkTypeDef by name (e.g., "Firefighter", "Doctor")
+                                WorkTypeDef workDef = DefDatabase<WorkTypeDef>.GetNamedSilentFail(kvp.Key);
+                                if (workDef != null)
+                                {
+                                    // 0 = Disabled, 1 = Highest, 4 = Lowest
+                                    // Ensure value is clamped to valid range if necessary, though SetPriority usually handles it or just accepts int.
+                                    pawn.workSettings.SetPriority(workDef, kvp.Value);
+                                }
+                            }
                             Messages.Message($"{pawn.Name.ToStringShort}'s work priorities updated.", MessageTypeDefOf.NeutralEvent);
                         }
                         break;
@@ -1203,6 +1284,8 @@ namespace PlayerStoryteller
         {
             try
             {
+                if (map == null) return; // Defensive check for map
+
                 var parts = coordinatesJson.Replace("{", "").Replace("}", "").Replace("\"", "").Split(',');
                 int x = 0, z = 0;
                 foreach (var part in parts)
@@ -1219,10 +1302,14 @@ namespace PlayerStoryteller
                 if (!location.InBounds(map)) return;
 
                 ThingDef moteDef = DefDatabase<ThingDef>.GetNamedSilentFail("Mote_FeedbackGoto");
+                
+                // MoteMaker requires valid map and def
                 if (moteDef != null)
                 {
                     MoteMaker.MakeStaticMote(location.ToVector3Shifted(), map, moteDef, 3f);
                 }
+                
+                // ThrowText also safe to call
                 MoteMaker.ThrowText(location.ToVector3Shifted(), map, "* Viewer Ping *", Color.cyan, 3.5f);
             }
             catch (Exception ex)
@@ -1289,5 +1376,13 @@ namespace PlayerStoryteller
         public string assignment; // Optional, for schedule
         public int x; // Optional, for order
         public int z; // Optional, for order
+    }
+
+    [Serializable]
+    public class AdoptColonistData
+    {
+        public string username;
+        public string pawnId;
+        public int cost;
     }
 }

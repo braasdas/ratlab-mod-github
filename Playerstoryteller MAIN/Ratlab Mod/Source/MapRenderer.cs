@@ -14,7 +14,7 @@ namespace PlayerStoryteller
     {
         private RenderTexture targetTexture;
         private Map currentMap;
-        
+
         // Reflection cache for MapDrawer sections
         private static FieldInfo sectionsField = typeof(MapDrawer).GetField("sections", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -32,59 +32,75 @@ namespace PlayerStoryteller
             if (targetTexture == null || targetTexture.width != width || targetTexture.height != height)
             {
                 if (targetTexture != null) targetTexture.Release();
-                
+
                 targetTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
                 targetTexture.Create();
             }
         }
 
         /// <summary>
-        /// Positions the camera to view the entire map and renders a single frame.
+        /// Renders a specific rectangular area of the map.
+        /// Used for tiled rendering to reduce main thread lag.
         /// </summary>
-        /// <returns>The RenderTexture containing the map image.</returns>
-        public RenderTexture RenderFullMap()
+        /// <param name="mapRect">The area of the map to render (in world coordinates).</param>
+        /// <returns>The RenderTexture containing the rendered chunk.</returns>
+        public RenderTexture RenderMapRect(Rect mapRect)
         {
             if (!IsInitialized || currentMap == null) return null;
 
             Camera cam = Find.Camera;
             if (cam == null) return null;
-            
-            if (sectionsField == null)
-            {
-                Log.Error("[Player Storyteller] Failed to reflect MapDrawer sections. Map capture disabled.");
-                return null;
-            }
 
             // Cache original Camera state
             Vector3 oldCamPos = cam.transform.position;
             Quaternion oldCamRot = cam.transform.rotation;
             float oldCamSize = cam.orthographicSize;
             RenderTexture oldTarget = cam.targetTexture;
-            
+            float oldFarClip = cam.farClipPlane;
+
             try
             {
-                // 1. Calculate Map Bounds
-                float mapWidth = currentMap.Size.x;
-                float mapHeight = currentMap.Size.z;
-                
-                // Center position
-                Vector3 center = new Vector3(mapWidth / 2f, 15f, mapHeight / 2f);
-                
-                // 2. Hijack Camera
-                cam.targetTexture = targetTexture;
+                // 1. Position Camera at center of rect
+                Vector3 center = new Vector3(mapRect.center.x, 15f, mapRect.center.y);
                 cam.transform.position = center;
-                
-                // 3. Set Orthographic Size
-                float aspect = (float)targetTexture.width / (float)targetTexture.height;
-                float orthoSize = mapHeight / 2f;
-                if (mapWidth / aspect > mapHeight)
-                {
-                    orthoSize = (mapWidth / aspect) / 2f;
-                }
-                cam.orthographicSize = orthoSize;
 
-                // 4. Force Draw All Map Sections
-                DrawAllMapSections();
+                // 2. Set Orthographic Size to fit the rect height
+                // Ortho size is half the vertical size of the viewing volume
+                cam.orthographicSize = mapRect.height / 2f;
+
+                // 3. Set Target
+                cam.targetTexture = targetTexture;
+
+                // 4. Force Draw Visible Sections
+                // RimWorld's MapDrawer relies on CameraDriver.CurrentViewRect, which doesn't update
+                // when we move the camera manually. We must manually submit the sections we want to see.
+                if (sectionsField != null)
+                {
+                    Array sections = (Array)sectionsField.GetValue(currentMap.mapDrawer);
+                    if (sections != null)
+                    {
+                        // Convert mapRect to integer bounds
+                        int minX = (int)mapRect.xMin;
+                        int minZ = (int)mapRect.yMin;
+                        int maxX = (int)mapRect.xMax;
+                        int maxZ = (int)mapRect.yMax;
+                        const int SectionSize = 17;
+
+                        foreach (object sectionObj in sections)
+                        {
+                            if (sectionObj is Section section)
+                            {
+                                // Check if section overlaps with the chunk we are rendering
+                                // Section bounds are [botLeft.x, botLeft.x + 17)
+                                if (section.botLeft.x < maxX && section.botLeft.x + SectionSize > minX &&
+                                    section.botLeft.z < maxZ && section.botLeft.z + SectionSize > minZ)
+                                {
+                                    section.DrawSection();
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // 5. Render
                 cam.Render();
@@ -98,70 +114,12 @@ namespace PlayerStoryteller
             }
             finally
             {
-                // 6. Restore Original State
+                // 5. Restore Original State
                 cam.targetTexture = oldTarget;
                 cam.transform.position = oldCamPos;
                 cam.transform.rotation = oldCamRot;
                 cam.orthographicSize = oldCamSize;
-            }
-        }
-
-        /// <summary>
-        /// Renders a specific view centered on a pawn.
-        /// </summary>
-        public RenderTexture RenderPawnView(Pawn pawn, int width, int height, float orthoSize)
-        {
-            if (currentMap == null || pawn == null || !pawn.Spawned) return null;
-
-            Camera cam = Find.Camera;
-            if (cam == null) return null;
-
-            // Reuse or recreate texture if size changed
-            SetupTexture(width, height);
-
-            Vector3 oldCamPos = cam.transform.position;
-            float oldCamSize = cam.orthographicSize;
-            RenderTexture oldTarget = cam.targetTexture;
-
-            try
-            {
-                cam.targetTexture = targetTexture;
-                cam.transform.position = pawn.DrawPos + new Vector3(0, 15f, 0);
-                cam.orthographicSize = orthoSize;
-
-                // For a small view, we technically only need to draw visible sections.
-                // However, DrawAllMapSections is robust. 
-                // Optimization: Draw only relevant sections if performance is an issue.
-                DrawAllMapSections();
-
-                cam.Render();
-                return targetTexture;
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[Player Storyteller] Pawn View Render Error: {ex.Message}");
-                return null;
-            }
-            finally
-            {
-                cam.targetTexture = oldTarget;
-                cam.transform.position = oldCamPos;
-                cam.orthographicSize = oldCamSize;
-            }
-        }
-
-        private void DrawAllMapSections()
-        {
-            Array sections = (Array)sectionsField.GetValue(currentMap.mapDrawer);
-            if (sections != null)
-            {
-                foreach (object section in sections)
-                {
-                    if (section is Section s)
-                    {
-                        s.DrawSection();
-                    }
-                }
+                cam.farClipPlane = oldFarClip;
             }
         }
 

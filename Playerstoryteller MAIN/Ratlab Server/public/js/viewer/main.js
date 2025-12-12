@@ -2,7 +2,7 @@ import { STATE } from './state.js';
 import { updateConnectionStatus, switchTab, showFeedback } from './ui.js';
 import { socket } from './socket.js';
 import { updateGameState } from './gameData.js';
-import { handleMapImageUpdate } from './map.js';
+import { handleMapImageUpdate, initializeMapControls } from './map.js';
 import { sendAction } from './interactions.js';
 import { selectSession, renderSessionsList } from './session.js';
 import { openContentBrowser, closeContentBrowser, selectBrowserItem } from './contentBrowser.js';
@@ -21,6 +21,9 @@ window.addEventListener('load', () => {
     
     // Initialize Queue module
     initializeQueue();
+
+    // Initialize Map Controls
+    initializeMapControls();
 
     // Check for direct session link
     const urlParams = new URLSearchParams(window.location.search);
