@@ -105,14 +105,31 @@ namespace PlayerStoryteller
                 fullMapRT = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
             }
 
-            // Grid Configuration (2x2 = 4 tiles)
+            // Grid Configuration (2x2 = 4 tiles) - Reverted to minimize visual artifacts
             int cols = 2;
             int rows = 2;
+            
+            int tilePixelWidth = width / cols;
+            int tilePixelHeight = height / rows;
+
+            if (!mapRenderer.IsInitialized || mapRenderer.Width != tilePixelWidth || mapRenderer.Height != tilePixelHeight)
+            {
+                // Re-initialize if dimensions changed
+                mapRenderer.Initialize(map, tilePixelWidth, tilePixelHeight);
+            }
+
+            // Prepare the Full Map Render Target (The accumulator)
+            if (fullMapRT == null || fullMapRT.width != width || fullMapRT.height != height)
+            {
+                if (fullMapRT != null) fullMapRT.Release();
+                fullMapRT = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
+            }
+
             float tileWorldWidth = map.Size.x / (float)cols;
             float tileWorldHeight = map.Size.z / (float)rows;
 
             // Log.Message($"[Player Storyteller] Starting Tiled Map Capture: {cols}x{rows}");
-            Log.Message($"[Player Storyteller] Starting Map Capture Routine. Width: {width}, Height: {height}");
+            Log.Message($"[Player Storyteller] Starting Map Capture Routine (2x2). Total: {width}x{height}");
 
             // Render loop
             for (int z = 0; z < rows; z++)
@@ -131,8 +148,8 @@ namespace PlayerStoryteller
                     if (chunkRT != null)
                     {
                         // Calculate pixel offsets
-                        int destX = (int)(x * (width / cols));
-                        int destY = (int)(z * (height / rows));
+                        int destX = x * tilePixelWidth;
+                        int destY = z * tilePixelHeight;
 
                         // Efficiently copy the chunk into the accumulator
                         Graphics.CopyTexture(
