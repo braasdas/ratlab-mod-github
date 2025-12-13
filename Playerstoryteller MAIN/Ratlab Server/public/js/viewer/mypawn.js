@@ -332,14 +332,17 @@ export function updateMyPawnUI(gameState) {
         // Initialize optical view once and reuse
         const mapId = gameState.map_id ?? 0;
         const initPromise = ensureMapRenderer(mapId);
-        if (initPromise) {
+
+        // Update renderer if it exists (either from promise or already initialized)
+        if (mapRenderer && mapRenderer.ready) {
+            mapRenderer.updateFromGameState(gameState, STATE.myPawnId);
+        } else if (initPromise) {
             initPromise.then(() => {
                 if (mapRenderer) {
                     mapRenderer.updateFromGameState(gameState, STATE.myPawnId);
                 }
             });
         }
-
     }
 
     // 4. Needs

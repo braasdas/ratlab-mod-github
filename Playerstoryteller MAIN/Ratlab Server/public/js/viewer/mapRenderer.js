@@ -408,8 +408,9 @@ export class MapRenderer {
         if (col < 0 || row < 0 || col >= this.viewportTiles || row >= this.viewportTiles) return null;
 
         const halfRange = Math.floor(this.viewportTiles / 2);
-        const startX = Math.floor(this.camera.x - halfRange);
-        const startZ = Math.floor(this.camera.z + halfRange);
+        // Use same calculation as render() to ensure coordinates match
+        const startX = Math.round(this.camera.x - halfRange + 0.5);
+        const startZ = Math.round(this.camera.z + halfRange - 0.5);
 
         const worldX = startX + col;
         const worldZ = startZ - row;

@@ -413,8 +413,8 @@ namespace PlayerStoryteller
                                     pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc);
                                 }
                                 
-                                // Feedback
-                                ThingDef moteDef = ThingDef.Named("Mote_FeedbackGoto");
+                                // Feedback (optional visual mote, may not exist in all RimWorld versions)
+                                ThingDef moteDef = DefDatabase<ThingDef>.GetNamedSilentFail("Mote_FeedbackGoto");
                                 if (moteDef != null)
                                 {
                                     MoteMaker.MakeStaticMote(target, map, moteDef, 1f);

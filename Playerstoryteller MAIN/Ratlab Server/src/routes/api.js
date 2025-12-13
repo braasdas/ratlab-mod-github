@@ -140,6 +140,42 @@ module.exports = (io, definitionManager) => {
         res.send(tex);
     });
 
+    // Map things ingest (from Mod) - plants, trees, buildings, objects
+    router.post('/api/v1/map/things/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+
+        let session = sessionStore.getSession(sessionId);
+        if (!session) {
+            session = sessionStore.createSession(sessionId, { streamKey, isPublic: true });
+        }
+
+        if (session.streamKey && session.streamKey !== streamKey) {
+            return res.status(403).json({ error: 'Invalid stream key' });
+        }
+
+        const thingsData = req.body;
+        if (!thingsData || !thingsData.data) {
+            return res.status(400).json({ error: 'Invalid things payload' });
+        }
+
+        session.mapThings = thingsData.data;
+        sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
+        console.log(`[Things] Stored ${session.mapThings.length || 0} things for ${sessionId}`);
+        res.json({ success: true });
+    });
+
+    // Map things fetch (viewer)
+    router.get('/api/v1/map/things', (req, res) => {
+        const { sessionId } = req.query;
+        const session = sessionStore.getSession(sessionId);
+        if (!session || !session.mapThings) {
+            return res.status(404).json({ error: 'Things not available' });
+        }
+
+        res.json(session.mapThings);
+    });
+
     // Upload Definitions (From Mod)
     router.post('/api/definitions/:sessionId', (req, res) => {
         const { sessionId } = req.params;

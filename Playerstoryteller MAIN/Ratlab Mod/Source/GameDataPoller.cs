@@ -161,6 +161,9 @@ namespace PlayerStoryteller
                 string result = sb.ToString();
 
                 dataCache.SetSlowData(result);
+
+                // Also push map things (plants, trees, buildings) for optical view
+                _ = PushMapThingsAsync(mapId);
             }
             catch (Exception ex)
             {
@@ -447,6 +450,29 @@ namespace PlayerStoryteller
             catch (Exception ex)
             {
                 Log.Warning($"[Player Storyteller] Failed to push terrain data: {ex.Message}");
+            }
+        }
+
+        private async Task PushMapThingsAsync(int mapId)
+        {
+            try
+            {
+                string thingsJson = await apiClient.GetMapThings(mapId);
+                if (string.IsNullOrEmpty(thingsJson))
+                {
+                    Log.Warning("[Player Storyteller] Map things data unavailable from RimAPI.");
+                    return;
+                }
+
+                bool sent = await PlayerStorytellerMod.SendMapThingsAsync(thingsJson);
+                if (sent)
+                {
+                    Log.Message("[Player Storyteller] Map things data pushed to server.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to push map things: {ex.Message}");
             }
         }
 

@@ -95,6 +95,14 @@ namespace PlayerStoryteller
         }
 
         /// <summary>
+        /// Fetches all things on the map (plants, trees, buildings, items, etc.)
+        /// </summary>
+        public async Task<string> GetMapThings(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/map/things?map_id={mapId}", "things");
+        }
+
+        /// <summary>
         /// Fetches the terrain texture image for a given terrain def name.
         /// </summary>
         public async Task<string> GetTerrainTexture(string defName, int mapId)

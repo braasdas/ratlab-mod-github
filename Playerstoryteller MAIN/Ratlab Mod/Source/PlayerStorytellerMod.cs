@@ -403,6 +403,34 @@ namespace PlayerStoryteller
             }
         }
 
+        public static async Task<bool> SendMapThingsAsync(string thingsPayload)
+        {
+            if (string.IsNullOrEmpty(thingsPayload)) return false;
+
+            try
+            {
+                string serverUrl = GetServerUrl();
+                string sessionId = GetSessionId();
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{serverUrl}/api/v1/map/things/{Uri.EscapeDataString(sessionId)}");
+                request.Headers.Add("x-stream-key", settings.secretKey);
+                request.Content = new StringContent(thingsPayload, Encoding.UTF8, "application/json");
+
+                var response = await httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Log.Warning($"[Player Storyteller] Failed to push map things data: {response.StatusCode}");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Error sending map things data: {ex.Message}");
+                return false;
+            }
+        }
+
         private static async Task<bool> SendWithRetriesAsync(HttpRequestMessage request, string logIdentifier)
         {
             for (int i = 0; i < MaxRetries; i++)
