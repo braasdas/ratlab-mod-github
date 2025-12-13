@@ -156,12 +156,17 @@ export class MapRenderer {
 
             const existing = this.pawnPositions.get(id);
             if (existing) {
-                // Set new target position
-                existing.target = { x: pos.x, z: pos.z };
-                existing.timestamp = now;
+                // Only update if position actually changed
+                if (existing.target.x !== pos.x || existing.target.z !== pos.z) {
+                    // Store current position as start of interpolation
+                    existing.start = { x: existing.current.x, z: existing.current.z };
+                    existing.target = { x: pos.x, z: pos.z };
+                    existing.timestamp = now;
+                }
             } else {
-                // New pawn - set both current and target to same position
+                // New pawn - set all to same position (no interpolation needed)
                 this.pawnPositions.set(id, {
+                    start: { x: pos.x, z: pos.z },
                     current: { x: pos.x, z: pos.z },
                     target: { x: pos.x, z: pos.z },
                     timestamp: now
@@ -381,16 +386,15 @@ export class MapRenderer {
             // Smooth interpolation - ease out cubic for more natural movement
             const smoothT = 1 - Math.pow(1 - t, 3);
 
-            // Linear interpolation with smoothing
-            const dx = data.target.x - data.current.x;
-            const dz = data.target.z - data.current.z;
+            // Lerp from start to target position
+            data.current.x = data.start.x + (data.target.x - data.start.x) * smoothT;
+            data.current.z = data.start.z + (data.target.z - data.start.z) * smoothT;
 
-            data.current.x += dx * smoothT * 0.15;
-            data.current.z += dz * smoothT * 0.15;
-
-            // Snap to target if very close to avoid jitter
-            if (Math.abs(dx) < 0.01) data.current.x = data.target.x;
-            if (Math.abs(dz) < 0.01) data.current.z = data.target.z;
+            // Snap to target when complete
+            if (t >= 1.0) {
+                data.current.x = data.target.x;
+                data.current.z = data.target.z;
+            }
         }
 
         this.render();
