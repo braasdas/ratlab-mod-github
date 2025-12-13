@@ -119,8 +119,8 @@ export class MapRenderer {
         await Promise.all([...terrainFetches, ...floorFetches]);
 
         if (this.missingTextures.size > 0) {
-            console.warn('[MapRenderer] Missing textures:', Array.from(this.missingTextures));
-            this.error = `Missing ${this.missingTextures.size} textures`;
+            console.warn('[MapRenderer] Missing textures (will use fallback colors):', Array.from(this.missingTextures));
+            // Don't set error - fallback colors work fine
         }
 
         this.ready = true;

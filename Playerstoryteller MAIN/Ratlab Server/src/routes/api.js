@@ -155,13 +155,16 @@ module.exports = (io, definitionManager) => {
         }
 
         const thingsData = req.body;
-        if (!thingsData || !thingsData.data) {
+        if (!thingsData) {
             return res.status(400).json({ error: 'Invalid things payload' });
         }
 
-        session.mapThings = thingsData.data;
+        // Handle both RimAPI format {"success": true, "data": [...]} and raw array
+        const things = thingsData.data || thingsData;
+
+        session.mapThings = things;
         sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
-        console.log(`[Things] Stored ${session.mapThings.length || 0} things for ${sessionId}`);
+        console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things for ${sessionId}`);
         res.json({ success: true });
     });
 
