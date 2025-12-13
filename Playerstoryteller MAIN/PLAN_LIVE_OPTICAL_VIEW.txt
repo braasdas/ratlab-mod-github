@@ -1,0 +1,86 @@
+# Implementation Plan: Live Optical View (Map Painting)
+
+## Objective
+Replace or augment the live video feed with a low-bandwidth, client-side rendered map view. This reconstructs the game world using static terrain data and dynamic object updates.
+
+## Architecture
+
+We will implement a `MapRenderer` class in the frontend (`Ratlab Server/public/js/viewer/mapRenderer.js`).
+
+### 1. Data Layers
+The view consists of three layers (z-index bottom to top):
+1.  **Terrain Layer (Canvas):** Static floor tiles. Rendered ONCE (or rarely).
+2.  **Building Layer (Canvas):** Walls, furniture. Rendered ONCE (or on change).
+3.  **Dynamic Layer (Canvas/DOM):** Pawns, items, projectiles. Updated every tick (10-60Hz).
+
+### 2. Terrain Reconstruction (The "Fog of War" approach)
+
+**Step A: Fetch Grid**
+- Call `GET /api/v1/map/terrain?map_id=0`.
+- Receive: `width`, `height`, `palette` (e.g. `["Soil", "Sandstone"]`), `grid` (RLE).
+- Decompress RLE grid into a 2D array (or Flat Int16Array).
+
+**Step B: Fetch Textures (Persistent Caching)**
+- **Critical:** Minimizing server load. Do not re-fetch textures on page reload.
+- **Storage:** Use `IndexedDB` (via `idb` library) to store Base64 textures permanently in the browser.
+    - Key: `texture_${defName}` (e.g., `texture_Terrain_Soil`)
+    - Value: `{ data: "base64...", timestamp: 123456789 }`
+- **Logic:**
+    1. Check `MemoryCache` (JS Object).
+    2. If miss, check `IndexedDB`.
+    3. If miss, fetch from API `GET /api/v1/terrain/image?name=X`.
+    4. Save to `IndexedDB` and `MemoryCache`.
+- **Versioning:** If texture looks wrong/outdated, we can add a "Clear Cache" button in settings.
+
+**Step C: Paint Terrain**
+- Create an `OffscreenCanvas` representing the full map (e.g., 250 * 64px is too big).
+- **Optimization:** Use a "Tile Cache" system. Divide map into 32x32 chunks.
+- Render each chunk to a canvas/image.
+- On the main display canvas, draw the visible chunks.
+
+### 3. Texture Atlas Issue & Solution
+**Problem:** The API returns a large Atlas (2048x2048) for "Soil", not just the Soil tile.
+**Solution:**
+- We need UV coordinates (which part of the image is Soil?).
+- *Current API limitation:* We don't have UVs.
+- *Workaround:* The returned image IS the texture. If it's an atlas, RimWorld uses a shader to pick the UV.
+- *Heuristic:* If the image is square and power-of-two (e.g. 64x64, 128x128), treat it as a single tile.
+- *Advanced:* If it's a huge atlas, we might need to extract the center or use a predefined UV map. For the prototype, assume standard textures or scale the whole image down to tile size (might look weird but works).
+
+### 4. Pawn-Centric Rendering (The "Live Optical Feed")
+- **Camera Lock:** The renderer MUST track the assigned pawn's position `(pawn.x, pawn.z)` from the GameState updates.
+- **Viewport Calculation:** 
+    - Center the canvas on the pawn.
+    - Render a fixed radius (e.g., 15x15 tiles) to match the "Optical Feed" aesthetic.
+    - As the pawn moves, the "World" slides underneath the "Camera".
+- **Visuals:** Draw a subtle grid overlay to indicate valid clickable tiles.
+
+### 5. Interaction Grid (Command Interface)
+- **Coordinate Conversion:** 
+    - Mouse Click `(screenX, screenY)` -> Canvas Offset -> World Coordinate `(worldX, worldZ)`.
+    - Formula: `worldX = cameraCenter.x + (screenX - centerScreenX) / TILE_SIZE`.
+- **Feedback:** Highlight the hovered tile (Green/Red) to show validity.
+- **Action:** Clicking a tile sends `POST /api/action` with `{ type: "order", x: worldX, z: worldZ }`.
+
+## Bandwidth Efficiency Strategy
+
+1.  **Static Data:** Terrain grid is downloaded ONCE per session (~100KB compressed).
+2.  **Texture Cache:** Textures downloaded ONCE per type. Persistent across reloads.
+3.  **Dynamic Data:** JSON updates are tiny (~2KB/sec vs ~500KB/sec for video).
+4.  **Live Mode:** If bandwidth is critical, we switch entirely to this view. If bandwidth allows, we overlay high-quality video on top of the pawn (picture-in-picture) or just for the selected pawn.
+
+## Implementation Steps
+
+1.  **`textureManager.js`:** Handles fetching, caching, and serving images.
+2.  **`terrainGrid.js`:** Handles fetching map grid, RLE decompression, and coordinate lookups.
+3.  **`mapCanvas.js`:** The main WebGL/2D renderer.
+    - `drawViewport(cameraX, cameraZ, zoom)`
+4.  **Integration:**
+    - In `Ratlab Server/public/js/viewer/main.js`, initialize `MapRenderer`.
+    - Hook into `gamestate-update` socket event.
+    - Replace the `<video>` element with `<canvas id="map-canvas">`.
+
+## Performance Considerations
+- **Canvas Size:** Don't make a 16000x16000 canvas. Make a viewport-sized canvas (e.g. 1920x1080) and draw *into* it.
+- **RLE Decoding:** Do this in a Web Worker if the map is huge (requires `SharedArrayBuffer` or messaging). For 250x250, main thread is fine (~5ms).
+- **Batching:** Draw all "Soil" tiles, then all "Stone" tiles (minimize state changes) if using WebGL. For 2D Context, simple iteration is fast enough.

@@ -17,8 +17,10 @@ bin/
 *.suo
 .DS_Store
 Thumbs.db
+RIMAPI SOURCE/
 
 # Ignore root-level scripts and notes
 /*.bat
 !/start.bat
 /*.txt
+!/PLAN_LIVE_OPTICAL_VIEW.txt

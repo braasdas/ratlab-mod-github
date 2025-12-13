@@ -87,6 +87,53 @@ namespace PlayerStoryteller
         }
 
         /// <summary>
+        /// Fetches terrain grid (RLE) and palette for a map.
+        /// </summary>
+        public async Task<string> GetTerrainData(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/map/terrain?map_id={mapId}", "terrain");
+        }
+
+        /// <summary>
+        /// Fetches the terrain texture image for a given terrain def name.
+        /// </summary>
+        public async Task<string> GetTerrainTexture(string defName, int mapId)
+        {
+            try
+            {
+                var response = await httpClient.GetStringAsync($"{RimApiBaseUrl}/terrain/image?name={Uri.EscapeDataString(defName)}&map_id={mapId}");
+
+                // RimAPI returns JSON: {"success":true, "data": {"result":"success", "imageBase64":"..."}}
+                // Extract the base64 string from the response
+                string extractedData = ExtractDataFromResponse(response);
+                if (string.IsNullOrEmpty(extractedData))
+                {
+                    Log.Warning($"[Player Storyteller] Empty response for terrain texture {defName}");
+                    return null;
+                }
+
+                var jToken = JToken.Parse(extractedData);
+                if (jToken is JObject jObject)
+                {
+                    // Try all casing variations (RimAPI uses snake_case: image_base64)
+                    var imageData = jObject["image_base64"] ?? jObject["ImageBase64"] ?? jObject["imageBase64"];
+                    if (imageData != null)
+                    {
+                        return imageData.ToString();
+                    }
+                }
+
+                Log.Warning($"[Player Storyteller] No image_base64 field in terrain texture response for {defName}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to fetch terrain texture {defName}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Fetches factions data from RimAPI.
         /// </summary>
         public async Task<string> GetFactions()

@@ -65,6 +65,81 @@ module.exports = (io, definitionManager) => {
         res.json(defs);
     });
 
+    // Map terrain ingest (from Mod)
+    router.post('/api/v1/map/terrain/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        const streamKey = req.headers['x-stream-key'];
+
+        let session = sessionStore.getSession(sessionId);
+        if (!session) {
+            // Create a session placeholder so terrain can arrive before first heartbeat
+            session = sessionStore.createSession(sessionId, { streamKey, isPublic: true });
+        }
+
+        if (session.streamKey && session.streamKey !== streamKey) {
+            return res.status(403).json({ error: 'Invalid stream key' });
+        }
+
+        const { width, height, palette, grid, textures } = req.body || {};
+        if (!width || !height || !Array.isArray(palette) || !Array.isArray(grid)) {
+            return res.status(400).json({ error: 'Invalid terrain payload' });
+        }
+
+        const textureMap = {};
+        if (textures && typeof textures === 'object') {
+            Object.entries(textures).forEach(([name, b64]) => {
+                try {
+                    // Validate base64 - should start with PNG header when decoded
+                    const buffer = Buffer.from(b64, 'base64');
+                    // PNG magic number: 89 50 4E 47
+                    if (buffer.length > 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+                        textureMap[name] = buffer;
+                    } else {
+                        console.warn(`[Terrain] Invalid PNG data for texture ${name} (got ${buffer.length} bytes, header: ${buffer.slice(0, 4).toString('hex')})`);
+                    }
+                } catch (e) {
+                    console.warn('[Terrain] Failed to decode texture', name, e?.message);
+                }
+            });
+        }
+
+        session.mapTerrain = { width, height, palette, grid, textures: textureMap };
+        sessionStore.updateSession(sessionId, { mapTerrain: session.mapTerrain });
+        console.log(`[Terrain] Stored terrain for ${sessionId} (${width}x${height}), palette=${palette.length}, textures=${Object.keys(textureMap).length}`);
+        res.json({ success: true });
+    });
+
+    // Map terrain fetch (viewer)
+    router.get('/api/v1/map/terrain', (req, res) => {
+        const { sessionId } = req.query;
+        const session = sessionStore.getSession(sessionId);
+        if (!session || !session.mapTerrain) {
+            return res.status(404).json({ error: 'Terrain not available' });
+        }
+
+        res.json({
+            width: session.mapTerrain.width,
+            height: session.mapTerrain.height,
+            palette: session.mapTerrain.palette,
+            grid: session.mapTerrain.grid
+        });
+    });
+
+    // Map terrain texture fetch (viewer)
+    router.get('/api/v1/map/terrain/image', (req, res) => {
+        const { sessionId, name } = req.query;
+        const session = sessionStore.getSession(sessionId);
+        if (!session || !session.mapTerrain || !session.mapTerrain.textures) {
+            return res.status(404).json({ error: 'Terrain textures not available' });
+        }
+
+        const tex = session.mapTerrain.textures[name];
+        if (!tex) return res.status(404).json({ error: 'Texture not found' });
+
+        res.setHeader('Content-Type', 'image/png');
+        res.send(tex);
+    });
+
     // Upload Definitions (From Mod)
     router.post('/api/definitions/:sessionId', (req, res) => {
         const { sessionId } = req.params;
@@ -540,6 +615,10 @@ module.exports = (io, definitionManager) => {
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         
+        if (!action || typeof action !== 'string') {
+            return res.status(400).json({ error: 'Invalid action specified' });
+        }
+
         // Check cost
         // Convert action to camelCase for cost lookup if needed (assuming passed action is camelCase)
         const cost = session.economy.actionCosts[action] || 0;
@@ -633,20 +712,24 @@ module.exports = (io, definitionManager) => {
         const index = session.queue.requests.indexOf(winner);
         
         if (index !== -1) {
-            // Execute Action
-            session.actions.push({
-                action: winner.action,
-                data: winner.data,
-                timestamp: new Date()
-            });
+            // Validate Action
+            if (!winner.action) {
+                log('warn', `Queue forced: Skipped invalid request ${winner.id} (missing action)`);
+            } else {
+                // Execute Action
+                session.actions.push({
+                    action: winner.action,
+                    data: winner.data,
+                    timestamp: new Date()
+                });
+                log('info', `Queue forced: Executed ${winner.action} for session ${sessionId}`);
+            }
             
             // Remove from queue
             session.queue.requests.splice(index, 1);
             
             // Broadcast update
             io.to(sessionId).emit('queue-update', { queue: session.queue, triggered: true });
-            
-            log('info', `Queue forced: Executed ${winner.action} for session ${sessionId}`);
         }
         
         res.json({ success: true });

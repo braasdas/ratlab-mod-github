@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using Verse;
+using RimWorld;
 
 namespace PlayerStoryteller
 {
@@ -14,6 +17,7 @@ namespace PlayerStoryteller
         private readonly RimApiClient apiClient;
         private readonly GameDataCache dataCache;
         private readonly Map map;
+        private bool terrainPushed = false;
 
         public GameDataPoller(RimApiClient apiClient, GameDataCache dataCache, Map map)
         {
@@ -292,6 +296,8 @@ namespace PlayerStoryteller
         {
             try
             {
+                int mapId = map.uniqueID;
+
                 // First run: Push Definitions to Server
                 if (!hasPushedDefinitions)
                 {
@@ -373,6 +379,9 @@ namespace PlayerStoryteller
                 string result = sb.ToString();
 
                 dataCache.SetStaticData(result);
+
+                // Low-frequency: send terrain grid + textures once per session
+                _ = PushTerrainDataAsync(mapId);
             }
             catch (Exception ex)
             {
@@ -382,10 +391,72 @@ namespace PlayerStoryteller
 
         #endregion
 
+        private async Task PushTerrainDataAsync(int mapId)
+        {
+            if (terrainPushed) return;
+
+            try
+            {
+                Log.Message("[Player Storyteller] Starting terrain data push...");
+
+                string terrainJson = await apiClient.GetTerrainData(mapId);
+                if (string.IsNullOrEmpty(terrainJson))
+                {
+                    Log.Warning("[Player Storyteller] Terrain data unavailable from RimAPI; optical view will fallback.");
+                    return;
+                }
+
+                var payload = JObject.Parse(terrainJson);
+                var palette = payload["palette"]?.ToObject<List<string>>() ?? new List<string>();
+
+                var textures = new JObject();
+                foreach (var defName in palette)
+                {
+                    if (string.IsNullOrEmpty(defName)) continue;
+                    try
+                    {
+                        var base64String = await apiClient.GetTerrainTexture(defName, mapId);
+                        if (!string.IsNullOrEmpty(base64String))
+                        {
+                            textures[defName] = base64String;
+                        }
+                        else
+                        {
+                            Log.Warning($"[Player Storyteller] RimAPI returned no texture data for {defName}");
+                        }
+                    }
+                    catch (Exception texEx)
+                    {
+                        Log.Warning($"[Player Storyteller] Failed to fetch terrain texture {defName}: {texEx.Message}");
+                    }
+                }
+
+                payload["textures"] = textures;
+
+                bool sent = await PlayerStorytellerMod.SendTerrainDataAsync(payload.ToString(Newtonsoft.Json.Formatting.None));
+                if (sent)
+                {
+                    terrainPushed = true;
+                    Log.Message("[Player Storyteller] Terrain data pushed to server (grid + textures).");
+                }
+                else
+                {
+                    Log.Warning("[Player Storyteller] Failed to push terrain data to server.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to push terrain data: {ex.Message}");
+            }
+        }
+
         private async void PushDefinitionsAsync()
         {
             try
             {
+                // Notify player that initial data gathering is happening (may cause lag)
+                Messages.Message("RatLab mod loaded. Gathering game definitions... (may cause brief lag)", MessageTypeDefOf.NeutralEvent);
+
                 string defsJson = await apiClient.GetAllDefinitions();
                 if (string.IsNullOrEmpty(defsJson)) return;
 

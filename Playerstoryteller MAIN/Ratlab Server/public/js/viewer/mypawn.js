@@ -1,6 +1,7 @@
 import { STATE } from './state.js';
 import { showFeedback } from './ui.js';
 import { sendAction } from './interactions.js';
+import { MapRenderer } from './mapRenderer.js';
 
 const PROFANITY_LIST = ['admin', 'system', 'moderator', 'nigger', 'faggot', 'retard', 'kike', 'spic', 'chink']; // Basic filter
 
@@ -10,6 +11,8 @@ function containsProfanity(text) {
 }
 
 let isMyPawnInitialized = false;
+let mapRenderer = null;
+let mapRendererInitPromise = null;
 
 export function initializeMyPawn() {
     if (isMyPawnInitialized) return;
@@ -70,6 +73,36 @@ export function initializeMyPawn() {
     initializeActionButtons();
 
     isMyPawnInitialized = true;
+}
+
+function ensureMapRenderer(mapId = 0) {
+    const sessionId = STATE.currentSession;
+    if (mapRenderer) {
+        mapRenderer.textureManager.setSession(sessionId);
+        if (mapRenderer.sessionId !== sessionId) {
+            mapRendererInitPromise = mapRenderer.initialize(mapId, sessionId);
+        }
+        return mapRendererInitPromise;
+    }
+
+    const container = document.getElementById('my-pawn-live-view-container');
+    if (!container) return null;
+
+    mapRenderer = new MapRenderer(container, {
+        onOrder: (x, z) => {
+            if (!STATE.myPawnId) return;
+            sendAction('colonist_command', JSON.stringify({
+                type: 'order',
+                pawnId: STATE.myPawnId,
+                x,
+                z
+            }));
+            showFeedback('success', 'COORDINATES TRANSMITTED');
+        }
+    });
+
+    mapRendererInitPromise = mapRenderer.initialize(mapId, sessionId);
+    return mapRendererInitPromise;
 }
 
 function initializeActionButtons() {
@@ -295,65 +328,18 @@ export function updateMyPawnUI(gameState) {
     }
 
     if (liveViewPanel && liveViewContainer) {
-        // Always Show Panel when adopted
         liveViewPanel.classList.remove('hidden');
-
-        if (pawnViewData) {
-             // Render Live Image
-             liveViewContainer.innerHTML = `
-                <img src="data:image/jpeg;base64,${pawnViewData}" class="w-full h-full object-cover">
-                <div class="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                    <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80">CLICK TO ORDER</span>
-                </div>
-            `;
-            
-            // Attach Click Handler for Orders
-            const img = liveViewContainer.querySelector('img');
-            if (img) {
-                img.onclick = (e) => {
-                    e.stopPropagation();
-                    const rect = img.getBoundingClientRect();
-                    const relX = (e.clientX - rect.left) / rect.width;
-                    const relY = (e.clientY - rect.top) / rect.height;
-                    
-                    // World Calculation (Ortho 15 -> Size 30)
-                    const worldWidth = 30;
-                    const worldHeight = 30;
-                    
-                    // Pawn is at center of the captured view
-                    const targetX = Math.round(pos.x + (relX - 0.5) * worldWidth);
-                    const targetZ = Math.round(pos.z + (0.5 - relY) * worldHeight); // Y screen down = Z world down (usually)
-
-                    console.log(`Order: ${targetX}, ${targetZ}`);
-
-                    sendAction('colonist_command', JSON.stringify({
-                        type: 'order',
-                        pawnId: STATE.myPawnId,
-                        x: targetX,
-                        z: targetZ
-                    }));
-                    
-                    // Visual feedback (Ripple)
-                    const ripple = document.createElement('div');
-                    ripple.className = 'ping-ripple';
-                    ripple.style.position = 'fixed';
-                    ripple.style.left = e.clientX + 'px';
-                    ripple.style.top = e.clientY + 'px';
-                    document.body.appendChild(ripple);
-                    setTimeout(() => ripple.remove(), 1000);
-                    
-                    showFeedback('success', 'COORDINATES TRANSMITTED');
-                };
-            }
-        } else {
-             // Render Placeholder (No Signal)
-             liveViewContainer.innerHTML = `
-                <div class="absolute inset-0 flex items-center justify-center text-rat-text-dim text-xs flex-col gap-2">
-                    <i class="fa-solid fa-satellite-dish animate-pulse"></i>
-                    <span>NO OPTICAL SIGNAL</span>
-                </div>
-            `;
+        // Initialize optical view once and reuse
+        const mapId = gameState.map_id ?? 0;
+        const initPromise = ensureMapRenderer(mapId);
+        if (initPromise) {
+            initPromise.then(() => {
+                if (mapRenderer) {
+                    mapRenderer.updateFromGameState(gameState, STATE.myPawnId);
+                }
+            });
         }
+
     }
 
     // 4. Needs

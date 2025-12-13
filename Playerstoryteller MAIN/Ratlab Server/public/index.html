@@ -429,15 +429,12 @@
                                     <!-- Live Feed Panel -->
                                     <div id="my-pawn-live-view-panel" class="bg-rat-panel border border-rat-border rounded p-4 hidden">
                                         <h3 class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
-                                            <span>LIVE OPTICAL FEED <span class="text-[10px] text-rat-text-dim italic normal-case ml-2">(WIP) temporarily disabled for performance</span></span>
+                                            <span>LIVE OPTICAL VIEW <span class="text-[10px] text-rat-text-dim italic normal-case ml-2">Adopters only — drag to pan, scroll to zoom</span></span>
                                             <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
                                         </h3>
                                         <div id="my-pawn-live-view-container" class="aspect-square bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
-                                            <!-- Image injected here -->
-                                            <div class="absolute inset-0 flex items-center justify-center text-rat-text-dim text-xs">NO SIGNAL</div>
-                                            <!-- Overlay Hint -->
-                                            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                                <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80">CLICK TO ORDER</span>
+                                            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">
+                                                <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80 text-center leading-snug">CLICK TILE TO ORDER<br>SCROLL TO ZOOM · DRAG TO PAN</span>
                                             </div>
                                         </div>
                                     </div>

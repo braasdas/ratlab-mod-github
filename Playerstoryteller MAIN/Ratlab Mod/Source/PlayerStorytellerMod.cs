@@ -374,6 +374,35 @@ namespace PlayerStoryteller
             wsClient.SendMapImage(image, image.Length);
         }
 
+        public static async Task<bool> SendTerrainDataAsync(string terrainPayload)
+        {
+            if (string.IsNullOrEmpty(terrainPayload)) return false;
+
+            try
+            {
+                string serverUrl = GetServerUrl();
+                string sessionId = GetSessionId();
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{serverUrl}/api/v1/map/terrain/{Uri.EscapeDataString(sessionId)}");
+                request.Headers.Add("x-stream-key", settings.secretKey);
+                request.Content = new StringContent(terrainPayload, Encoding.UTF8, "application/json");
+
+                var response = await httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Log.Warning($"[Player Storyteller] Failed to push terrain data: {response.StatusCode}");
+                    return false;
+                }
+
+                Log.Message("[Player Storyteller] Terrain data upload acknowledged by server.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Error sending terrain data: {ex.Message}");
+                return false;
+            }
+        }
+
         private static async Task<bool> SendWithRetriesAsync(HttpRequestMessage request, string logIdentifier)
         {
             for (int i = 0; i < MaxRetries; i++)
@@ -911,7 +940,7 @@ namespace PlayerStoryteller
     public class PlayerStorytellerSettings : ModSettings
     {
         // Tiered polling intervals for different data types
-        public float fastDataInterval = 2.0f;
+        public float fastDataInterval = 0.5f; // Increased to 0.5s for smoother pawn movement
         public float slowDataInterval = 8.0f;
         public float staticDataInterval = 45.0f;
 
@@ -1089,7 +1118,7 @@ namespace PlayerStoryteller
 
         public override void ExposeData()
         {
-            Scribe_Values.Look(ref fastDataInterval, "fastDataInterval", 2.0f);
+            Scribe_Values.Look(ref fastDataInterval, "fastDataInterval", 0.5f);
             Scribe_Values.Look(ref slowDataInterval, "slowDataInterval", 8.0f);
             Scribe_Values.Look(ref staticDataInterval, "staticDataInterval", 45.0f);
 

@@ -181,10 +181,11 @@ class SessionStore extends EventEmitter {
                     allowedTypes: ['action', 'suggestion']
                 }
             },
+            mapTerrain: null,
             adoptions: {
                 active: new Map(), // username -> { pawnId, name, adoptedAt }
                 settings: {
-                    cost: 1000,
+                    cost: 0, // FREE for testing
                     maxAdoptions: 5
                 }
             },
