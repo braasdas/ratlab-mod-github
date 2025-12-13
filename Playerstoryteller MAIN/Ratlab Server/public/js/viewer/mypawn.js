@@ -2,6 +2,7 @@ import { STATE } from './state.js';
 import { showFeedback } from './ui.js';
 import { sendAction } from './interactions.js';
 import { MapRenderer } from './mapRenderer.js';
+import { socket } from './socket.js';
 
 const PROFANITY_LIST = ['admin', 'system', 'moderator', 'nigger', 'faggot', 'retard', 'kike', 'spic', 'chink']; // Basic filter
 
@@ -16,6 +17,13 @@ let mapRendererInitPromise = null;
 
 export function initializeMyPawn() {
     if (isMyPawnInitialized) return;
+    
+    // Listen for map updates
+    socket.on('map-things-update', (data) => {
+        if (mapRenderer) {
+            mapRenderer.handleThingsUpdate(data);
+        }
+    });
     
     const adoptBtnMain = document.getElementById('btn-adopt-request-main');
     if (adoptBtnMain) {

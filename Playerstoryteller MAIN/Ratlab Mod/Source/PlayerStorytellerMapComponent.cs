@@ -32,6 +32,7 @@ namespace PlayerStoryteller
         private Coroutine sidecarMonitorCoroutine;
         private Coroutine settingsPollCoroutine;
         private Coroutine mapCaptureCoroutine;
+        private Coroutine liveViewCoroutine; // ULTRAFAST TIER
 
         // HELPER CLASSES
         private SidecarManager sidecarManager;
@@ -164,12 +165,30 @@ namespace PlayerStoryteller
                 sidecarMonitorCoroutine = handlerComponent.StartCoroutine(SidecarMonitorCoroutine());
                 settingsPollCoroutine = handlerComponent.StartCoroutine(SettingsPollCoroutine());
                 mapCaptureCoroutine = handlerComponent.StartCoroutine(MapCaptureCoroutine());
+                liveViewCoroutine = handlerComponent.StartCoroutine(LiveViewPollCoroutine());
             }
         }
 
         // ============================================
         // COROUTINES (Delegating to Helpers)
         // ============================================
+
+        private IEnumerator LiveViewPollCoroutine()
+        {
+            yield return new WaitForSeconds(2f);
+            while (true)
+            {
+                try
+                {
+                    gameDataPoller?.UpdateLiveViewAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Player Storyteller] Error in LiveViewPoll: {ex.Message}");
+                }
+                yield return new WaitForSecondsRealtime(1.0f); // Realtime 1Hz (works while paused)
+            }
+        }
 
         private IEnumerator MapCaptureCoroutine()
         {

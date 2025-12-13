@@ -103,6 +103,14 @@ namespace PlayerStoryteller
         }
 
         /// <summary>
+        /// Fetches things within a specific radius (Optimized for Live View).
+        /// </summary>
+        public async Task<string> GetMapThingsInRadius(int mapId, int x, int z, int radius)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/map/things/radius?map_id={mapId}&x={x}&z={z}&radius={radius}", "things_radius");
+        }
+
+        /// <summary>
         /// Fetches the terrain texture image for a given terrain def name.
         /// </summary>
         public async Task<string> GetTerrainTexture(string defName, int mapId)
@@ -178,7 +186,34 @@ namespace PlayerStoryteller
         /// </summary>
         public async Task<string> GetItemIcon(string defName)
         {
-            return await SafeFetchAsync($"{RimApiBaseUrl}/item/image?defName={defName}", $"icon_{defName}");
+            try
+            {
+                var response = await SafeFetchAsync($"{RimApiBaseUrl}/item/image?name={defName}", $"icon_{defName}");
+                
+                if (string.IsNullOrEmpty(response)) return null;
+
+                // RimAPI returns JSON: {"success":true, "data": {"result":"success", "image_base64":"..."}}
+                // SafeFetchAsync already unwraps the outer "data" envelope if present.
+                // So response is likely: {"result":"success", "image_base64":"..."}
+
+                var jToken = JToken.Parse(response);
+                if (jToken is JObject jObject)
+                {
+                    // Try all casing variations
+                    var imageData = jObject["image_base64"] ?? jObject["ImageBase64"] ?? jObject["imageBase64"];
+                    if (imageData != null)
+                    {
+                        return imageData.ToString();
+                    }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to parse item icon for {defName}: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>
@@ -187,6 +222,22 @@ namespace PlayerStoryteller
         public async Task<string> GetQuests(int mapId)
         {
             return await SafeFetchAsync($"{RimApiBaseUrl}/quests?map_id={mapId}", "quests");
+        }
+
+        /// <summary>
+        /// Fetches buildings data from RimAPI.
+        /// </summary>
+        public async Task<string> GetMapBuildings(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/map/buildings?map_id={mapId}", "buildings");
+        }
+
+        /// <summary>
+        /// Fetches plants data from RimAPI (trees, bushes, crops).
+        /// </summary>
+        public async Task<string> GetMapPlants(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/map/plants?map_id={mapId}", "plants");
         }
 
         /// <summary>

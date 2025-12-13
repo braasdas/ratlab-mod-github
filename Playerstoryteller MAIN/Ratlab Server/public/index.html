@@ -422,25 +422,27 @@
                             </div>
 
                             <!-- Main Content Grid -->
-                            <div class="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 custom-scrollbar">
+                            <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
                                 
-                                <!-- COLUMN 1: LIVE FEED, NEEDS & GEAR -->
-                                <div class="flex flex-col gap-4">
-                                    <!-- Live Feed Panel -->
-                                    <div id="my-pawn-live-view-panel" class="bg-rat-panel border border-rat-border rounded p-4 hidden">
-                                        <h3 class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
-                                            <span>LIVE OPTICAL VIEW <span class="text-[10px] text-rat-text-dim italic normal-case ml-2">Adopters only — drag to pan, scroll to zoom</span></span>
-                                            <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
-                                        </h3>
-                                        <div id="my-pawn-live-view-container" class="aspect-square bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
-                                            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">
-                                                <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80 text-center leading-snug">CLICK TILE TO ORDER<br>SCROLL TO ZOOM · DRAG TO PAN</span>
-                                            </div>
+                                <!-- Live Feed Panel (Full Width) -->
+                                <div id="my-pawn-live-view-panel" class="bg-rat-panel border border-rat-border rounded p-4 hidden mb-4">
+                                    <h3 class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
+                                        <span>LIVE OPTICAL VIEW <span class="text-[10px] text-rat-text-dim italic normal-case ml-2">Adopters only — drag to pan, scroll to zoom</span></span>
+                                        <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
+                                    </h3>
+                                    <div id="my-pawn-live-view-container" class="w-full h-[400px] bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
+                                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">
+                                            <span class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80 text-center leading-snug">CLICK TILE TO ORDER<br>SCROLL TO ZOOM · DRAG TO PAN</span>
                                         </div>
                                     </div>
+                                </div>
 
-                                    <!-- Needs Panel -->
-                                    <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    <!-- COLUMN 1: NEEDS & GEAR -->
+                                    <div class="flex flex-col gap-4">
+
+                                        <!-- Needs Panel -->
+                                        <div class="bg-rat-panel border border-rat-border rounded p-4">
                                         <h3 class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">PHYSIOLOGICAL NEEDS</h3>
                                         <div id="my-pawn-needs-list" class="flex flex-col gap-3">
                                             <!-- Needs injected here -->
@@ -526,6 +528,7 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
                     <!-- TAB: QUEUE -->
                     <div id="tab-queue" class="tab-pane h-full p-6 overflow-hidden">

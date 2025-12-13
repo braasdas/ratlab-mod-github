@@ -16,16 +16,22 @@ export class MapRenderer {
         this.terrainGrid = new TerrainGrid();
         this.paletteImages = new Map();
         this.pawnPortraits = new Map(); // Cache for pawn portrait images
+        this.thingImages = new Map(); // Cache for thing/item/building images
         this.missingTextures = new Set();
         this.sessionId = null;
+        this.things = []; // Array of things on the map (Render List)
+        this.thingsMap = new Map(); // Persistent storage (ID -> Thing)
 
         this.canvas = document.createElement('canvas');
         this.ctx = this.canvas.getContext('2d');
         this.overlay = document.createElement('div');
 
-        this.viewportTiles = 31; // 15 tile radius around pawn
+        // Viewport dimensions (calculated dynamically in _resize)
+        this.tilesX = 30;
+        this.tilesY = 20;
         this.tileSizePx = 32;
         this.camera = { x: 0, z: 0 };
+        this.isFollowing = true; // Auto-follow pawn by default
         this.hoverTile = null;
         this.pawnPositions = new Map(); // Track interpolated pawn positions
         this.animating = false;
@@ -54,31 +60,90 @@ export class MapRenderer {
     }
 
     _bindEvents() {
+        // Mouse Down (Start Drag)
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // Only left click
+            this.isDragging = false;
+            this.dragStart = { x: e.clientX, y: e.clientY };
+            this.cameraStart = { ...this.camera };
+        });
+
+        // Mouse Move (Pan & Hover)
         this.canvas.addEventListener('mousemove', (e) => {
+            // Drag Logic
+            if (e.buttons === 1 && this.dragStart) { 
+                const dx = e.clientX - this.dragStart.x;
+                const dy = e.clientY - this.dragStart.y;
+                
+                // Threshold to detect drag vs click
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    this.isDragging = true;
+                    this.isFollowing = false; // Disable auto-follow on manual pan
+                }
+
+                if (this.isDragging) {
+                    // Pan camera: moving mouse Right (dx > 0) moves view Left (camera X decreases)
+                    // Scale by tile size to move 1:1 with map
+                    const tilesX = dx / this.tileSizePx;
+                    const tilesZ = dy / this.tileSizePx; // Screen Y Down = Map Z Down (Drag Down -> Move Map Down -> Z decreases? No wait)
+                    
+                    // coordinate system:
+                    // Render: const worldZ = startZ - row;  (screen Y increases -> row increases -> worldZ decreases)
+                    // If I drag mouse DOWN (dy > 0), I want to see content ABOVE? No, drag map like paper.
+                    // Drag DOWN -> Move viewport UP (camera Z increases)
+                    
+                    this.camera.x = this.cameraStart.x - tilesX;
+                    this.camera.z = this.cameraStart.z + tilesZ;
+                    
+                    this.render();
+                    return; // Skip hover logic while dragging
+                }
+            }
+
+            // Hover Logic
             const tile = this._screenToTile(e);
             if (!tile) return;
             this.hoverTile = tile;
             this.render();
         });
 
-        this.canvas.addEventListener('mouseleave', () => {
-            this.hoverTile = null;
-            this.render();
-        });
+        // Mouse Up / Leave (End Drag)
+        const endDrag = () => {
+            this.dragStart = null;
+        };
+        this.canvas.addEventListener('mouseup', endDrag);
+        this.canvas.addEventListener('mouseleave', endDrag);
 
+        // Click (Order - only if not dragged)
         this.canvas.addEventListener('click', (e) => {
+            if (this.isDragging) return; // Prevent order on drag release
+            
             if (!this.onOrder) return;
             const tile = this._screenToTile(e);
             if (!tile) return;
             this.onOrder(tile.x, tile.z);
         });
 
-        // Basic zoom on wheel: clamp between 0.5x and 3x
+        // Double Click (Reset Follow)
+        this.canvas.addEventListener('dblclick', () => {
+            this.isFollowing = true;
+            // Immediate snap if data available
+            if (this.lastGameState && STATE.myPawnId) {
+                 this.updateFromGameState(this.lastGameState, STATE.myPawnId);
+            }
+        });
+
+        // Zoom on wheel
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const delta = -Math.sign(e.deltaY);
             const next = this.tileSizePx + delta * 2;
-            this.tileSizePx = Math.min(48, Math.max(16, next));
+            this.tileSizePx = Math.min(64, Math.max(16, next));
+            
+            // Recalculate tile capacity
+            this.tilesX = Math.ceil(this.canvas.width / this.tileSizePx) + 2;
+            this.tilesY = Math.ceil(this.canvas.height / this.tileSizePx) + 2;
+            
             this.render();
         }, { passive: false });
     }
@@ -118,9 +183,15 @@ export class MapRenderer {
 
         await Promise.all([...terrainFetches, ...floorFetches]);
 
-        if (this.missingTextures.size > 0) {
-            console.warn('[MapRenderer] Missing textures (will use fallback colors):', Array.from(this.missingTextures));
-            // Don't set error - fallback colors work fine
+        // Fetch things data (items, buildings, stones, etc.)
+        try {
+            const thingsResp = await fetch(`/api/v1/map/things?sessionId=${this.sessionId}`);
+            if (thingsResp.ok) {
+                const initialThings = await thingsResp.json();
+                this.handleThingsUpdate({ things: initialThings });
+            }
+        } catch (err) {
+            console.warn('[MapRenderer] Failed to load things:', err);
         }
 
         this.ready = true;
@@ -129,15 +200,141 @@ export class MapRenderer {
         return true;
     }
 
+    handleThingsUpdate(data) {
+        if (!data) return;
+        
+        // Debug delay
+        // console.log('[MapRenderer] Update received:', (data.things || []).length, 'items', Date.now());
+
+        // 1. Merge Textures (if provided via Socket)
+        if (data.textures) {
+            Object.entries(data.textures).forEach(([defName, b64]) => {
+                if (b64 && !this.thingImages.has(defName)) {
+                    const img = new Image();
+                    img.onload = () => this.requestRender(); // Lazy render on load
+                    img.src = `data:image/png;base64,${b64}`;
+                    this.thingImages.set(defName, img);
+                    this.missingTextures.delete(defName);
+                }
+            });
+        }
+
+        // 2. Process Things
+        const thingsList = data.things || (Array.isArray(data) ? data : []);
+        
+        if (thingsList.length > 0 || (data.focus_zones && data.focus_zones.length > 0)) {
+            
+            // A. Cleanup Ghosts (if focus zones provided)
+            if (data.focus_zones && Array.isArray(data.focus_zones)) {
+                // Create lookup for new items
+                const newIds = new Set();
+                thingsList.forEach(t => {
+                    const pos = t.position || t.Position || {x:0, z:0};
+                    const def = t.def_name || t.DefName || t.Def || 'Unknown';
+                    const id = t.thing_id || t.ThingId || t.Id || `${def}_${pos.x}_${pos.z}`;
+                    newIds.add(String(id));
+                });
+
+                // Check existing items against focus zones
+                for (const [id, thing] of this.thingsMap.entries()) {
+                    // If the item is in the new list, it's safe (will be updated)
+                    if (newIds.has(id)) continue;
+
+                    const pos = thing.position || thing.Position;
+                    if (!pos) continue; // Should not happen
+                    const tx = pos.x ?? pos.X;
+                    const tz = pos.z ?? pos.Z;
+
+                    // Check if this item is inside any authoritative zone
+                    // If it is, and it wasn't in the update, it must be gone.
+                    for (const zone of data.focus_zones) {
+                        const dx = tx - zone.x;
+                        const dz = tz - zone.z;
+                        const rSq = zone.radius * zone.radius; // usually 25*25=625
+                        
+                        if (dx*dx + dz*dz <= rSq) {
+                            this.thingsMap.delete(id);
+                            break; // Deleted, move to next item
+                        }
+                    }
+                }
+            }
+
+            // B. Merge New/Updated Things
+            thingsList.forEach(thing => {
+                // Generate robust ID
+                const pos = thing.position || thing.Position || {x:0, z:0};
+                const def = thing.def_name || thing.DefName || thing.Def || 'Unknown';
+                const id = thing.thing_id || thing.ThingId || thing.Id || `${def}_${pos.x}_${pos.z}`;
+                
+                this.thingsMap.set(String(id), thing);
+            });
+            
+            this.things = Array.from(this.thingsMap.values());
+            
+            // 3. Fetch missing textures (Background) if not provided
+            const uniqueDefNames = new Set();
+            thingsList.forEach(thing => {
+                const defName = thing.def_name || thing.DefName || thing.Def;
+                if (defName && !this.thingImages.has(defName)) uniqueDefNames.add(defName);
+            });
+            
+            if (uniqueDefNames.size > 0) {
+                this._loadTexturesBackground(Array.from(uniqueDefNames));
+            }
+            
+            this.requestRender();
+        }
+    }
+
+    _loadTexturesBackground(defs) {
+        const BATCH_SIZE = 8;
+        const loadBatch = async () => {
+            for (let i = 0; i < defs.length; i += BATCH_SIZE) {
+                const batch = defs.slice(i, i + BATCH_SIZE).map(async (defName) => {
+                    try {
+                        const img = await this.textureManager.getTexture(defName, 'thing');
+                        if (img) {
+                            // If it's a new image object, ensure we render when ready
+                            if (!img.complete) {
+                                img.onload = () => this.requestRender();
+                            }
+                            this.thingImages.set(defName, img);
+                            this.missingTextures.delete(defName);
+                        } else {
+                            this.missingTextures.add(defName);
+                        }
+                    } catch (e) {
+                        // console.warn(`[MapRenderer] Failed to load texture for ${defName}`, e);
+                    }
+                });
+                await Promise.all(batch);
+                // No forced render here - let image.onload handle it
+            }
+        };
+        loadBatch();
+    }
+
+    requestRender() {
+        if (this.animating) return; // Main loop handles it
+        if (this.renderPending) return;
+        this.renderPending = true;
+        requestAnimationFrame(() => {
+            this.render();
+            this.renderPending = false;
+        });
+    }
+
     setCameraTarget(x, z) {
         if (Number.isFinite(x) && Number.isFinite(z)) {
             // Clamp camera to valid map bounds to prevent rendering empty space
-            const halfRange = Math.floor(this.viewportTiles / 2);
-            const mapWidth = this.terrainGrid.width;
-            const mapHeight = this.terrainGrid.height;
+            const halfX = Math.floor(this.tilesX / 2);
+            const halfY = Math.floor(this.tilesY / 2);
+            const mapWidth = this.terrainGrid.width || 250;
+            const mapHeight = this.terrainGrid.height || 250;
 
-            this.camera.x = Math.max(halfRange, Math.min(mapWidth - halfRange, x));
-            this.camera.z = Math.max(halfRange, Math.min(mapHeight - halfRange, z));
+            this.camera.x = Math.max(halfX, Math.min(mapWidth - halfX, x));
+            this.camera.z = Math.max(halfY, Math.min(mapHeight - halfY, z));
         }
     }
 
@@ -176,7 +373,7 @@ export class MapRenderer {
 
         // Update camera to follow my pawn's interpolated position
         const myPawnData = this.pawnPositions.get(String(pawnId));
-        if (myPawnData) {
+        if (myPawnData && this.isFollowing) {
             this.setCameraTarget(myPawnData.current.x, myPawnData.current.z);
         }
 
@@ -194,8 +391,14 @@ export class MapRenderer {
         const { clientWidth, clientHeight } = this.container;
         this.canvas.width = clientWidth;
         this.canvas.height = clientHeight;
-        this.tileSizePx = Math.floor(Math.min(clientWidth, clientHeight) / this.viewportTiles);
-        this.tileSizePx = Math.max(16, Math.min(48, this.tileSizePx || 32));
+
+        // Fixed vertical fit ~16 tiles for consistent zoom
+        this.tileSizePx = Math.floor(clientHeight / 16);
+        this.tileSizePx = Math.max(20, Math.min(64, this.tileSizePx || 32));
+
+        this.tilesX = Math.ceil(clientWidth / this.tileSizePx) + 2;
+        this.tilesY = Math.ceil(clientHeight / this.tileSizePx) + 2;
+        
         this.render();
     }
 
@@ -217,14 +420,16 @@ export class MapRenderer {
             return;
         }
 
-        const halfRange = Math.floor(this.viewportTiles / 2);
+        const halfX = Math.floor(this.tilesX / 2);
+        const halfY = Math.floor(this.tilesY / 2);
+        
         // Round to keep the pawn centered even on odd tile counts
-        const startX = Math.round(this.camera.x - halfRange + 0.5);
-        const startZ = Math.round(this.camera.z + halfRange - 0.5);
+        const startX = Math.round(this.camera.x - halfX + 0.5);
+        const startZ = Math.round(this.camera.z + halfY - 0.5);
 
         // Terrain layer
-        for (let row = 0; row < this.viewportTiles; row++) {
-            for (let col = 0; col < this.viewportTiles; col++) {
+        for (let row = 0; row < this.tilesY; row++) {
+            for (let col = 0; col < this.tilesX; col++) {
                 const worldX = startX + col;
                 const worldZ = startZ - row;
 
@@ -244,8 +449,8 @@ export class MapRenderer {
         }
 
         // Floor layer (constructed floors on top of terrain)
-        for (let row = 0; row < this.viewportTiles; row++) {
-            for (let col = 0; col < this.viewportTiles; col++) {
+        for (let row = 0; row < this.tilesY; row++) {
+            for (let col = 0; col < this.tilesX; col++) {
                 const worldX = startX + col;
                 const worldZ = startZ - row;
 
@@ -262,19 +467,116 @@ export class MapRenderer {
             }
         }
 
+        // Things layer (items, buildings, stones) - rendered between floor and pawns
+        for (const thing of this.things) {
+            // Support both snake_case (RimAPI) and PascalCase
+            const pos = thing.position || thing.Position;
+            if (!pos) continue;
+
+            const posX = pos.x ?? pos.X;
+            const posZ = pos.z ?? pos.Z;
+
+            // Quick Cull: Is it even near the camera?
+            if (posX < startX || posX >= startX + this.tilesX || 
+                posZ > startZ || posZ <= startZ - this.tilesY) {
+                continue;
+            }
+
+            const col = posX - startX;
+            const row = startZ - posZ;
+            // Redundant check but keeps logic clean
+            if (col < 0 || row < 0 || col >= this.tilesX || row >= this.tilesY) continue;
+
+            const defName = thing.def_name || thing.DefName || thing.Def;
+            const img = this.thingImages.get(defName);
+
+            const x = col * this.tileSizePx;
+            const y = row * this.tileSizePx;
+
+            // Get thing size (default 1x1) - support both formats
+            const size = thing.size || thing.Size || { x: 1, X: 1, z: 1, Z: 1 };
+            const sizeX = size.x ?? size.X ?? 1;
+            const sizeZ = size.z ?? size.Z ?? 1;
+            const rotation = thing.rotation ?? thing.Rotation ?? 0;
+
+            if (img) {
+                // Render the texture
+                // SCALE THINGS 1.2x (reduced from 2.1x)
+                const scaleFactor = 1.2;
+                const width = sizeX * this.tileSizePx * scaleFactor;
+                const height = sizeZ * this.tileSizePx * scaleFactor;
+
+                this.ctx.save();
+                // Center the scaled image on the tile
+                const offsetX = x - (width - this.tileSizePx) / 2;
+                const offsetY = y - (height - this.tileSizePx) / 2;
+
+                // Rotate if needed (rotation is 0-3 in RimWorld, each = 90 degrees)
+                if (rotation > 0) {
+                    const centerX = offsetX + width / 2;
+                    const centerY = offsetY + height / 2;
+                    this.ctx.translate(centerX, centerY);
+                    this.ctx.rotate((rotation * Math.PI) / 2);
+                    this.ctx.translate(-centerX, -centerY);
+                }
+                this.ctx.drawImage(img, offsetX, offsetY, width, height);
+                this.ctx.restore();
+            } else {
+                // Fallback: Geometric Rendering for Missing Textures
+                const thingId = thing.thing_id ?? thing.ThingId ?? thing.Id ?? 0;
+                this.ctx.fillStyle = this._fallbackColor(defName, thingId);
+                
+                // Heuristic: Buildings (Walls, Doors, Tables) should fill the tile.
+                // Items (Meals, Steel) should be small.
+                const isBuilding = sizeX > 1 || sizeZ > 1 || 
+                                   (defName && (defName.includes('Wall') || defName.includes('Door') || 
+                                   defName.includes('Table') || defName.includes('Bed') || 
+                                   defName.includes('Cooler') || defName.includes('Heater')));
+
+                if (isBuilding) {
+                    // Draw full block structure
+                    const pad = 2;
+                    const w = sizeX * this.tileSizePx - pad * 2;
+                    const h = sizeZ * this.tileSizePx - pad * 2;
+                    
+                    this.ctx.fillRect(x + pad, y + pad, w, h);
+                    
+                    // Add border for definition
+                    this.ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.strokeRect(x + pad, y + pad, w, h);
+                } else {
+                    // Draw small item box (debris style)
+                    const itemSize = Math.max(this.tileSizePx * 0.4, 6);
+                    this.ctx.fillRect(
+                        x + (this.tileSizePx - itemSize) / 2,
+                        y + (this.tileSizePx - itemSize) / 2,
+                        itemSize,
+                        itemSize
+                    );
+                }
+            }
+        }
+
         // Grid overlay (subtle)
         this.ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         this.ctx.lineWidth = 1;
-        for (let i = 0; i <= this.viewportTiles; i++) {
+        
+        // Vertical lines
+        for (let i = 0; i <= this.tilesX; i++) {
             const p = i * this.tileSizePx;
             this.ctx.beginPath();
             this.ctx.moveTo(p, 0);
-            this.ctx.lineTo(p, this.viewportTiles * this.tileSizePx);
+            this.ctx.lineTo(p, this.tilesY * this.tileSizePx);
             this.ctx.stroke();
-
+        }
+        
+        // Horizontal lines
+        for (let i = 0; i <= this.tilesY; i++) {
+            const p = i * this.tileSizePx;
             this.ctx.beginPath();
             this.ctx.moveTo(0, p);
-            this.ctx.lineTo(this.viewportTiles * this.tileSizePx, p);
+            this.ctx.lineTo(this.tilesX * this.tileSizePx, p);
             this.ctx.stroke();
         }
 
@@ -291,7 +593,7 @@ export class MapRenderer {
 
             const col = pos.x - startX;
             const row = startZ - pos.z;
-            if (col < 0 || row < 0 || col > this.viewportTiles || row > this.viewportTiles) return;
+            if (col < 0 || row < 0 || col > this.tilesX || row > this.tilesY) return;
 
             const centerX = col * this.tileSizePx + this.tileSizePx / 2;
             const centerY = row * this.tileSizePx + this.tileSizePx / 2;
@@ -311,7 +613,8 @@ export class MapRenderer {
                 }
 
                 if (img.complete) {
-                    const portraitSize = this.tileSizePx * 0.8; // 80% of tile
+                    // Scale pawn 2x (1.6x tile size, up from 0.8x)
+                    const portraitSize = this.tileSizePx * 1.6; 
                     this.ctx.save();
 
                     // Draw circular clipped portrait
@@ -409,12 +712,13 @@ export class MapRenderer {
         const col = Math.floor(x / this.tileSizePx);
         const row = Math.floor(y / this.tileSizePx);
 
-        if (col < 0 || row < 0 || col >= this.viewportTiles || row >= this.viewportTiles) return null;
+        if (col < 0 || row < 0 || col >= this.tilesX || row >= this.tilesY) return null;
 
-        const halfRange = Math.floor(this.viewportTiles / 2);
-        // Use same calculation as render() to ensure coordinates match
-        const startX = Math.round(this.camera.x - halfRange + 0.5);
-        const startZ = Math.round(this.camera.z + halfRange - 0.5);
+        const halfX = Math.floor(this.tilesX / 2);
+        const halfY = Math.floor(this.tilesY / 2);
+        
+        const startX = Math.round(this.camera.x - halfX + 0.5);
+        const startZ = Math.round(this.camera.z + halfY - 0.5);
 
         const worldX = startX + col;
         const worldZ = startZ - row;

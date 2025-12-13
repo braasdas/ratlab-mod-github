@@ -54,6 +54,13 @@ export function switchTab(tabId) {
 
     // Save to storage
     localStorage.setItem('activeTab', tabId);
+
+    // Fix: Trigger resize for MapRenderer if switching to my-pawn
+    if (tabId === 'my-pawn') {
+        setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+        }, 50);
+    }
 }
 
 export function updateConnectionStatus(connected) {

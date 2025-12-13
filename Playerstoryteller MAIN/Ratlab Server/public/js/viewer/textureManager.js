@@ -36,43 +36,48 @@ export class TextureManager {
         });
     }
 
-    async getTexture(textureName) {
+    async getTexture(textureName, type = 'terrain') {
         // 1. Check Memory Cache
-        if (this.cache.has(textureName)) {
-            return this.cache.get(textureName);
+        const cacheKey = `${type}:${textureName}`;
+        if (this.cache.has(cacheKey)) {
+            return this.cache.get(cacheKey);
         }
 
         // 2. Check IndexedDB
-        const dbImg = await this.getFromDB(textureName);
+        const dbImg = await this.getFromDB(cacheKey);
         if (dbImg) {
             const img = await this.createImageFromBlob(dbImg.blob);
-            this.cache.set(textureName, img);
+            this.cache.set(cacheKey, img);
             return img;
         }
 
         // 3. Fetch from Network
-        // NOTE: Adjust API endpoint if your server path is different
         try {
             const qs = new URLSearchParams();
             if (this.sessionId) qs.set('sessionId', this.sessionId);
             qs.set('name', textureName);
 
-            const response = await fetch(`/api/v1/map/terrain/image?${qs.toString()}`);
+            // Use different endpoint based on type
+            const endpoint = type === 'item' || type === 'building' || type === 'thing'
+                ? `/api/v1/map/thing/image?${qs.toString()}`
+                : `/api/v1/map/terrain/image?${qs.toString()}`;
+
+            const response = await fetch(endpoint);
             if (!response.ok) {
-                console.warn(`Texture fetch ${textureName} -> ${response.status}`);
+                console.warn(`Texture fetch ${type}:${textureName} -> ${response.status}`);
                 return null;
             }
-            
+
             const blob = await response.blob();
-            this.saveToDB(textureName, blob); // Save for next time
-            
+            this.saveToDB(cacheKey, blob); // Save for next time
+
             const img = await this.createImageFromBlob(blob);
             if (img) {
-                this.cache.set(textureName, img);
+                this.cache.set(cacheKey, img);
             }
             return img;
         } catch (err) {
-            console.error(`Failed to load texture: ${textureName}`, err);
+            console.error(`Failed to load texture: ${type}:${textureName}`, err);
             return null; // Return null or a placeholder
         }
     }

@@ -18,6 +18,9 @@ namespace PlayerStoryteller
         private readonly GameDataCache dataCache;
         private readonly Map map;
         private bool terrainPushed = false;
+        private bool thingsPushed = false;
+        private int lastThingsCount = 0;
+        private readonly HashSet<string> sentTextures = new HashSet<string>();
 
         public GameDataPoller(RimApiClient apiClient, GameDataCache dataCache, Map map)
         {
@@ -87,6 +90,9 @@ namespace PlayerStoryteller
         {
             try
             {
+                // Capture focus positions on Main Thread before any await
+                var focusPositions = GetFocusPositions();
+
                 int mapId = map.uniqueID;
 
                 // PERFORMANCE FIX: Fetch all in parallel for speed
@@ -161,9 +167,6 @@ namespace PlayerStoryteller
                 string result = sb.ToString();
 
                 dataCache.SetSlowData(result);
-
-                // Also push map things (plants, trees, buildings) for optical view
-                _ = PushMapThingsAsync(mapId);
             }
             catch (Exception ex)
             {
@@ -172,6 +175,36 @@ namespace PlayerStoryteller
         }
 
         #endregion
+
+        // Helper to get positions of interest (adopted pawns)
+        private List<IntVec3> GetFocusPositions()
+        {
+            var positions = new List<IntVec3>();
+            try 
+            {
+                var viewerManager = map.GetComponent<ViewerManager>();
+                if (viewerManager != null)
+                {
+                    var pawns = viewerManager.GetActivePawns();
+                    foreach (var p in pawns.Values)
+                    {
+                        if (p != null && p.Spawned && p.Map == map)
+                        {
+                            positions.Add(p.Position);
+                        }
+                    }
+                }
+
+                // Debug: Also include selected pawn
+                if (Find.Selector != null && Find.Selector.SingleSelectedThing is Pawn selected && selected.Map == map)
+                {
+                    positions.Add(selected.Position);
+                }
+            }
+            catch(Exception) { /* Safely ignore main thread access errors if any */ }
+            
+            return positions;
+        }
 
         #region Stored Resources (Items in storage zones)
 
@@ -453,27 +486,114 @@ namespace PlayerStoryteller
             }
         }
 
-        private async Task PushMapThingsAsync(int mapId)
+        private bool isUpdatingLiveView = false;
+
+        /// <summary>
+        /// ULTRAFAST TIER: Updates the Live Optical View.
+        /// Polls only the areas around active viewers' pawns.
+        /// </summary>
+        public async void UpdateLiveViewAsync()
         {
+            if (!PlayerStorytellerMod.settings.enableLiveScreen) return;
+            if (isUpdatingLiveView) return;
+
+            isUpdatingLiveView = true;
             try
             {
-                string thingsJson = await apiClient.GetMapThings(mapId);
-                if (string.IsNullOrEmpty(thingsJson))
+                // Capture focus positions on Main Thread
+                var focusPositions = GetFocusPositions();
+                if (focusPositions.Count == 0) return;
+
+                int mapId = map.uniqueID;
+                var allFetchedThings = new JArray();
+                var processedIds = new HashSet<string>();
+                var uniqueDefNames = new HashSet<string>();
+
+                // 1. Fetch data for each focus zone (API handles spatial filtering)
+                foreach (var pos in focusPositions)
                 {
-                    Log.Warning("[Player Storyteller] Map things data unavailable from RimAPI.");
-                    return;
+                    string json = await apiClient.GetMapThingsInRadius(mapId, pos.x, pos.z, 25);
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        var chunk = JArray.Parse(json);
+                        foreach (var item in chunk)
+                        {
+                            // Robust ID extraction
+                            string id = item["ThingId"]?.ToString() ?? item["id"]?.ToString() ?? item["thing_id"]?.ToString();
+                            if (!string.IsNullOrEmpty(id) && !processedIds.Contains(id))
+                            {
+                                allFetchedThings.Add(item);
+                                processedIds.Add(id);
+
+                                // Collect DefName
+                                var defName = item["DefName"]?.ToString() ?? item["def_name"]?.ToString();
+                                if (!string.IsNullOrEmpty(defName)) uniqueDefNames.Add(defName);
+                            }
+                        }
+                    }
                 }
 
-                bool sent = await PlayerStorytellerMod.SendMapThingsAsync(thingsJson);
-                if (sent)
+                // Log.Message($"[Player Storyteller] Live View: {allFetchedThings.Count} items.");
+
+                // CACHING: Only push if count changed significantly or enough time passed
+                // For Ultrafast, we usually just push. But maybe skip empty updates if we tracked state?
+                // The frontend handles smoothing, so pushing every 1s is fine.
+
+                // 2. Fetch Textures (Throttled)
+                var textures = new JObject();
+                int fetchedCount = 0;
+                const int MAX_TEXTURES_PER_TICK = 20; // Increased throughput
+
+                foreach (var defName in uniqueDefNames)
                 {
-                    Log.Message("[Player Storyteller] Map things data pushed to server.");
+                    if (sentTextures.Contains(defName)) continue;
+                    if (fetchedCount >= MAX_TEXTURES_PER_TICK) break;
+
+                    try
+                    {
+                        var base64String = await apiClient.GetItemIcon(defName);
+                        if (!string.IsNullOrEmpty(base64String))
+                        {
+                            textures[defName] = base64String;
+                            sentTextures.Add(defName);
+                            fetchedCount++;
+                        }
+                    }
+                    catch (Exception) { /* Ignore */ }
                 }
+
+                // 3. Bundle & Send
+                var bundled = new JObject();
+                bundled["things"] = allFetchedThings;
+                bundled["textures"] = textures;
+                
+                // Add focus zones for frontend cleanup
+                var zones = new JArray();
+                foreach(var pos in focusPositions)
+                {
+                    var z = new JObject();
+                    z["x"] = pos.x;
+                    z["z"] = pos.z;
+                    z["radius"] = 25;
+                    zones.Add(z);
+                }
+                bundled["focus_zones"] = zones;
+
+                await PlayerStorytellerMod.SendMapThingsAsync(bundled.ToString(Newtonsoft.Json.Formatting.None));
             }
             catch (Exception ex)
             {
-                Log.Warning($"[Player Storyteller] Failed to push map things: {ex.Message}");
+                Log.Error($"[Player Storyteller] Live View Error: {ex.Message}");
             }
+            finally
+            {
+                isUpdatingLiveView = false;
+            }
+        }
+
+        private async void PushMapThingsAsync()
+        {
+           // DEPRECATED - Replaced by UpdateLiveViewAsync
         }
 
         private async void PushDefinitionsAsync()

@@ -140,7 +140,7 @@ module.exports = (io, definitionManager) => {
         res.send(tex);
     });
 
-    // Map things ingest (from Mod) - plants, trees, buildings, objects
+    // Map things ingest (from Mod) - plants, trees, buildings, objects with textures
     router.post('/api/v1/map/things/:sessionId', (req, res) => {
         const { sessionId } = req.params;
         const streamKey = req.headers['x-stream-key'];
@@ -154,21 +154,81 @@ module.exports = (io, definitionManager) => {
             return res.status(403).json({ error: 'Invalid stream key' });
         }
 
-        const thingsData = req.body;
-        if (!thingsData) {
+        const payload = req.body;
+        if (!payload) {
             return res.status(400).json({ error: 'Invalid things payload' });
         }
 
-        // Handle both RimAPI format {"success": true, "data": [...]} and raw array
-        const things = thingsData.data || thingsData;
+        // New format: {things: [...], textures: {DefName: base64, ...}}
+        // Old format: raw array or {data: [...]}
+        let things, textures;
 
-        session.mapThings = things;
+        if (payload.things && payload.textures) {
+            // New bundled format
+            things = payload.things;
+            textures = payload.textures;
+        } else {
+            // Legacy format - just things data
+            things = payload.data || payload;
+            textures = {};
+        }
+
+        // Convert texture base64 strings to buffers
+        const textureBuffers = {};
+        if (textures && typeof textures === 'object') {
+            Object.entries(textures).forEach(([defName, base64]) => {
+                try {
+                    const buffer = Buffer.from(base64, 'base64');
+                    // Validate PNG header
+                    if (buffer.length > 4 && buffer[0] === 0x89 && buffer[1] === 0x50) {
+                        textureBuffers[defName] = buffer;
+                    }
+                } catch (e) {
+                    console.warn(`[Things] Invalid texture for ${defName}`);
+                }
+            });
+        }
+
+        // Initialize mapThings if missing
+        if (!session.mapThings) {
+            session.mapThings = { things: [], textures: {} };
+        }
+
+        // Merge textures (keep old ones, overwrite with new ones)
+        // Replace things list entirely (it's a snapshot of the current chunk/view)
+        // Wait - if we replace things list, we lose things outside the chunk?
+        // But the client manages persistence.
+        // For SERVER state (used by NEW clients), we probably want to accumulate things too?
+        // But the user said "self exploring... builds up".
+        // If we only store the latest chunk on the server, a new client will only see that chunk.
+        // Ideally, we should merge things too based on ID or just append?
+        // But things move/die.
+        // For now, let's just merge textures to solve the "missing texture" issue for new clients.
+        // The client-side "building up" logic handles the things list.
+        
+        session.mapThings.things = things; 
+        session.mapThings.textures = { ...session.mapThings.textures, ...textureBuffers };
+        
         sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
-        console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things for ${sessionId}`);
+        console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things, merged ${Object.keys(textureBuffers).length} new textures for ${sessionId}`);
+        
+        // Broadcast update to viewers
+        // Convert NEW texture buffers back to base64 for transport
+        const texturesB64 = {};
+        Object.entries(textureBuffers).forEach(([k, v]) => {
+            texturesB64[k] = v.toString('base64');
+        });
+
+        io.to(sessionId).emit('map-things-update', {
+            things: things,
+            textures: texturesB64,
+            focus_zones: payload.focus_zones // Pass through focus zones for cleanup
+        });
+
         res.json({ success: true });
     });
 
-    // Map things fetch (viewer)
+    // Map things fetch (viewer) - returns things array only
     router.get('/api/v1/map/things', (req, res) => {
         const { sessionId } = req.query;
         const session = sessionStore.getSession(sessionId);
@@ -176,7 +236,31 @@ module.exports = (io, definitionManager) => {
             return res.status(404).json({ error: 'Things not available' });
         }
 
-        res.json(session.mapThings);
+        // Return just the things array (backwards compatible)
+        const things = session.mapThings.things || session.mapThings;
+        res.json(things);
+    });
+
+    // Map thing texture fetch (viewer) - serves cached textures
+    router.get('/api/v1/map/thing/image', (req, res) => {
+        const { sessionId, name } = req.query;
+        if (!name) {
+            return res.status(400).json({ error: 'Missing name parameter' });
+        }
+
+        const session = sessionStore.getSession(sessionId);
+        if (!session || !session.mapThings || !session.mapThings.textures) {
+            return res.status(404).json({ error: 'Thing textures not available' });
+        }
+
+        const texture = session.mapThings.textures[name];
+        if (!texture) {
+            return res.status(404).json({ error: 'Texture not found' });
+        }
+
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+        res.send(texture);
     });
 
     // Upload Definitions (From Mod)
