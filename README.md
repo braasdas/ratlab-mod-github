@@ -1,33 +1,40 @@
 # RatLab (formerly PlayerStoryteller)
 
-**Turn RimWorld into a massive social experiment.** RatLab allows your viewers to interact directly with your game through a live web dashboard—spawning items, triggering raids, and managing the chaos—all with **zero performance impact** on your game.
+**Turn RimWorld into a massive social experiment.** RatLab allows your viewers to interact directly with your game through a live web dashboard—spawning items, triggering raids, and managing the chaos—all with **minimal performance impact** on your game.
 
 ![RatLab Interface](https://ratlab.online/assets/preview.png)
 
 ## Features
 
-### 🚀 The "Sidecar" Architecture (New in 2.0)
-Previous streaming mods slowed RimWorld down by forcing the Unity engine to compress video. RatLab uses a revolutionary **Hybrid Architecture**:
-*   **Zero-Overhead Capture:** A separate, lightweight "Sidecar" process (written in Go) captures your window directly. Your game runs at full speed.
-*   **Smooth 30 FPS:** Decoupled rendering means viewers get a smooth feed even when your colony is lagging from 500 tribal raiders.
-*   **Firewall Bypass:** Uses standard secure web ports (WSS/443). Host from strict networks (dorms, offices) without port forwarding.
+### 👁️ The "Optical View" (New in 3.0)
+RatLab introduces a groundbreaking **Live Optical View** that reconstructs the game world in the browser:
+*   **Zero-Lag "My Pawn" Feed:** Adopters get a private, 60fps tactical view of their pawn that moves smoothly independently of the video stream.
+*   **Sub-Pixel Rendering:** Custom canvas engine with smooth camera tracking that locks to pawn movement.
+*   **Direct Memory Access:** Optimized data polling (10Hz) bypasses standard API calls for ultra-low latency updates.
+
+### 🚀 Hybrid Architecture
+Previous streaming mods slowed RimWorld down by forcing the Unity engine to compress video. RatLab uses a **Triple-Tier Strategy**:
+*   **Ultrafast Tier (10Hz):** Direct memory access sends lightweight pawn positions and health data instantly.
+*   **Fast Tier (1Hz):** Scans visible terrain, items, and buildings for the Optical View.
+*   **Slow Tier (5s+):** Updates heavy data like inventories, skills, and world stats.
+*   **Sidecar Process:** A separate, lightweight Go process handles video capture (if enabled), keeping the game thread free.
 
 ### 🎮 For Viewers: God Mode
 Viewers access your colony via **[ratlab.online](https://ratlab.online)**. No Twitch account required.
+*   **Adoption System:** Viewers can "Adopt" a colonist to get a private control panel and live feed.
+*   **Real-Time Dashboard:** Monitor colony wealth, power consumption, and faction relations.
 *   **Interactive Pings:** Click anywhere on the video to spawn visual markers in-game for the streamer.
 *   **Live Inventory:** Inspect every stockpile and colonist inventory in real-time.
-*   **Full Biography:** View traits, health conditions, and mood breakdowns instantly.
-*   **Real-Time Dashboard:** Monitor colony wealth, power consumption, and faction relations.
 
 ### 🛠️ For Streamers: Total Control
 *   **Economy Management:** Set passive income rates and individual action prices.
-*   **Granular Cooldowns:** Prevent spam with global or per-action cooldowns.
-*   **Karma Balancing:** Force a balance between "Good" (Healing, Drops) and "Bad" (Raids) events.
+*   **Voting Queue:** Viewers vote on events before they happen.
 *   **Full DLC Support:**
     *   **Royalty:** Tribute Collectors, Anima Trees.
     *   **Ideology:** Rituals, Hacker Camps.
     *   **Biotech:** Bossgroups, Wastepacks, Genepacks.
     *   **Anomaly:** Death Palls, Golden Cubes, Pit Gates.
+    *   **Odyssey:** (Custom Mod Support)
 
 ## Installation
 
@@ -41,7 +48,12 @@ Viewers access your colony via **[ratlab.online](https://ratlab.online)**. No Tw
 This monorepo contains the entire RatLab ecosystem:
 
 *   **`Ratlab Mod/`**: The C# RimWorld mod source code.
+    *   *Core:* `PlayerStorytellerMapComponent.cs` (Orchestrator)
+    *   *Polling:* `GameDataPoller.cs` (Optimized memory access)
+    *   *Logic:* `GameActionExecutor.cs` (Event triggers)
 *   **`Ratlab Server/`**: The Node.js backend and web dashboard frontend.
+    *   *Viewer:* `public/js/viewer/` (MapRenderer, Colonists, Optical Engine)
+    *   *Server:* `src/` (Socket.io, Session Store, API Routes)
 *   **`go-sidecar/`**: The Go source code for the video streaming sidecar.
 
 ## Development
