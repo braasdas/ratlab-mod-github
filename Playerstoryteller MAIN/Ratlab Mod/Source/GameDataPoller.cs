@@ -621,6 +621,7 @@ namespace PlayerStoryteller
 
         private bool isUpdatingLiveView = false;
         private HashSet<string> lastLiveViewThingIds = new HashSet<string>();
+        private int liveViewTickCounter = 0;
 
         /// <summary>
         /// OPTIMIZED TIER: Updates the Live Optical View.
@@ -634,6 +635,13 @@ namespace PlayerStoryteller
             isUpdatingLiveView = true;
             try
             {
+                // Periodically clear texture cache to handle client refreshes (every ~30 updates)
+                liveViewTickCounter++;
+                if (liveViewTickCounter % 30 == 0)
+                {
+                    sentTextures.Clear();
+                }
+
                 // Capture focus positions on Main Thread
                 var focusPositions = GetFocusPositions();
                 if (focusPositions.Count == 0)
@@ -682,9 +690,11 @@ namespace PlayerStoryteller
                 }
 
                 // DELTA OPTIMIZATION: Only send if things changed
+                // EXCEPTION: If we just cleared cache, we MUST send to ensure textures go through if needed
+                bool forceUpdate = (liveViewTickCounter % 30 == 0);
                 bool hasChanges = !currentThingIds.SetEquals(lastLiveViewThingIds);
 
-                if (!hasChanges && allThings.Count > 0)
+                if (!hasChanges && !forceUpdate && allThings.Count > 0)
                 {
                     // No changes, skip this update to reduce bandwidth
                     isUpdatingLiveView = false;
@@ -695,7 +705,7 @@ namespace PlayerStoryteller
 
                 // 2. Fetch Textures (Optimized: Only new DefNames, smaller batches to prevent spikes)
                 var textures = new JObject();
-                const int MAX_TEXTURES_PER_TICK = 20; // Reduced from 100 to prevent 1s spikes
+                const int MAX_TEXTURES_PER_TICK = 50; // Increased to 50
 
                 var texturesToFetch = uniqueDefNames
                     .Where(defName => !sentTextures.Contains(defName))
