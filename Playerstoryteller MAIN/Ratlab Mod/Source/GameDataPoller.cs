@@ -33,7 +33,7 @@ namespace PlayerStoryteller
         /// <summary>
         /// Updates fast-changing data (colonists positions/health).
         /// </summary>
-        public async void UpdateFastDataAsync()
+        public void UpdateFastDataAsync()
         {
             try
             {
@@ -82,17 +82,17 @@ namespace PlayerStoryteller
                     var adoptions = viewerManager.GetAdoptionsList();
                     if (adoptions.Count > 0)
                     {
-                        var sb = new StringBuilder();
-                        sb.Append(",\"adoptions\":[");
-                        bool first = true;
+                        var sbAdoptions = new StringBuilder();
+                        sbAdoptions.Append(",\"adoptions\":[");
+                        bool firstAdoption = true;
                         foreach (var kvp in adoptions)
                         {
-                            if (!first) sb.Append(",");
-                            sb.Append($"{{\"username\":\"{kvp.Key}\",\"pawnId\":\"{kvp.Value}\"}}");
-                            first = false;
+                            if (!firstAdoption) sbAdoptions.Append(",");
+                            sbAdoptions.Append($"{{\"username\":\"{kvp.Key}\",\"pawnId\":\"{kvp.Value}\"}}");
+                            firstAdoption = false;
                         }
-                        sb.Append("]");
-                        adoptionsJson = sb.ToString();
+                        sbAdoptions.Append("]");
+                        adoptionsJson = sbAdoptions.ToString();
                     }
                 }
 
