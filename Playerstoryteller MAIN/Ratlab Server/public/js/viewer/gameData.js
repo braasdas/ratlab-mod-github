@@ -11,26 +11,126 @@ let hasLoggedInitialState = false;
 export function updateGameState(gameState) {
     if (!gameState) return;
     
-    // Store global state (legacy support for simple access if needed)
-    window.lastGameState = gameState;
+    // Initialize persistent state
+    if (!window.lastGameState) window.lastGameState = {};
+    const effectiveState = window.lastGameState;
 
     if (!hasLoggedInitialState) {
         console.log('Game State received:', gameState);
         hasLoggedInitialState = true;
     }
 
-    // Update Caches
-    if (gameState.camera) STATE.cameraBounds = gameState.camera;
-    if (gameState.colonist_portraits) Object.assign(STATE.colonistPortraits, gameState.colonist_portraits);
-    if (gameState.item_icons) {
-        Object.assign(STATE.itemIcons, gameState.item_icons);
+    // === MERGE STRATEGY ===
+
+    // 0. ULTRAFAST Position-Only Update (bypasses all caching)
+    if (gameState.pawn_positions) {
+        if (!effectiveState.colonists) effectiveState.colonists = [];
+
+        gameState.pawn_positions.forEach(posUpdate => {
+            const updateId = String(posUpdate.id);
+
+            const existingEntry = effectiveState.colonists.find(c => {
+                const p = c.colonist || c;
+                // Check all possible ID fields
+                const existingId = String(p.id || p.pawn_id || p.ThingID || p.thingIDNumber || p.thing_id);
+                return existingId === updateId;
+            });
+
+            if (existingEntry) {
+                const target = existingEntry.colonist || existingEntry;
+                // ALWAYS update position - no caching for ultrafast tier
+                if (posUpdate.position) {
+                    target.position = posUpdate.position;
+                }
+            } else {
+                // New pawn with just position data - create minimal entry
+                effectiveState.colonists.push({
+                    id: posUpdate.id,
+                    pawn_id: posUpdate.id, // Add both for compatibility
+                    position: posUpdate.position
+                });
+            }
+        });
     }
 
-    // 1. Core Data Extraction
-    const colonists = gameState.colonists || [];
-    const resources = gameState.resources || {};
-    const factions = gameState.factions || [];
-    const mods = gameState.mods || [];
+    // 1. Light Update (Fast Tier - Pos/Health)
+    if (gameState.colonists_light) {
+        if (!effectiveState.colonists) effectiveState.colonists = [];
+        
+        gameState.colonists_light.forEach(light => {
+            // "light" is ColonistDto { id, health, mood, position... }
+            const existingEntry = effectiveState.colonists.find(c => {
+                const p = c.colonist || c;
+                return (p.id || p.pawn_id) == (light.id || light.pawn_id);
+            });
+
+            if (existingEntry) {
+                // Update existing detailed record
+                const target = existingEntry.colonist || existingEntry;
+                // Merge dynamic fields
+                if (light.position) target.position = light.position;
+                if (light.health !== undefined) target.health = light.health;
+                if (light.mood !== undefined) target.mood = light.mood;
+                if (light.hunger !== undefined) target.hunger = light.hunger; // check dto
+                if (light.drafted !== undefined) target.drafted = light.drafted;
+            } else {
+                // New colonist (or first load), add light entry
+                effectiveState.colonists.push(light);
+            }
+        });
+    }
+
+    // 2. Heavy Update (Slow Tier - Full Details)
+    if (gameState.colonists_full) {
+        // Anti-Rubberband: Preserve current positions from the existing state
+        // The heavy update is slow and its position data is likely stale.
+        if (effectiveState.colonists) {
+            gameState.colonists_full.forEach(newCol => {
+                const newId = newCol.colonist ? (newCol.colonist.id || newCol.colonist.pawn_id) : (newCol.id || newCol.pawn_id);
+                
+                const existing = effectiveState.colonists.find(c => {
+                    const p = c.colonist || c;
+                    return (p.id || p.pawn_id) == newId;
+                });
+
+                if (existing) {
+                    const oldPos = existing.colonist ? existing.colonist.position : existing.position;
+                    // If we have a valid current position, keep it
+                    if (oldPos) {
+                        if (newCol.colonist) newCol.colonist.position = oldPos;
+                        else newCol.position = oldPos;
+                    }
+                }
+            });
+        }
+        effectiveState.colonists = gameState.colonists_full;
+    }
+
+    // 3. Standard/Legacy Update
+    if (gameState.colonists) {
+        effectiveState.colonists = gameState.colonists;
+    }
+
+    // 4. Merge other root keys
+    // We iterate keys to ensure we catch everything (resources, power, etc)
+    Object.keys(gameState).forEach(key => {
+        if (key !== 'colonists' && key !== 'colonists_light' && key !== 'colonists_full') {
+            effectiveState[key] = gameState[key];
+        }
+    });
+
+    // Update Caches
+    if (effectiveState.camera) STATE.cameraBounds = effectiveState.camera;
+    if (effectiveState.colonist_portraits) Object.assign(STATE.colonistPortraits, effectiveState.colonist_portraits);
+    if (effectiveState.item_icons) {
+        Object.assign(STATE.itemIcons, effectiveState.item_icons);
+    }
+
+    // 1. Core Data Extraction (Use Effective State)
+    const colonists = effectiveState.colonists || [];
+    const resources = effectiveState.resources || {};
+    const factions = effectiveState.factions || [];
+    const mods = effectiveState.mods || [];
 
     // 2. UI Updates
     const colonistCount = document.getElementById('colonist-count');
@@ -40,33 +140,33 @@ export function updateGameState(gameState) {
     if (wealthDisplay) wealthDisplay.textContent = `$${((resources.total_market_value || 0)/1000).toFixed(1)}k`;
 
     // 3. Module Updates
-    updateMyPawnUI(gameState);
+    updateMyPawnUI(effectiveState);
     
     if (colonists.length > 0) {
-        updateColonistsList(colonists, gameState);
-        updateMapOverlays(gameState);
+        updateColonistsList(colonists, effectiveState);
+        updateMapOverlays(effectiveState);
         // Also update Personal Inventory in Inventory Tab
-        updateInventoryList(colonists, gameState);
+        updateInventoryList(colonists, effectiveState);
     } else {
          const list = document.getElementById('colonists-list');
          if(list) list.innerHTML = '<p class="loading col-span-full text-center">No active subjects found</p>';
     }
 
     // 4. DLC Visibility
-    updateDLCIndicators(gameState.active_dlcs);
+    updateDLCIndicators(effectiveState.active_dlcs);
 
     // 5. Medical Alerts
     updateMedicalAlerts(colonists);
 
     // 6. Stats & Info
-    if (gameState.power) updatePowerStats(gameState.power);
-    if (gameState.creatures) updateCreatureStats(gameState.creatures);
-    if (gameState.research) updateResearchStats(gameState.research);
+    if (effectiveState.power) updatePowerStats(effectiveState.power);
+    if (effectiveState.creatures) updateCreatureStats(effectiveState.creatures);
+    if (effectiveState.research) updateResearchStats(effectiveState.research);
     if (factions.length > 0) updateFactionsList(factions);
     if (mods.length > 0) updateModsList(mods);
     // Update stored resources (Storage Zone)
     if (resources.stored) updateStoredResources(resources.stored); // Assuming structure is resources.stored or top level stored_resources
-    else if (gameState.stored_resources) updateStoredResources(gameState.stored_resources);
+    else if (effectiveState.stored_resources) updateStoredResources(effectiveState.stored_resources);
 }
 
 function updateDLCIndicators(activeDlcs) {

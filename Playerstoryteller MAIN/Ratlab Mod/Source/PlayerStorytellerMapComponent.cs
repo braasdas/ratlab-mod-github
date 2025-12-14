@@ -18,7 +18,7 @@ namespace PlayerStoryteller
         private const float ActionPollInterval = 2f; // Check for actions every 2 seconds
         private const int HttpTimeoutMilliseconds = 500; // RimAPI timeout (local calls should be fast)
         private const float GameStateUpdateInterval = 0.1f; // Send game state JSON every 100ms (10 Hz)
-        private const float MinFastDataInterval = 0.5f; // Minimum fast data polling interval
+        private const float MinFastDataInterval = 0.1f; // Minimum fast data polling interval (Reduced for smooth tracking)
         private const float MinSlowDataInterval = 1f; // Minimum slow data polling interval
         private const float MinStaticDataInterval = 10f; // Minimum static data polling interval
 
@@ -33,6 +33,8 @@ namespace PlayerStoryteller
         private Coroutine settingsPollCoroutine;
         private Coroutine mapCaptureCoroutine;
         private Coroutine liveViewCoroutine; // ULTRAFAST TIER
+        private Coroutine positionPollCoroutine; // ULTRAFAST TIER (Positions)
+        private Coroutine heavyDataCoroutine; // HEAVY DATA TIER
 
         // HELPER CLASSES
         private SidecarManager sidecarManager;
@@ -166,12 +168,31 @@ namespace PlayerStoryteller
                 settingsPollCoroutine = handlerComponent.StartCoroutine(SettingsPollCoroutine());
                 mapCaptureCoroutine = handlerComponent.StartCoroutine(MapCaptureCoroutine());
                 liveViewCoroutine = handlerComponent.StartCoroutine(LiveViewPollCoroutine());
+                positionPollCoroutine = handlerComponent.StartCoroutine(PositionPollCoroutine());
+                heavyDataCoroutine = handlerComponent.StartCoroutine(HeavyDataPollCoroutine());
             }
         }
 
         // ============================================
         // COROUTINES (Delegating to Helpers)
         // ============================================
+
+        private IEnumerator PositionPollCoroutine()
+        {
+            yield return new WaitForSeconds(1f);
+            while (true)
+            {
+                try
+                {
+                    gameDataPoller?.UpdatePawnPositionsAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Player Storyteller] Error in PositionPoll: {ex.Message}");
+                }
+                yield return new WaitForSecondsRealtime(0.1f); // 10Hz updates
+            }
+        }
 
         private IEnumerator LiveViewPollCoroutine()
         {
@@ -186,7 +207,24 @@ namespace PlayerStoryteller
                 {
                     Log.Error($"[Player Storyteller] Error in LiveViewPoll: {ex.Message}");
                 }
-                yield return new WaitForSecondsRealtime(1.0f); // Realtime 1Hz (works while paused)
+                yield return new WaitForSecondsRealtime(1.0f); // Reverted to 1Hz
+            }
+        }
+
+        private IEnumerator HeavyDataPollCoroutine()
+        {
+            yield return new WaitForSeconds(5f);
+            while (true)
+            {
+                try
+                {
+                    gameDataPoller?.UpdateColonistDetailsAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Player Storyteller] Error in HeavyDataPoll: {ex.Message}");
+                }
+                yield return new WaitForSeconds(5.0f);
             }
         }
 

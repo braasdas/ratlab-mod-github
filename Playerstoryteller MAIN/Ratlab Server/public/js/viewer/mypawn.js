@@ -76,11 +76,67 @@ export function initializeMyPawn() {
     
     // Start Polling
     setInterval(checkAdoptionStatus, 5000);
-    
+
     // Initialize Action Buttons
     initializeActionButtons();
 
+    // Initialize Camera Toggle
+    initializeCameraToggle();
+
     isMyPawnInitialized = true;
+}
+
+function initializeCameraToggle() {
+    const btnFollow = document.getElementById('btn-camera-follow');
+    const btnFree = document.getElementById('btn-camera-free');
+
+    if (btnFollow && btnFree) {
+        btnFollow.onclick = () => {
+            if (mapRenderer) {
+                mapRenderer.isFollowing = true;
+
+                // Immediately center camera on my pawn when activating follow mode
+                if (STATE.myPawnId) {
+                    const dotId = mapRenderer.pawnIdToDotId.get(String(STATE.myPawnId));
+                    if (dotId) {
+                        const dot = mapRenderer.trackedDots.get(dotId);
+                        if (dot) {
+                            mapRenderer.setCameraTarget(dot.x, dot.z);
+                        }
+                    }
+                }
+
+                btnFollow.classList.add('bg-rat-green', 'text-black');
+                btnFollow.classList.remove('hover:bg-rat-dark/50');
+                btnFree.classList.remove('bg-rat-green', 'text-black');
+                btnFree.classList.add('hover:bg-rat-dark/50');
+            }
+        };
+
+        btnFree.onclick = () => {
+            if (mapRenderer) {
+                mapRenderer.isFollowing = false;
+                btnFree.classList.add('bg-rat-green', 'text-black');
+                btnFree.classList.remove('hover:bg-rat-dark/50');
+                btnFollow.classList.remove('bg-rat-green', 'text-black');
+                btnFollow.classList.add('hover:bg-rat-dark/50');
+            }
+        };
+    }
+}
+
+function updateDraftButtonVisual(btn, isDrafted) {
+    if (isDrafted) {
+        // Drafted state - red button
+        btn.classList.remove('hover:bg-rat-red', 'hover:text-white');
+        btn.classList.add('bg-rat-red', 'text-white', 'hover:bg-rat-red/80');
+        btn.innerHTML = `<i class="fa-solid fa-person-military-rifle mb-1 block text-lg"></i>UNDRAFT`;
+    } else {
+        // Undrafted state - green button
+        btn.classList.remove('bg-rat-red', 'text-white', 'hover:bg-rat-red/80');
+        btn.classList.add('hover:bg-rat-green', 'hover:text-black');
+        btn.innerHTML = `<i class="fa-solid fa-person-military-rifle mb-1 block text-lg"></i>DRAFT`;
+    }
 }
 
 function ensureMapRenderer(mapId = 0) {
@@ -161,11 +217,19 @@ function initializeActionButtons() {
             // Let's implement 'draft' specifically and generic others.
             
             if (cmd === 'draft') {
-                 sendAction('colonist_command', JSON.stringify({
+                // Get current draft status
+                const isDrafted = btn.dataset.drafted === 'true';
+
+                sendAction('colonist_command', JSON.stringify({
                     type: 'draft',
                     pawnId: STATE.myPawnId
                 }));
-                showFeedback('info', 'TOGGLING DRAFT STATUS...');
+
+                // Toggle visual state immediately for responsiveness
+                btn.dataset.drafted = (!isDrafted).toString();
+                updateDraftButtonVisual(btn, !isDrafted);
+
+                showFeedback('info', isDrafted ? 'RELEASING FROM DRAFT...' : 'DRAFTING COLONIST...');
             } else if (cmd === 'medical') {
                  sendAction('colonist_command', JSON.stringify({
                     type: 'job',
@@ -287,7 +351,9 @@ export function updateMyPawnUI(gameState) {
     // Find our pawn
     const myPawnEntry = gameState.colonists.find(c => {
         const p = c.colonist || c;
-        return String(p.id || p.pawn_id) == String(STATE.myPawnId);
+        // Check all possible ID fields for robust matching
+        const pawnId = String(p.id || p.pawn_id || p.ThingID || p.thingIDNumber || p.thing_id);
+        return pawnId === String(STATE.myPawnId);
     });
 
     if (!myPawnEntry) {
@@ -298,6 +364,13 @@ export function updateMyPawnUI(gameState) {
 
     const pawn = myPawnEntry.colonist || myPawnEntry;
     const workInfo = myPawnEntry.colonist_work_info || {};
+
+    // Update draft button state from game data
+    const draftBtn = document.querySelector('.btn-cmd[data-cmd="draft"]');
+    if (draftBtn && pawn.drafted !== undefined) {
+        draftBtn.dataset.drafted = pawn.drafted.toString();
+        updateDraftButtonVisual(draftBtn, pawn.drafted);
+    }
 
     // 1. Header Info
     const nameEl = document.getElementById('my-pawn-name');

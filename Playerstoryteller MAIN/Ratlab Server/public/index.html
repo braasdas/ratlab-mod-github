@@ -428,7 +428,18 @@
                                 <div id="my-pawn-live-view-panel" class="bg-rat-panel border border-rat-border rounded p-4 hidden mb-4">
                                     <h3 class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
                                         <span>LIVE OPTICAL VIEW <span class="text-[10px] text-rat-text-dim italic normal-case ml-2">Adopters only — drag to pan, scroll to zoom</span></span>
-                                        <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
+                                        <div class="flex items-center gap-2">
+                                            <!-- Camera Mode Toggle -->
+                                            <div class="flex gap-1 bg-rat-dark border border-rat-border rounded overflow-hidden">
+                                                <button id="btn-camera-follow" class="px-2 py-1 text-[10px] font-mono bg-rat-green text-black transition-colors">
+                                                    <i class="fa-solid fa-crosshairs mr-1"></i>FOLLOW
+                                                </button>
+                                                <button id="btn-camera-free" class="px-2 py-1 text-[10px] font-mono hover:bg-rat-dark/50 transition-colors">
+                                                    <i class="fa-solid fa-hand mr-1"></i>FREE
+                                                </button>
+                                            </div>
+                                            <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
+                                        </div>
                                     </h3>
                                     <div id="my-pawn-live-view-container" class="w-full h-[400px] bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
                                         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">

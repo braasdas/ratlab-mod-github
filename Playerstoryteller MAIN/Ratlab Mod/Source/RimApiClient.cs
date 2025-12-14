@@ -31,6 +31,22 @@ namespace PlayerStoryteller
         #region Public API Methods
 
         /// <summary>
+        /// Fetches basic colonist data (Light payload: Pos, Health, etc.).
+        /// </summary>
+        public async Task<string> GetColonists(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/colonists?map_id={mapId}", "colonists_light");
+        }
+
+        /// <summary>
+        /// Fetches ONLY colonist positions (Ultra-light payload).
+        /// </summary>
+        public async Task<string> GetColonistPositions(int mapId)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/colonists/positions?map_id={mapId}", "colonist_positions");
+        }
+
+        /// <summary>
         /// Fetches detailed colonist data from RimAPI.
         /// </summary>
         public async Task<string> GetColonistsDetailed(int mapId)

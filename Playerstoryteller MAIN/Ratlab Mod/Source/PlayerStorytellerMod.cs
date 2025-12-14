@@ -968,7 +968,7 @@ namespace PlayerStoryteller
     public class PlayerStorytellerSettings : ModSettings
     {
         // Tiered polling intervals for different data types
-        public float fastDataInterval = 0.5f; // Increased to 0.5s for smoother pawn movement
+        public float fastDataInterval = 0.2f; // Increased to 0.2s (5Hz) for smooth tracking
         public float slowDataInterval = 8.0f;
         public float staticDataInterval = 45.0f;
 
@@ -1146,7 +1146,7 @@ namespace PlayerStoryteller
 
         public override void ExposeData()
         {
-            Scribe_Values.Look(ref fastDataInterval, "fastDataInterval", 0.5f);
+            Scribe_Values.Look(ref fastDataInterval, "fastDataInterval", 0.2f);
             Scribe_Values.Look(ref slowDataInterval, "slowDataInterval", 8.0f);
             Scribe_Values.Look(ref staticDataInterval, "staticDataInterval", 45.0f);
 

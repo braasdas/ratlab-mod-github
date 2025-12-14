@@ -4,6 +4,52 @@ const sessionStore = require('../store/sessionStore');
 const log = require('../utils/logger');
 const { checkUpdateRateLimit, checkActionRateLimit } = require('../middleware/security');
 
+// Debounce mechanism for Socket.io broadcasts
+const broadcastDebounce = {
+    gamestate: new Map(), // sessionId -> { lastBroadcast: timestamp, pending: data, timeoutId }
+    mapThings: new Map(),
+    screenshot: new Map()
+};
+
+function debouncedBroadcast(io, sessionId, eventType, data, delay = 50) {
+    let debounceMap;
+    if (eventType === 'gamestate-update') {
+        debounceMap = broadcastDebounce.gamestate;
+    } else if (eventType === 'map-things-update') {
+        debounceMap = broadcastDebounce.mapThings;
+    } else if (eventType === 'screenshot-update') {
+        debounceMap = broadcastDebounce.screenshot;
+    } else {
+        // Unknown event type, just broadcast immediately
+        io.to(sessionId).emit(eventType, data);
+        return;
+    }
+
+    const existing = debounceMap.get(sessionId);
+
+    // Clear existing timeout if present
+    if (existing && existing.timeoutId) {
+        clearTimeout(existing.timeoutId);
+    }
+
+    // Schedule new broadcast
+    const timeoutId = setTimeout(() => {
+        const entry = debounceMap.get(sessionId);
+        if (entry) {
+            io.to(sessionId).emit(eventType, entry.pending);
+            entry.lastBroadcast = Date.now();
+            entry.pending = null;
+            entry.timeoutId = null;
+        }
+    }, delay);
+
+    debounceMap.set(sessionId, {
+        lastBroadcast: existing ? existing.lastBroadcast : Date.now(),
+        pending: data,
+        timeoutId
+    });
+}
+
 // SECURITY: Input validation
 function validateActionData(action, data) {
     // Validate action name (alphanumeric + underscores only)
@@ -211,19 +257,19 @@ module.exports = (io, definitionManager) => {
         
         sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
         console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things, merged ${Object.keys(textureBuffers).length} new textures for ${sessionId}`);
-        
-        // Broadcast update to viewers
+
+        // Broadcast update to viewers with debouncing
         // Convert NEW texture buffers back to base64 for transport
         const texturesB64 = {};
         Object.entries(textureBuffers).forEach(([k, v]) => {
             texturesB64[k] = v.toString('base64');
         });
 
-        io.to(sessionId).emit('map-things-update', {
+        debouncedBroadcast(io, sessionId, 'map-things-update', {
             things: things,
             textures: texturesB64,
             focus_zones: payload.focus_zones // Pass through focus zones for cleanup
-        });
+        }, 50);
 
         res.json({ success: true });
     });
@@ -374,17 +420,20 @@ module.exports = (io, definitionManager) => {
             session.lastUpdate = new Date();
             session.lastHeartbeat = new Date();
 
-            // Broadcast
-            io.emit('screenshot-update', {
+            // Broadcast with debouncing to reduce Socket.io overhead
+            // Use io.to(sessionId) to only broadcast to clients in this session room
+            debouncedBroadcast(io, sessionId, 'screenshot-update', {
                 sessionId,
                 screenshot: session.screenshot,
                 timestamp: session.lastUpdate
-            });
-            io.emit('gamestate-update', {
+            }, 50);
+
+            // Use 16ms debounce for gamestate (one frame) to minimize position update lag
+            debouncedBroadcast(io, sessionId, 'gamestate-update', {
                 sessionId,
                 gameState: session.gameState,
                 timestamp: session.lastUpdate
-            });
+            }, 16);
 
             res.status(200).json({ success: true });
 

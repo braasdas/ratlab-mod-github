@@ -2,68 +2,82 @@ const zlib = require('zlib');
 
 /**
  * Middleware to handle gzipped request bodies.
- * It checks the Content-Encoding header and decompresses the stream if needed.
- * This must be placed BEFORE body parsers (like express.json).
+ * Decompresses the stream, parses the JSON, and sets req.body directly.
+ * Sets req._body = true to bypass downstream body-parsers.
  */
 function decompressMiddleware(req, res, next) {
-    const contentEncoding = req.headers['content-encoding'] || '';
+    // Debug Logging
+    console.log(`[Decompress] ${req.method} ${req.url} | Encoding: ${req.headers['content-encoding']} | Type: ${req.headers['content-type']}`);
 
-    // If not gzipped, proceed
+    let contentEncoding = req.headers['content-encoding'] || '';
+
+    // FORCE GZIP for /api/update if header is missing
+    // The C# Mod always sends this endpoint compressed, but sometimes the header is dropped.
+    if (req.url === '/api/update' && !contentEncoding) {
+        contentEncoding = 'gzip';
+        req.headers['content-encoding'] = 'gzip'; 
+    }
+
+    // If not gzipped, proceed immediately
     if (contentEncoding.toLowerCase() !== 'gzip') {
         return next();
     }
 
-    // Create a gunzip stream
+    // Prepare to collect decompressed data
+    const chunks = [];
     const gunzip = zlib.createGunzip();
 
-    // Handle errors in the decompression stream
+    // Error handling for decompression
     gunzip.on('error', (err) => {
-        console.error('[Decompress] Error decompressing request:', err);
-        // Avoid double response if headers already sent
+        console.error('[Decompress] Gzip Error:', err);
         if (!res.headersSent) {
             res.status(400).json({ error: 'Invalid gzip data' });
         }
     });
 
-    // Replace req with the decompressed stream
-    // We keep the original properties of req
-    req.pipe(gunzip);
-    
-    // This is the magic: we override the req events to point to the gunzip stream
-    // but we need to be careful. 
-    // A safer way in Express is to just replace the data source for body-parser.
-    // However, body-parser reads from 'req'.
-    // So we need to make 'req' look like the unzipped stream.
-    
-    // Strategy:
-    // 1. Remove the content-encoding header so body-parser doesn't get confused
-    //    or try to handle it again (though body-parser usually ignores this).
-    // 2. Use the gunzip stream as the data source.
-    
-    delete req.headers['content-encoding'];
-    
-    // Preserve original pipe method
-    const originalPipe = req.pipe;
-    
-    // Override req properties to behave like the gunzip stream
-    req.pipe = (dest, options) => {
-        return gunzip.pipe(dest, options);
-    };
-    
-    req.on = (event, listener) => {
-        if (event === 'data' || event === 'end' || event === 'error') {
-             gunzip.on(event, listener);
-        } else {
-             // For other events, use the original req
-             req.addListener(event, listener);
+    // Collect chunks
+    gunzip.on('data', (chunk) => {
+        chunks.push(chunk);
+    });
+
+    // When done, parse JSON and populate req.body
+    gunzip.on('end', () => {
+        try {
+            const buffer = Buffer.concat(chunks);
+            const str = buffer.toString('utf8');
+            
+            // Clean headers
+            delete req.headers['content-encoding'];
+            delete req.headers['content-length'];
+            
+            // CRITICAL: Remove Content-Type so express.json() ignores this request
+            // We have already parsed the body manually.
+            delete req.headers['content-type'];
+
+            // Manually parse JSON
+            // This assumes the compressed content is JSON, which matches the Mod's behavior.
+            if (str.trim().length > 0) {
+                req.body = JSON.parse(str);
+            } else {
+                req.body = {};
+            }
+
+            // Flag to tell express.json() / body-parser to skip this request
+            req._body = true;
+
+            next();
+        } catch (e) {
+            console.error('[Decompress] JSON Parse Error:', e.message);
+            // Log first 100 chars to debug
+            // console.error('Payload start:', buffer.slice(0, 100).toString());
+            if (!res.headersSent) {
+                res.status(400).json({ error: 'Invalid JSON in compressed body' });
+            }
         }
-        return req;
-    };
-    
-    // Also delegate 'unpipe', 'read', etc. if strictly necessary, 
-    // but usually 'on' and 'pipe' covers body-parser.
-    
-    next();
+    });
+
+    // Start piping the original request to gunzip
+    req.pipe(gunzip);
 }
 
 module.exports = decompressMiddleware;

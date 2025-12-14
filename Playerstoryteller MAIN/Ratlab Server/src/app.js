@@ -16,6 +16,15 @@ function createApp() {
     app.use(express.json({ limit: '50mb' })); 
     app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+    // Global JSON Error Handler (Prevents crashes on bad payloads)
+    app.use((err, req, res, next) => {
+        if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+            console.error('[App] JSON Parse Error (likely binary data):', err.message);
+            return res.status(400).json({ error: 'Malformed JSON payload' });
+        }
+        next(err);
+    });
+
     // Static Files
     app.use(express.static(path.join(__dirname, '../public'), { etag: false, maxAge: 0 }));
 

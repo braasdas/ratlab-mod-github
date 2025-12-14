@@ -22,6 +22,11 @@ export class MapRenderer {
         this.things = []; // Array of things on the map (Render List)
         this.thingsMap = new Map(); // Persistent storage (ID -> Thing)
 
+        // DOT TRACKING SYSTEM: Track each visual dot independently
+        this.trackedDots = new Map(); // visualDotId → {pawnId, x, z, portraitData, lastUpdate}
+        this.pawnIdToDotId = new Map(); // pawnId → visualDotId (for fast lookup)
+        this.nextDotId = 0;
+
         this.canvas = document.createElement('canvas');
         this.ctx = this.canvas.getContext('2d');
         this.overlay = document.createElement('div');
@@ -260,14 +265,48 @@ export class MapRenderer {
                 }
             }
 
-            // B. Merge New/Updated Things
+            // B. Merge New/Updated Things (with duplicate prevention)
+            if (!this.thingsSpatialHash) this.thingsSpatialHash = new Map();
+
             thingsList.forEach(thing => {
                 // Generate robust ID
                 const pos = thing.position || thing.Position || {x:0, z:0};
                 const def = thing.def_name || thing.DefName || thing.Def || 'Unknown';
-                const id = thing.thing_id || thing.ThingId || thing.Id || `${def}_${pos.x}_${pos.z}`;
-                
-                this.thingsMap.set(String(id), thing);
+                let id = thing.thing_id || thing.ThingId || thing.Id || null;
+
+                // Check for duplicates at same position before adding
+                const gridKey = `${Math.floor(pos.x / 2)}_${Math.floor(pos.z / 2)}`;
+                const nearbyThings = this.thingsSpatialHash.get(gridKey) || [];
+
+                // Look for existing thing at same position (within 1 tile)
+                let existingId = null;
+                for (const nearbyId of nearbyThings) {
+                    const existing = this.thingsMap.get(nearbyId);
+                    if (!existing) continue;
+
+                    const existingPos = existing.position || existing.Position || {x:0, z:0};
+                    const dx = Math.abs(existingPos.x - pos.x);
+                    const dz = Math.abs(existingPos.z - pos.z);
+
+                    if (dx <= 1 && dz <= 1) {
+                        // Same position, reuse existing ID to prevent duplicates
+                        existingId = nearbyId;
+                        break;
+                    }
+                }
+
+                // Use existing ID or create new one
+                const finalId = existingId || id || `${def}_${pos.x}_${pos.z}`;
+
+                this.thingsMap.set(String(finalId), thing);
+
+                // Update spatial hash
+                if (!existingId) {
+                    if (!this.thingsSpatialHash.has(gridKey)) {
+                        this.thingsSpatialHash.set(gridKey, []);
+                    }
+                    this.thingsSpatialHash.get(gridKey).push(String(finalId));
+                }
             });
             
             this.things = Array.from(this.thingsMap.values());
@@ -288,7 +327,7 @@ export class MapRenderer {
     }
 
     _loadTexturesBackground(defs) {
-        const BATCH_SIZE = 8;
+        const BATCH_SIZE = 32; // Increased from 8 for faster texture loading
         const loadBatch = async () => {
             for (let i = 0; i < defs.length; i += BATCH_SIZE) {
                 const batch = defs.slice(i, i + BATCH_SIZE).map(async (defName) => {
@@ -316,13 +355,17 @@ export class MapRenderer {
     }
 
     requestRender() {
-        if (this.animating) return; // Main loop handles it
+        // Don't skip if animating - animation loop will pick up the changes
+        // But we still need to prevent duplicate pending renders
         if (this.renderPending) return;
-        this.renderPending = true;
-        requestAnimationFrame(() => {
-            this.render();
-            this.renderPending = false;
-        });
+        if (!this.animating) {
+            this.renderPending = true;
+            requestAnimationFrame(() => {
+                this.render();
+                this.renderPending = false;
+            });
+        }
+        // If animating, the _animate() loop will render continuously
     }
 
     setCameraTarget(x, z) {
@@ -341,40 +384,179 @@ export class MapRenderer {
     updateFromGameState(gameState, pawnId) {
         if (!this.ready || !gameState) return;
 
+        const now = Date.now();
+
+        // Fixed low-latency interpolation for responsive movement
+        // At 10Hz updates (100ms), use shorter fixed duration to reduce lag
+        this.currentInterpolationDuration = 100; // Fixed 100ms for snappy movement
+        this.lastUpdateTimestamp = now;
+
         // Update all pawn target positions for interpolation
         const pawns = gameState.colonists || [];
-        const now = Date.now();
 
         for (const entry of pawns) {
             const pawn = entry.colonist || entry;
-            const id = String(pawn.id || pawn.pawn_id);
+            // Check all possible ID fields for robust matching
+            const id = String(pawn.id || pawn.pawn_id || pawn.ThingID || pawn.thingIDNumber || pawn.thing_id);
             const pos = pawn.position;
             if (!pos) continue;
 
-            const existing = this.pawnPositions.get(id);
-            if (existing) {
-                // Only update if position actually changed
-                if (existing.target.x !== pos.x || existing.target.z !== pos.z) {
-                    // Store current position as start of interpolation
-                    existing.start = { x: existing.current.x, z: existing.current.z };
-                    existing.target = { x: pos.x, z: pos.z };
-                    existing.timestamp = now;
+            // Check if we already have a tracked dot for this pawn
+            let dotId = this.pawnIdToDotId.get(id);
+
+            if (!dotId) {
+                // Before creating new dot, check if there's already a dot at this position
+                // Use spatial hash for O(1) lookup instead of O(n) loop
+                const gridKey = `${Math.floor(pos.x / 3)}_${Math.floor(pos.z / 3)}`;
+
+                if (!this.spatialHash) this.spatialHash = new Map();
+                const nearbyDots = this.spatialHash.get(gridKey) || [];
+
+                let nearbyDot = null;
+                let nearbyDotId = null;
+                const PROXIMITY = 2;
+
+                // Only check dots in the same grid cell (much faster than checking ALL dots)
+                for (const existingDotId of nearbyDots) {
+                    const existingDot = this.trackedDots.get(existingDotId);
+                    if (!existingDot) continue;
+
+                    const dx = Math.abs(existingDot.x - pos.x);
+                    const dz = Math.abs(existingDot.z - pos.z);
+                    if (dx <= PROXIMITY && dz <= PROXIMITY) {
+                        nearbyDot = existingDot;
+                        nearbyDotId = existingDotId;
+                        break;
+                    }
                 }
-            } else {
-                // New pawn - set all to same position (no interpolation needed)
+
+                if (nearbyDot) {
+                    // Use existing nearby dot instead of creating duplicate
+                    dotId = nearbyDotId;
+                    this.pawnIdToDotId.set(id, dotId);
+                    nearbyDot.pawnId = id;
+                    nearbyDot.lastUpdate = now;
+                } else {
+                    // New pawn - create tracked dot
+                    dotId = `dot_${this.nextDotId++}`;
+                    this.pawnIdToDotId.set(id, dotId);
+
+                    this.trackedDots.set(dotId, {
+                        pawnId: id,
+                        x: pos.x,
+                        z: pos.z,
+                        startX: pos.x,
+                        startZ: pos.z,
+                        targetX: pos.x,
+                        targetZ: pos.z,
+                        portraitData: null,
+                        lastUpdate: now,
+                        timestamp: now,
+                        duration: 0
+                    });
+
+                    // Add to spatial hash
+                    if (!this.spatialHash.has(gridKey)) {
+                        this.spatialHash.set(gridKey, []);
+                    }
+                    this.spatialHash.get(gridKey).push(dotId);
+                }
+
+                // Also keep pawnPositions for interpolation compatibility
                 this.pawnPositions.set(id, {
                     start: { x: pos.x, z: pos.z },
                     current: { x: pos.x, z: pos.z },
                     target: { x: pos.x, z: pos.z },
-                    timestamp: now
+                    timestamp: now,
+                    duration: this.currentInterpolationDuration
                 });
+            } else {
+                // Update existing dot
+                const dot = this.trackedDots.get(dotId);
+                const existing = this.pawnPositions.get(id);
+
+                if (dot && existing && (existing.target.x !== pos.x || existing.target.z !== pos.z)) {
+                    // Check for large jumps (teleport, fast travel, etc.) - snap instantly
+                    const dx = Math.abs(pos.x - existing.current.x);
+                    const dz = Math.abs(pos.z - existing.current.z);
+                    const isLargeJump = dx > 5 || dz > 5;
+
+                    if (isLargeJump) {
+                        // Instant snap
+                        dot.startX = pos.x;
+                        dot.startZ = pos.z;
+                        dot.x = pos.x;
+                        dot.z = pos.z;
+                        dot.targetX = pos.x;
+                        dot.targetZ = pos.z;
+                        dot.timestamp = now;
+                        dot.duration = 0;
+
+                        existing.start = { x: pos.x, z: pos.z };
+                        existing.current = { x: pos.x, z: pos.z };
+                        existing.target = { x: pos.x, z: pos.z };
+                        existing.timestamp = now;
+                        existing.duration = 0;
+                    } else {
+                        // Smooth interpolation
+                        dot.startX = dot.x;
+                        dot.startZ = dot.z;
+                        dot.targetX = pos.x;
+                        dot.targetZ = pos.z;
+                        dot.timestamp = now;
+                        dot.duration = this.currentInterpolationDuration;
+
+                        existing.start = { x: existing.current.x, z: existing.current.z };
+                        existing.target = { x: pos.x, z: pos.z };
+                        existing.timestamp = now;
+                        existing.duration = this.currentInterpolationDuration;
+                    }
+
+                    dot.lastUpdate = now;
+                }
+            }
+        }
+
+        // PROXIMITY MATCHING: Sync portraits to closest dots
+        // Only run when there are unassigned dots to prevent micro-stutter and portrait swapping
+        const hasUnassignedDots = Array.from(this.trackedDots.values()).some(dot => !dot.portraitData);
+        if (hasUnassignedDots && gameState.colonists) {
+            this._syncPortraitsToDotsProximity(gameState.colonists);
+        }
+
+        // CLEANUP: Remove stale dots (60 seconds to account for pauses)
+        const STALE_TIMEOUT = 60000; // 60 seconds
+        for (const [dotId, dot] of this.trackedDots.entries()) {
+            if (now - dot.lastUpdate > STALE_TIMEOUT) {
+                this.trackedDots.delete(dotId);
+                this.pawnIdToDotId.delete(dot.pawnId);
+
+                // Remove from spatial hash
+                if (this.spatialHash) {
+                    const gridKey = `${Math.floor(dot.x / 3)}_${Math.floor(dot.z / 3)}`;
+                    const gridDots = this.spatialHash.get(gridKey);
+                    if (gridDots) {
+                        const index = gridDots.indexOf(dotId);
+                        if (index > -1) {
+                            gridDots.splice(index, 1);
+                        }
+                        if (gridDots.length === 0) {
+                            this.spatialHash.delete(gridKey);
+                        }
+                    }
+                }
             }
         }
 
         // Update camera to follow my pawn's interpolated position
-        const myPawnData = this.pawnPositions.get(String(pawnId));
-        if (myPawnData && this.isFollowing) {
-            this.setCameraTarget(myPawnData.current.x, myPawnData.current.z);
+        if (this.isFollowing && pawnId) {
+            const dotId = this.pawnIdToDotId.get(String(pawnId));
+            if (dotId) {
+                const dot = this.trackedDots.get(dotId);
+                if (dot) {
+                    this.setCameraTarget(dot.x, dot.z);
+                }
+            }
         }
 
         this.lastGameState = gameState;
@@ -383,6 +565,66 @@ export class MapRenderer {
         if (!this.animating) {
             this.animating = true;
             this._animate();
+        }
+    }
+
+    _syncPortraitsToDotsProximity(colonists) {
+        // Greedy bipartite matching: Assign portraits to closest dots
+        const PROXIMITY_THRESHOLD = 5; // Only match if within 5 tiles
+
+        const colonistsWithPortraits = colonists
+            .map(entry => {
+                const pawn = entry.colonist || entry;
+                const pawnId = String(pawn.id || pawn.pawn_id || pawn.ThingID || pawn.thingIDNumber || pawn.thing_id);
+                const portraitData = STATE.colonistPortraits?.[pawnId];
+                return portraitData && pawn.position ? { pawnId, pos: pawn.position, portraitData } : null;
+            })
+            .filter(p => p !== null);
+
+        if (colonistsWithPortraits.length === 0) return;
+
+        // Build list of all match candidates (dot, colonist, distance)
+        // Only consider dots that don't already have portraits assigned (prevents re-assignment)
+        const matches = [];
+        for (const [dotId, dot] of this.trackedDots.entries()) {
+            // Skip dots that already have portraits (stable assignment)
+            if (dot.portraitData) continue;
+
+            for (const colonist of colonistsWithPortraits) {
+                const dx = dot.x - colonist.pos.x;
+                const dz = dot.z - colonist.pos.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance <= PROXIMITY_THRESHOLD) {
+                    matches.push({ dotId, colonist, distance });
+                }
+            }
+        }
+
+        // Sort by distance (closest first)
+        matches.sort((a, b) => a.distance - b.distance);
+
+        // Greedy assignment: Assign closest pairs, mark as used
+        const usedDots = new Set();
+        const usedColonists = new Set();
+
+        for (const match of matches) {
+            if (usedDots.has(match.dotId) || usedColonists.has(match.colonist.pawnId)) {
+                continue; // Already assigned
+            }
+
+            // Assign portrait to dot
+            const dot = this.trackedDots.get(match.dotId);
+            if (dot) {
+                dot.portraitData = match.colonist.portraitData;
+                dot.pawnId = match.colonist.pawnId; // Update to correct pawn ID
+
+                // Update reverse lookup
+                this.pawnIdToDotId.set(match.colonist.pawnId, match.dotId);
+
+                usedDots.add(match.dotId);
+                usedColonists.add(match.colonist.pawnId);
+            }
         }
     }
 
@@ -580,36 +822,28 @@ export class MapRenderer {
             this.ctx.stroke();
         }
 
-        // Dynamic: colonists
-        const pawns = this.lastGameState?.colonists || [];
-        pawns.forEach((entry) => {
-            const pawn = entry.colonist || entry;
-            const pawnId = String(pawn.id || pawn.pawn_id);
-
-            // Use interpolated position if available, otherwise fall back to raw position
-            const interpData = this.pawnPositions.get(pawnId);
-            const pos = interpData ? interpData.current : (pawn.position || { x: 0, z: 0 });
-            if (!pos) return;
-
-            const col = pos.x - startX;
-            const row = startZ - pos.z;
+        // Dynamic: colonists - RENDER FROM TRACKED DOTS (single source of truth)
+        // Each dot has unique ID, position, and portrait assignment
+        this.trackedDots.forEach((dot, dotId) => {
+            const col = dot.x - startX;
+            const row = startZ - dot.z;
             if (col < 0 || row < 0 || col > this.tilesX || row > this.tilesY) return;
 
             const centerX = col * this.tileSizePx + this.tileSizePx / 2;
             const centerY = row * this.tileSizePx + this.tileSizePx / 2;
-            const isMyPawn = pawnId === String(STATE.myPawnId);
+            const isMyPawn = dot.pawnId === String(STATE.myPawnId);
 
-            // Try to get portrait from STATE.colonistPortraits
-            const portraitData = STATE.colonistPortraits?.[pawnId];
+            // Use portrait assigned to this dot via proximity matching
+            const portraitData = dot.portraitData;
 
             if (portraitData) {
-                // Use cached Image object or create new one
-                let img = this.pawnPortraits.get(pawnId);
+                // Use cached Image object or create new one (keyed by dotId for uniqueness)
+                let img = this.pawnPortraits.get(dotId);
                 if (!img || img.portraitData !== portraitData) {
                     img = new Image();
                     img.src = `data:image/png;base64,${portraitData}`;
                     img.portraitData = portraitData; // Track for cache invalidation
-                    this.pawnPortraits.set(pawnId, img);
+                    this.pawnPortraits.set(dotId, img);
                 }
 
                 if (img.complete) {
@@ -679,24 +913,41 @@ export class MapRenderer {
         if (!this.animating) return;
 
         const now = Date.now();
-        const interpolationTime = 500; // Match polling rate (500ms)
+        const defaultDuration = 250;
 
-        // Interpolate all pawn positions
+        // Interpolate all pawn positions (legacy system for compatibility)
         for (const [id, data] of this.pawnPositions.entries()) {
             const elapsed = now - data.timestamp;
-            const t = Math.min(elapsed / interpolationTime, 1.0);
+            const duration = data.duration || defaultDuration;
 
-            // Smooth interpolation - ease out cubic for more natural movement
-            const smoothT = 1 - Math.pow(1 - t, 3);
+            const t = Math.min(elapsed / duration, 1.0);
+            const smoothT = t * (2 - t); // ease-out-quad
 
-            // Lerp from start to target position
             data.current.x = data.start.x + (data.target.x - data.start.x) * smoothT;
             data.current.z = data.start.z + (data.target.z - data.start.z) * smoothT;
 
-            // Snap to target when complete
             if (t >= 1.0) {
                 data.current.x = data.target.x;
                 data.current.z = data.target.z;
+            }
+        }
+
+        // Interpolate tracked dots (primary rendering system)
+        for (const [dotId, dot] of this.trackedDots.entries()) {
+            const elapsed = now - dot.timestamp;
+            const duration = dot.duration || defaultDuration;
+
+            const t = Math.min(elapsed / duration, 1.0);
+            const smoothT = t * (2 - t); // ease-out-quad
+
+            // Lerp from start to target
+            dot.x = dot.startX + (dot.targetX - dot.startX) * smoothT;
+            dot.z = dot.startZ + (dot.targetZ - dot.startZ) * smoothT;
+
+            // Snap when complete
+            if (t >= 1.0) {
+                dot.x = dot.targetX;
+                dot.z = dot.targetZ;
             }
         }
 

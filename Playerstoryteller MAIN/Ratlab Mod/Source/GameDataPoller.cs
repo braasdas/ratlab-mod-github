@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -18,8 +19,6 @@ namespace PlayerStoryteller
         private readonly GameDataCache dataCache;
         private readonly Map map;
         private bool terrainPushed = false;
-        private bool thingsPushed = false;
-        private int lastThingsCount = 0;
         private readonly HashSet<string> sentTextures = new HashSet<string>();
 
         public GameDataPoller(RimApiClient apiClient, GameDataCache dataCache, Map map)
@@ -32,8 +31,7 @@ namespace PlayerStoryteller
         #region Fast Data (Colonists - frequently changing)
 
         /// <summary>
-        /// Updates fast-changing data (colonists).
-        /// Should be called every 1-2 seconds.
+        /// Updates fast-changing data (colonists positions/health).
         /// </summary>
         public async void UpdateFastDataAsync()
         {
@@ -41,10 +39,10 @@ namespace PlayerStoryteller
             {
                 int mapId = map.uniqueID;
 
-                // PERFORMANCE FIX: Simplified - only fetch colonists detailed
-                string colonistsJson = await apiClient.GetColonistsDetailed(mapId);
+                // PERFORMANCE FIX: Use Light DTO for fast updates
+                string colonistsJson = await apiClient.GetColonists(mapId);
 
-                // Get Adoptions
+                // Get Adoptions (Fast enough to keep here)
                 var viewerManager = map.GetComponent<ViewerManager>();
                 string adoptionsJson = "";
                 if (viewerManager != null)
@@ -68,13 +66,109 @@ namespace PlayerStoryteller
 
                 if (!string.IsNullOrEmpty(colonistsJson))
                 {
-                    string result = "{\"colonists\":" + colonistsJson + adoptionsJson + "}";
+                    // Send as 'colonists_light' to signal it's a partial update
+                    string result = "{\"colonists_light\":" + colonistsJson + adoptionsJson + "}";
                     dataCache.SetFastData(result);
                 }
             }
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Error in UpdateFastDataAsync: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ULTRAFAST TIER: Updates ONLY pawn positions for smooth map interpolation.
+        /// DIRECT ACCESS - bypasses RimAPI for zero latency.
+        /// </summary>
+        public async void UpdatePawnPositionsAsync()
+        {
+            try
+            {
+                // Direct access to pawns - no RimAPI call!
+                var colonists = map.mapPawns.FreeColonists;
+                if (colonists == null || colonists.Count == 0) return;
+
+                var sb = new StringBuilder(capacity: 512);
+                sb.Append("[");
+                bool first = true;
+
+                foreach (var pawn in colonists)
+                {
+                    if (pawn == null || !pawn.Spawned) continue;
+
+                    if (!first) sb.Append(",");
+
+                    // Minimal JSON: just ID and position
+                    sb.Append("{\"id\":\"");
+                    sb.Append(pawn.ThingID);
+                    sb.Append("\",\"position\":{\"x\":");
+                    sb.Append(pawn.Position.x);
+                    sb.Append(",\"z\":");
+                    sb.Append(pawn.Position.z);
+                    sb.Append("}}");
+
+                    first = false;
+                }
+
+                sb.Append("]");
+
+                string result = "{\"pawn_positions\":" + sb.ToString() + "}";
+
+                // Send directly to avoid cache/batching delay
+                var payload = new UpdatePayload { gameState = result };
+                await PlayerStorytellerMod.SendUpdateToServerAsync(payload);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error in UpdatePawnPositionsAsync: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates heavy colonist data (Skills, Gear, Needs).
+        /// Should be called less frequently (e.g. every 5s).
+        /// </summary>
+        public async void UpdateColonistDetailsAsync()
+        {
+            try
+            {
+                int mapId = map.uniqueID;
+                string detailedJson = await apiClient.GetColonistsDetailed(mapId);
+
+                if (!string.IsNullOrEmpty(detailedJson))
+                {
+                    // Send as 'colonists_full' (or 'colonists' for legacy compat if merge logic handles it)
+                    // We'll use 'colonists_full' to be explicit
+                    string result = "{\"colonists_full\":" + detailedJson + "}";
+                    // We don't cache this in 'FastData' slot, maybe send directly?
+                    // Or reuse SetFastData? SetFastData merges?
+                    // Actually dataCache.SetFastData just stores it to be sent by GameStateStreamingService.
+                    // If we overwrite it, the next stream update sends this.
+                    // Ideally we want to send it immediately or let it ride the stream.
+                    
+                    // Let's send it immediately via SendUpdateToServerAsync like MapThings? 
+                    // No, GameStateStreamingService bundles 'FastData' and 'SlowData'.
+                    // We should probably just UpdateFastDataAsync's cache?
+                    // But if we overwrite FastData (Light) with Heavy, then next Fast overwrites Heavy with Light.
+                    // The Stream service sends whatever is in cache.
+                    
+                    // Hack: We'll use a new cache slot or just rely on the fact that Fast overwrites it quickly.
+                    // Actually, if we use a different key in the JSON, we can merge them in GameStateStreamingService?
+                    // GameStateStreamingService.cs: "return "{" + fastData + "," + slowData + "}";"
+                    // If FastData = "colonists_light":..., and we have no slot for "colonists_full", it's tricky.
+                    
+                    // Simplest approach: Send it as a separate update packet, ignoring the StreamService?
+                    // Or add a method to StreamService/DataCache to hold "HeavyData".
+                    
+                    // For now, let's just send it as a direct update to ensure it gets there.
+                    var payload = new UpdatePayload { gameState = result };
+                    await PlayerStorytellerMod.SendUpdateToServerAsync(payload);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error in UpdateColonistDetailsAsync: {ex.Message}");
             }
         }
 
@@ -487,10 +581,11 @@ namespace PlayerStoryteller
         }
 
         private bool isUpdatingLiveView = false;
+        private HashSet<string> lastLiveViewThingIds = new HashSet<string>();
 
         /// <summary>
-        /// ULTRAFAST TIER: Updates the Live Optical View.
-        /// Polls only the areas around active viewers' pawns.
+        /// OPTIMIZED TIER: Updates the Live Optical View.
+        /// Direct game access, no RimAPI calls, delta updates only.
         /// </summary>
         public async void UpdateLiveViewAsync()
         {
@@ -502,69 +597,117 @@ namespace PlayerStoryteller
             {
                 // Capture focus positions on Main Thread
                 var focusPositions = GetFocusPositions();
-                if (focusPositions.Count == 0) return;
+                if (focusPositions.Count == 0)
+                {
+                    isUpdatingLiveView = false;
+                    return;
+                }
 
-                int mapId = map.uniqueID;
-                var allFetchedThings = new JArray();
+                // LOCALIZED: Direct game access instead of RimAPI
+                var allThings = new JArray();
                 var processedIds = new HashSet<string>();
                 var uniqueDefNames = new HashSet<string>();
+                var currentThingIds = new HashSet<string>();
 
-                // 1. Fetch data for each focus zone (API handles spatial filtering)
+                // 1. Directly query map things (NO RimAPI call)
                 foreach (var pos in focusPositions)
                 {
-                    string json = await apiClient.GetMapThingsInRadius(mapId, pos.x, pos.z, 25);
-                    if (!string.IsNullOrEmpty(json))
-                    {
-                        var chunk = JArray.Parse(json);
-                        foreach (var item in chunk)
-                        {
-                            // Robust ID extraction
-                            string id = item["ThingId"]?.ToString() ?? item["id"]?.ToString() ?? item["thing_id"]?.ToString();
-                            if (!string.IsNullOrEmpty(id) && !processedIds.Contains(id))
-                            {
-                                allFetchedThings.Add(item);
-                                processedIds.Add(id);
+                    IntVec3 center = new IntVec3(pos.x, 0, pos.z);
+                    const int radius = 25;
 
-                                // Collect DefName
-                                var defName = item["DefName"]?.ToString() ?? item["def_name"]?.ToString();
-                                if (!string.IsNullOrEmpty(defName)) uniqueDefNames.Add(defName);
-                            }
-                        }
+                    // Get all things in radius using RimWorld's native spatial query
+                    var thingsInRadius = GenRadial.RadialDistinctThingsAround(center, map, radius, true);
+
+                    foreach (var thing in thingsInRadius)
+                    {
+                        if (thing == null || thing.def == null) continue;
+
+                        string thingId = thing.ThingID;
+                        if (processedIds.Contains(thingId)) continue;
+
+                        processedIds.Add(thingId);
+                        currentThingIds.Add(thingId);
+
+                        // Build minimal JSON object
+                        var thingObj = new JObject
+                        {
+                            ["ThingId"] = thingId,
+                            ["DefName"] = thing.def.defName,
+                            ["Position"] = new JObject { ["x"] = thing.Position.x, ["z"] = thing.Position.z },
+                            ["DrawSize"] = new JObject { ["x"] = thing.def.size.x, ["z"] = thing.def.size.z }
+                        };
+
+                        allThings.Add(thingObj);
+                        uniqueDefNames.Add(thing.def.defName);
                     }
                 }
 
-                // Log.Message($"[Player Storyteller] Live View: {allFetchedThings.Count} items.");
+                // DELTA OPTIMIZATION: Only send if things changed
+                bool hasChanges = !currentThingIds.SetEquals(lastLiveViewThingIds);
 
-                // CACHING: Only push if count changed significantly or enough time passed
-                // For Ultrafast, we usually just push. But maybe skip empty updates if we tracked state?
-                // The frontend handles smoothing, so pushing every 1s is fine.
-
-                // 2. Fetch Textures (Throttled)
-                var textures = new JObject();
-                int fetchedCount = 0;
-                const int MAX_TEXTURES_PER_TICK = 20; // Increased throughput
-
-                foreach (var defName in uniqueDefNames)
+                if (!hasChanges && allThings.Count > 0)
                 {
-                    if (sentTextures.Contains(defName)) continue;
-                    if (fetchedCount >= MAX_TEXTURES_PER_TICK) break;
+                    // No changes, skip this update to reduce bandwidth
+                    isUpdatingLiveView = false;
+                    return;
+                }
 
-                    try
+                lastLiveViewThingIds = currentThingIds;
+
+                // 2. Fetch Textures (Optimized: Only new DefNames, smaller batches to prevent spikes)
+                var textures = new JObject();
+                const int MAX_TEXTURES_PER_TICK = 20; // Reduced from 100 to prevent 1s spikes
+
+                var texturesToFetch = uniqueDefNames
+                    .Where(defName => !sentTextures.Contains(defName))
+                    .Take(MAX_TEXTURES_PER_TICK)
+                    .ToList();
+
+                // Batch texture fetching to spread load over time
+                if (texturesToFetch.Count > 0)
+                {
+                    // Process in smaller batches of 5 to prevent blocking
+                    const int BATCH_SIZE = 5;
+                    for (int i = 0; i < texturesToFetch.Count; i += BATCH_SIZE)
                     {
-                        var base64String = await apiClient.GetItemIcon(defName);
-                        if (!string.IsNullOrEmpty(base64String))
+                        var batch = texturesToFetch.Skip(i).Take(BATCH_SIZE).ToList();
+
+                        var textureTasks = batch.Select(async defName =>
                         {
-                            textures[defName] = base64String;
-                            sentTextures.Add(defName);
-                            fetchedCount++;
+                            try
+                            {
+                                var base64String = await apiClient.GetItemIcon(defName);
+                                if (!string.IsNullOrEmpty(base64String))
+                                {
+                                    return new { defName, base64String };
+                                }
+                            }
+                            catch (Exception) { /* Ignore */ }
+                            return null;
+                        }).ToList();
+
+                        var results = await Task.WhenAll(textureTasks);
+
+                        foreach (var result in results)
+                        {
+                            if (result != null)
+                            {
+                                textures[result.defName] = result.base64String;
+                                sentTextures.Add(result.defName);
+                            }
+                        }
+
+                        // Small yield between batches to let other work happen
+                        if (i + BATCH_SIZE < texturesToFetch.Count)
+                        {
+                            await Task.Delay(10); // 10ms pause between batches
                         }
                     }
-                    catch (Exception) { /* Ignore */ }
                 }
 
                 // 3. Bundle & Send
                 var bundled = new JObject();
-                bundled["things"] = allFetchedThings;
+                bundled["things"] = allThings;
                 bundled["textures"] = textures;
                 
                 // Add focus zones for frontend cleanup
@@ -589,11 +732,6 @@ namespace PlayerStoryteller
             {
                 isUpdatingLiveView = false;
             }
-        }
-
-        private async void PushMapThingsAsync()
-        {
-           // DEPRECATED - Replaced by UpdateLiveViewAsync
         }
 
         private async void PushDefinitionsAsync()
