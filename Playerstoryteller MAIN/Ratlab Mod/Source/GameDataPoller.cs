@@ -39,40 +39,35 @@ namespace PlayerStoryteller
             {
                 // PERFORMANCE FIX: Direct memory access instead of RimAPI call
                 var colonists = map.mapPawns.FreeColonists;
-                var sb = new StringBuilder();
-                sb.Append("[");
-                bool first = true;
+                var colonistsArray = new JArray();
 
                 foreach (var pawn in colonists)
                 {
                     if (pawn == null || !pawn.Spawned) continue;
 
-                    if (!first) sb.Append(",");
-                    first = false;
-
-                    sb.Append("{\"id\":\"");
-                    sb.Append(pawn.ThingID);
-                    sb.Append("\",\"name\":\"");
-                    sb.Append(pawn.LabelShortCap); // Use ShortCap for name
-                    sb.Append("\",\"health\":");
-                    sb.Append((pawn.health?.summaryHealth?.SummaryHealthPercent ?? 0f).ToString("0.##"));
+                    var c = new JObject();
+                    c["id"] = pawn.ThingID;
+                    c["name"] = pawn.LabelShortCap;
                     
+                    float health = pawn.health?.summaryHealth?.SummaryHealthPercent ?? 0f;
+                    c["health"] = Math.Round(health, 2);
+
                     float mood = 0f;
                     if (pawn.needs != null && pawn.needs.mood != null)
                     {
                         mood = pawn.needs.mood.CurLevelPercentage;
                     }
-                    sb.Append(",\"mood\":");
-                    sb.Append(mood.ToString("0.##"));
+                    c["mood"] = Math.Round(mood, 2);
 
-                    sb.Append(",\"position\":{\"x\":");
-                    sb.Append(pawn.Position.x);
-                    sb.Append(",\"z\":");
-                    sb.Append(pawn.Position.z);
-                    sb.Append("}}");
+                    var pos = new JObject();
+                    pos["x"] = pawn.Position.x;
+                    pos["z"] = pawn.Position.z;
+                    c["position"] = pos;
+
+                    colonistsArray.Add(c);
                 }
-                sb.Append("]");
-                string colonistsJson = sb.ToString();
+
+                string colonistsJson = colonistsArray.ToString(Newtonsoft.Json.Formatting.None);
 
                 // Get Adoptions (Fast enough to keep here)
                 var viewerManager = map.GetComponent<ViewerManager>();
@@ -82,21 +77,19 @@ namespace PlayerStoryteller
                     var adoptions = viewerManager.GetAdoptionsList();
                     if (adoptions.Count > 0)
                     {
-                        var sbAdoptions = new StringBuilder();
-                        sbAdoptions.Append(",\"adoptions\":[");
-                        bool firstAdoption = true;
+                        var adoptionsArray = new JArray();
                         foreach (var kvp in adoptions)
                         {
-                            if (!firstAdoption) sbAdoptions.Append(",");
-                            sbAdoptions.Append($"{{\"username\":\"{kvp.Key}\",\"pawnId\":\"{kvp.Value}\"}}");
-                            firstAdoption = false;
+                            var a = new JObject();
+                            a["username"] = kvp.Key;
+                            a["pawnId"] = kvp.Value;
+                            adoptionsArray.Add(a);
                         }
-                        sbAdoptions.Append("]");
-                        adoptionsJson = sbAdoptions.ToString();
+                        adoptionsJson = ",\"adoptions\":" + adoptionsArray.ToString(Newtonsoft.Json.Formatting.None);
                     }
                 }
 
-                if (!string.IsNullOrEmpty(colonistsJson))
+                if (colonistsArray.Count > 0)
                 {
                     // Send as 'colonists_light' to signal it's a partial update
                     string result = "{\"colonists_light\":" + colonistsJson + adoptionsJson + "}";
