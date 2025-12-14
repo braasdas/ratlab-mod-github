@@ -48,8 +48,8 @@ namespace PlayerStoryteller
                     var c = new JObject();
                     // API uses numeric ID (thingIDNumber)
                     c["id"] = pawn.thingIDNumber;
-                    // Also include pawn_id string for compatibility if frontend needs it
-                    c["pawn_id"] = pawn.ThingID; 
+                    // Also include pawn_id as numeric for consistency
+                    c["pawn_id"] = pawn.thingIDNumber; 
                     
                     c["name"] = pawn.LabelShortCap;
                     c["gender"] = pawn.gender.ToString();
@@ -70,13 +70,12 @@ namespace PlayerStoryteller
                     {
                         hunger = pawn.needs.food.CurLevelPercentage;
                     }
-                    c["hunger"] = Math.Round(hunger, 4); // API used high precision
+                    c["hunger"] = Math.Round(hunger, 4);
 
                     var pos = new JObject();
                     pos["x"] = pawn.Position.x;
                     pos["z"] = pawn.Position.z;
-                    // API includes 'y' (always 0)
-                    pos["y"] = 0; 
+                    pos["y"] = 0;
                     c["position"] = pos;
 
                     colonistsArray.Add(c);
@@ -140,9 +139,10 @@ namespace PlayerStoryteller
                     if (!first) sb.Append(",");
 
                     // Minimal JSON: just ID and position
-                    sb.Append("{\"id\":\"");
-                    sb.Append(pawn.ThingID);
-                    sb.Append("\",\"position\":{\"x\":");
+                    // FIXED: Use thingIDNumber (numeric) to match other data streams and avoid duplication
+                    sb.Append("{\"id\":");
+                    sb.Append(pawn.thingIDNumber);
+                    sb.Append(",\"position\":{\"x\":");
                     sb.Append(pawn.Position.x);
                     sb.Append(",\"z\":");
                     sb.Append(pawn.Position.z);
