@@ -17,7 +17,6 @@ bin/
 *.suo
 .DS_Store
 Thumbs.db
-RIMAPI SOURCE/
 
 # Ignore root-level scripts and notes
 /*.bat

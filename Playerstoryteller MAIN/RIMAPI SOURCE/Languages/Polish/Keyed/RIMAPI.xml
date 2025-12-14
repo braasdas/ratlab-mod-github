@@ -1,0 +1,13 @@
+<!-- Polish -->
+<LanguageData>
+  <RIMAPI.Version>Wersja:</RIMAPI.Version>
+  <RIMAPI.APIVersion>Wersja API:</RIMAPI.APIVersion>
+  <RIMAPI.ServerPortLabel>Port serwera REST (wymaga restartu):</RIMAPI.ServerPortLabel>
+  <RIMAPI.RefreshIntervalLabel>Interwał odświeżania (tyknięcia):</RIMAPI.RefreshIntervalLabel>
+  <RIMAPI.RestartServer>Uruchom ponownie serwer</RIMAPI.RestartServer>
+  <RIMAPI.EnableLogging>Włącz rejestrowanie:</RIMAPI.EnableLogging>
+  <RIMAPI.LoggingLevel>Poziom rejestrowania:</RIMAPI.LoggingLevel>
+  <RIMAPI.EnableCaching>Włącz buforowanie</RIMAPI.EnableCaching>
+  <RIMAPI.CacheLogStatistics>Statystyki dziennika pamięci podręcznej</RIMAPI.CacheLogStatistics>
+  <RIMAPI.CacheDefaultExpirationSeconds>Domyślny czas wygaśnięcia pamięci podręcznej (sekundy)</RIMAPI.CacheDefaultExpirationSeconds>
+</LanguageData>

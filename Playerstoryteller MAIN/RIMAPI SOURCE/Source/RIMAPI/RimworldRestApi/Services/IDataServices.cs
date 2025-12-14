@@ -1,0 +1,172 @@
+using System.Collections.Generic;
+using RIMAPI.CameraStreamer;
+using RIMAPI.Core;
+using RIMAPI.Models;
+
+namespace RIMAPI.Services
+{
+    #region Core Infrastructure
+    public interface IGameDataService
+    {
+        void RefreshCache();
+        void UpdateGameTick(int currentTick);
+    }
+
+    public interface IGameStateService
+    {
+        ApiResult<GameStateDto> GetGameState();
+        ApiResult<List<ModInfoDto>> GetModsInfo();
+        ApiResult Select(string objectType, int id);
+        ApiResult DeselectAll();
+        ApiResult OpenTab(string tabName);
+        ApiResult<DefsDto> GetAllDefs(AllDefsRequestDto body);
+        ApiResult<MapTimeDto> GetCurrentMapDatetime();
+        ApiResult<MapTimeDto> GetWorldTileDatetime(int tileID);
+        ApiResult SendLetterSimple(SendLetterRequestDto body);
+    }
+    #endregion
+
+    #region Colonists
+    public interface IColonistService
+    {
+        ApiResult<List<ColonistDto>> GetColonists();
+        ApiResult<List<PawnPositionDto>> GetColonistPositions();
+        ApiResult<ColonistDto> GetColonist(int pawnId);
+        ApiResult<List<ColonistDetailedDto>> GetColonistsDetailed();
+        ApiResult<ColonistDetailedDto> GetColonistDetailed(int pawnId);
+        ApiResult<ColonistInventoryDto> GetColonistInventory(int pawnId);
+        ApiResult<BodyPartsDto> GetColonistBodyParts(int pawnId);
+        ApiResult<OpinionAboutPawnDto> GetOpinionAboutPawn(int pawnId, int otherPawnId);
+        ApiResult<WorkListDto> GetWorkList();
+        ApiResult<List<TimeAssignmentDto>> GetTimeAssignmentsList();
+        ApiResult SetColonistWorkPriority(int pawnId, string workDef, int priority);
+        ApiResult SetColonistsWorkPriority(ColonistsWorkPrioritiesRequestDto body);
+        ApiResult<TraitDefDto> GetTraitDefDto(string traitName);
+        ApiResult SetTimeAssignment(int pawnId, int hour, string assignmentName);
+        ApiResult MakeJobEquip(int mapId, int pawnId, int equipmentId, string equipmentType);
+
+        ApiResult<List<OutfitDto>> GetOutfits();
+        ApiResult EditPawn(PawnEditRequest request);
+        ApiResult<ImageDto> GetPawnPortraitImage(
+            int pawnId,
+            int width,
+            int height,
+            string direction
+        );
+    }
+    #endregion
+
+    #region Map Service
+    public interface IMapService
+    {
+        ApiResult<List<MapDto>> GetMaps();
+        ApiResult<MapPowerInfoDto> GetMapPowerInfo(int mapId);
+        ApiResult<MapWeatherDto> GetWeather(int mapId);
+        ApiResult<List<AnimalDto>> GetMapAnimals(int mapId);
+        ApiResult<List<ThingDto>> GetMapThings(int mapId);
+        ApiResult<List<ThingDto>> GetMapPlants(int mapId);
+        ApiResult<MapCreaturesSummaryDto> GetMapCreaturesSummary(int mapId);
+        ApiResult<MapFarmSummaryDto> GenerateFarmSummary(int mapId);
+        ApiResult<GrowingZoneDto> GetGrowingZoneById(int mapId, int zoneId);
+        ApiResult<MapZonesDto> GetMapZones(int mapId);
+        ApiResult<MapRoomsDto> GetMapRooms(int mapId);
+        ApiResult<List<BuildingDto>> GetMapBuildings(int mapId);
+        ApiResult<MapTerrainDto> GetMapTerrain(int mapId);
+        ApiResult<List<ThingDto>> GetMapThingsInRadius(int mapId, int x, int z, int radius);
+        ApiResult SetWeather(int mapId, string defName);
+    }
+    #endregion
+
+    #region Building Service
+    public interface IBuildingService
+    {
+        ApiResult<BuildingDto> GetBuildingInfo(int buildingId);
+    }
+    #endregion
+
+    #region Research Service
+    public interface IResearchService
+    {
+        ApiResult<ResearchProjectDto> GetResearchProgress();
+        ApiResult<ResearchFinishedDto> GetResearchFinished();
+        ApiResult<ResearchTreeDto> GetResearchTree();
+        ApiResult<ResearchProjectDto> GetResearchProjectByName(string name);
+        ApiResult<ResearchSummaryDto> GetResearchSummary();
+    }
+    #endregion
+
+    #region Incident & Quest Service
+    public interface IIncidentService
+    {
+        ApiResult<QuestsDto> GetQuestsData(int mapId);
+        ApiResult<IncidentsDto> GetIncidentsData(int mapId);
+        ApiResult<List<LordDto>> GetLordsData(int mapId);
+        ApiResult TriggerIncident(TriggerIncidentRequestDto request);
+    }
+    #endregion
+
+    #region Resource Service
+    public interface IResourceService
+    {
+        ApiResult<ResourcesSummaryDto> GetResourcesSummary(int mapId);
+        ApiResult<StoragesSummaryDto> GetStoragesSummary(int mapId);
+        ApiResult<Dictionary<string, List<ThingDto>>> GetAllStoredResources(int mapId);
+        ApiResult<List<ThingDto>> GetAllStoredResourcesByCategory(int mapId, string categoryDef);
+    }
+    #endregion
+
+    #region Job Service
+    public interface IJobService { }
+    #endregion
+
+    #region Image Service
+    public interface IImageService
+    {
+        ApiResult<ImageDto> GetItemImage(string name);
+        ApiResult<ImageDto> GetTerrainImage(string name);
+        ApiResult SetItemImageByName(ImageUploadRequest request);
+        ApiResult SetStuffColor(StuffColorRequest request);
+    }
+    #endregion
+
+    #region Faction Service
+    public interface IFactionService
+    {
+        ApiResult<List<FactionsDto>> GetFactions();
+        ApiResult<FactionDto> GetFaction(int id);
+        ApiResult<FactionDto> GetPlayerFaction();
+        ApiResult<FactionRelationDto> GetFactionRelationWith(int id, int otherId);
+        ApiResult<FactionRelationsDto> GetFactionRelations(int id);
+        ApiResult<FactionDefDto> GetFactionDef(string defName);
+        ApiResult<FactionChangeRelationResponceDto> ChangeFactionRelationWith(
+            int id,
+            int otherId,
+            int change,
+            bool sendMessage,
+            bool canSendHostilityLetter
+        );
+    }
+    #endregion
+
+    #region Dev Tools Service
+    public interface IDevToolsService
+    {
+        ApiResult<MaterialsAtlasList> GetMaterialsAtlasList();
+        ApiResult MaterialsAtlasPoolClear();
+        ApiResult ConsoleAction(string action, string message = null);
+        ApiResult SetStuffColor(StuffColorRequest stuffColor);
+    }
+    #endregion
+
+    #region Camera Service
+    public interface ICameraService
+    {
+        ApiResult ChangeZoom(int zoom);
+        ApiResult MoveToPosition(int x, int y);
+        ApiResult StartStream(ICameraStream stream);
+        ApiResult StopStream(ICameraStream stream);
+        ApiResult SetupStream(ICameraStream stream, StreamConfigDto config);
+        ApiResult<StreamStatusDto> GetStreamStatus(ICameraStream stream);
+    }
+    #endregion
+}
