@@ -33,17 +33,56 @@ namespace PlayerStoryteller
         /// <summary>
         /// Updates fast-changing data (colonists positions/health).
         /// </summary>
-        public async void UpdateFastDataAsync()
+        public void UpdateFastDataAsync()
         {
             try
             {
-                int mapId = map.uniqueID;
+                // PERFORMANCE FIX: Direct memory access instead of RimAPI call
+                var colonists = map.mapPawns.FreeColonists;
+                var colonistsArray = new JArray();
 
-                // REVERT: Use API for now to fix data format regression, but Log it for debugging
-                string colonistsJson = await apiClient.GetColonists(mapId);
-                
-                // Debug Log to see the correct format
-                // if (!string.IsNullOrEmpty(colonistsJson)) Log.Message($"[Player Storyteller] API Colonists Format: {colonistsJson}");
+                foreach (var pawn in colonists)
+                {
+                    if (pawn == null || !pawn.Spawned) continue;
+
+                    var c = new JObject();
+                    // API uses numeric ID (thingIDNumber)
+                    c["id"] = pawn.thingIDNumber;
+                    // Also include pawn_id string for compatibility if frontend needs it
+                    c["pawn_id"] = pawn.ThingID; 
+                    
+                    c["name"] = pawn.LabelShortCap;
+                    c["gender"] = pawn.gender.ToString();
+                    c["age"] = pawn.ageTracker.AgeBiologicalYears;
+
+                    float health = pawn.health?.summaryHealth?.SummaryHealthPercent ?? 0f;
+                    c["health"] = Math.Round(health, 2);
+
+                    float mood = 0f;
+                    if (pawn.needs != null && pawn.needs.mood != null)
+                    {
+                        mood = pawn.needs.mood.CurLevelPercentage;
+                    }
+                    c["mood"] = Math.Round(mood, 2);
+
+                    float hunger = 0f;
+                    if (pawn.needs != null && pawn.needs.food != null)
+                    {
+                        hunger = pawn.needs.food.CurLevelPercentage;
+                    }
+                    c["hunger"] = Math.Round(hunger, 4); // API used high precision
+
+                    var pos = new JObject();
+                    pos["x"] = pawn.Position.x;
+                    pos["z"] = pawn.Position.z;
+                    // API includes 'y' (always 0)
+                    pos["y"] = 0; 
+                    c["position"] = pos;
+
+                    colonistsArray.Add(c);
+                }
+
+                string colonistsJson = colonistsArray.ToString(Newtonsoft.Json.Formatting.None);
 
                 // Get Adoptions (Fast enough to keep here)
                 var viewerManager = map.GetComponent<ViewerManager>();
@@ -65,7 +104,7 @@ namespace PlayerStoryteller
                     }
                 }
 
-                if (!string.IsNullOrEmpty(colonistsJson))
+                if (colonistsArray.Count > 0)
                 {
                     // Send as 'colonists_light' to signal it's a partial update
                     string result = "{\"colonists_light\":" + colonistsJson + adoptionsJson + "}";
