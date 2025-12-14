@@ -7,7 +7,7 @@ const zlib = require('zlib');
  */
 function decompressMiddleware(req, res, next) {
     // Debug Logging
-    console.log(`[Decompress] ${req.method} ${req.url} | Encoding: ${req.headers['content-encoding']} | Type: ${req.headers['content-type']}`);
+    // console.log(`[Decompress] ${req.method} ${req.url} | Encoding: ${req.headers['content-encoding']} | Type: ${req.headers['content-type']}`);
 
     let contentEncoding = req.headers['content-encoding'] || '';
 

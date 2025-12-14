@@ -14,36 +14,37 @@
 
 1.  Launch RimWorld and load your save game.
 2.  Go to **Options -> Mod Settings -> Rat Lab**.
-3.  **First Run:** You will see a Privacy Notice. Click "Accept" to continue. The mod streams data to an external server (`ratlab.online`).
+3.  **First Run:** Click "Accept" on the Privacy Notice.
 
-### Settings Overview
+### Dashboard Setup
+*   **Session Link:** Click "Copy Dashboard Link" to get your unique URL (e.g., `ratlab.online?session=...`). Share this with your chat.
+*   **Stream Key:** This is auto-generated. Do not share it! It authenticates your game to the server.
 
-*   **Dashboard Link:** Click "Copy Dashboard Link" to get your unique URL. Share this with your viewers.
-*   **Admin Password (Stream Key):** This is your secret key. Do not show this on stream! It allows you to control the dashboard as an admin.
-*   **Streaming Quality:**
-    *   **Low (1000kbps):** Best for slow upload speeds.
-    *   **Medium (2500kbps):** Good balance.
-    *   **High (4500kbps):** Best visual quality (requires good internet).
-    *   *Note: Changing quality requires a game restart or mod reload.*
-*   **Dev Mode:** Only use this if you are running a local server instance. Keep unchecked for normal use.
+### Performance Tuning
+*   **Optical View:** Enable "Live Optical View" to allow viewers to inspect the map.
+    *   *Note:* This uses negligible CPU but requires ~500kbps upload bandwidth.
+*   **Video Quality:**
+    *   **Low (1000kbps):** For slow connections.
+    *   **Medium (2500kbps):** Recommended.
+    *   **High (4500kbps):** Crisp visuals, requires decent internet.
+*   **Data Rates:** The mod automatically manages polling rates (10Hz/1Hz). You generally do not need to adjust the manual sliders unless you have a very slow PC.
 
 ## Usage
 
-1.  **Start Playing:** Once you unpause the game, the mod automatically starts the "Sidecar" process.
-2.  **Check Connection:** You should see a green connection status on your Dashboard link.
-3.  **Viewer Interaction:** Viewers can now see your live stats, map, and trigger events using coins.
+1.  **Start Playing:** The mod activates when you load a map.
+2.  **Check Connection:** Open your Dashboard link. You should see "Live" status.
+3.  **Adoptions:** Viewers can click "Adopt" on a colonist card to take control.
 
 ## Troubleshooting
 
-### "Stream Offline" / Black Screen
-*   Ensure your firewall allows `sidecar.exe` to access the internet.
-*   Check if you have a strict NAT or VPN interfering with WebSocket connections.
-*   Restart the game to reboot the sidecar process.
+### "Stream Offline"
+*   Ensure your firewall allows `sidecar.exe` (found in the mod folder) to access the internet.
+*   Restart the game to force a clean session handshake.
+
+### "Optical View Laggy"
+*   The Optical View is prioritized for *smoothness* over latency. It typically trails the game by 1-2 seconds.
+*   If pawns are "rubber-banding", ensure your upload speed supports the chosen Video Quality setting.
 
 ### "Driver Warning"
-*   The mod attempts to use your GPU (NVIDIA/AMD) for video encoding.
-*   If you see a warning, it means GPU encoding failed and it fell back to CPU encoding. This uses more system resources but should still work. Update your graphics drivers.
-
-### Laggy Stream
-*   Lower the **Streaming Quality** in Mod Settings.
-*   Reduce the **Telemetry Intervals** sliders (move them to the right to update *less* frequently).
+*   The Sidecar attempts to use NVIDIA NVENC or AMD AMF for zero-impact video encoding.
+*   If this fails, it falls back to CPU encoding. This works but may reduce game FPS. Update your GPU drivers if this persists.

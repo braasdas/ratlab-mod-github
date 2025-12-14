@@ -221,7 +221,7 @@ function initializeActionButtons() {
                 const isDrafted = btn.dataset.drafted === 'true';
 
                 sendAction('colonist_command', JSON.stringify({
-                    type: 'draft',
+                    type: isDrafted ? 'undraft' : 'draft',
                     pawnId: STATE.myPawnId
                 }));
 

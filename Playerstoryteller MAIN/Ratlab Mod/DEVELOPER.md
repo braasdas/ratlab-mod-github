@@ -11,34 +11,43 @@
 
 ```
 Playerstoryteller MAIN/
-├── Ratlab Mod/             # C# Source Code
-│   ├── Source/             # .cs files
+├── Ratlab Mod/             # C# Source Code (RimWorld Mod)
+│   ├── Source/
+│   │   ├── PlayerStorytellerMapComponent.cs # Core Logic & Coroutines
+│   │   ├── GameDataPoller.cs                # 10Hz/1Hz Data Fetching (Optimized)
+│   │   ├── MapRenderer.cs                   # (Deprecated C# renderer, moved to JS)
+│   │   └── ViewerManager.cs                 # Adoption/Pawn Tracking
 │   ├── About/              # Mod metadata
 │   └── Assemblies/         # Compiled DLLs
 ├── Ratlab Server/          # Node.js Backend & Frontend
-│   ├── src/                # Server logic
-│   └── public/             # Web Dashboard (HTML/JS)
+│   ├── src/                # Server logic (Socket.io, Routes)
+│   ├── public/js/viewer/   # Frontend Engine
+│   │   ├── mapRenderer.js  # Optical View Engine (Canvas 2D)
+│   │   ├── terrainGrid.js  # RLE Decompression
+│   │   └── gameData.js     # State Synchronization
+│   └── public/             # Web Assets
 ├── go-sidecar/             # Go Streaming Service
-│   ├── main.go
-│   └── encoder.go
+│   ├── main.go             # Process Manager
+│   └── capture.go          # Screen Capture Logic
 └── build.bat               # All-in-one build script
 ```
 
 ## Building
 
-### 1. The Mod
+### 1. The Mod (C#)
 1.  Open `Ratlab Mod/Source/PlayerStoryteller.csproj` in Visual Studio.
 2.  Update Reference Paths: Ensure `Assembly-CSharp.dll` and `UnityEngine.dll` point to your RimWorld installation (`RimWorld/RimWorldWin64_Data/Managed/`).
-3.  Build Solution (Release mode).
-4.  Output `PlayerStoryteller.dll` will be placed in `Ratlab Mod/Assemblies/`.
+3.  **Optimization Note:** The mod uses `Newtonsoft.Json`. Ensure the DLL is in the `Assemblies` folder or referenced correctly.
+4.  Build Solution (Release mode).
+5.  Output `PlayerStoryteller.dll` will be placed in `Ratlab Mod/Assemblies/`.
 
-### 2. The Sidecar
+### 2. The Sidecar (Go)
 1.  Navigate to `go-sidecar/`.
 2.  Run `go build -o sidecar.exe .`
-3.  **Important:** Copy `ffmpeg.exe` (available from ffmpeg.org) next to `sidecar.exe`.
-4.  Copy `sidecar.exe` and `ffmpeg.exe` to `Ratlab Mod/go-sidecar/` (the mod expects them there).
+3.  **Dependencies:** Ensure `ffmpeg.exe` is available in the system PATH or placed next to the executable if testing standalone.
+4.  The mod expects `sidecar.exe` in `Ratlab Mod/go-sidecar/` for distribution.
 
-### 3. The Server
+### 3. The Server (Node.js)
 1.  Navigate to `Ratlab Server/`.
 2.  Run `npm install`.
 3.  Run `node server.js` (defaults to port 3000).
@@ -57,11 +66,34 @@ The mod allows switching between Production (`ratlab.online`) and Development (`
 
 ### Logs
 *   **Mod Logs:** RimWorld's `Player.log` (`%AppData%/../LocalLow/Ludeon Studios/RimWorld...`). Look for `[Player Storyteller]`.
-*   **Sidecar Logs:** `Ratlab Mod/go-sidecar/sidecar.log`.
-*   **Server Logs:** Console output of the Node.js process.
+    *   *Tip:* Use the in-game Debug Console (Development Mode) to see logs in real-time.
+*   **Sidecar Logs:** `Ratlab Mod/go-sidecar/sidecar.log` (if enabled) or standard output.
+*   **Server Logs:** Console output of the Node.js process. Note that high-frequency logs (Terrain/Things) are commented out by default to prevent spam.
 
-## Architecture Guidelines
+## Architecture & Performance
 
-*   **Main Thread:** All RimWorld actions (spawning items, healing) MUST be executed on the main thread. Use `CoroutineHandler` or `LongEventHandler` if coming from an async context.
-*   **Bandwidth:** The Sidecar manages bandwidth automatically. Do not change encoder settings in `main.go` unless you understand FFmpeg flags.
-*   **Security:** Never expose the `secretKey` in the client-side dashboard code. It is for the Mod <-> Server trust only.
+### Data Streams
+The mod uses a **Triple-Tier Strategy** to maintain 60FPS performance in-game:
+
+1.  **Ultrafast Tier (10Hz):** `UpdatePawnPositionsAsync`
+    *   **Method:** Direct Memory Access -> JSON -> WSS.
+    *   **Content:** Pawn ID, X/Z position.
+    *   **Goal:** Smooth interpolation in the Optical View.
+2.  **Fast Tier (1Hz):** `UpdateLiveViewAsync`
+    *   **Method:** `GenRadial` Scan -> Delta Check -> JSON.
+    *   **Content:** Buildings, Items, Plants (Things).
+    *   **Note:** Pawns are EXCLUDED from this stream to prevent "fighting" and duplication.
+3.  **Slow Tier (5s+):** `UpdateColonistDetailsAsync`
+    *   **Method:** API Call -> Heavy JSON.
+    *   **Content:** Skills, Gear, Health, Needs.
+
+### Optical View (Frontend)
+The `MapRenderer.js` engine reconstructs the game world:
+*   **Sub-Pixel Scrolling:** Camera coordinates are floats; rendering is offset by sub-pixel amounts for smooth movement.
+*   **Camera Locking:** When following a pawn, the camera updates position **every animation frame** to match the interpolated dot position exactly.
+*   **Texture Caching:** Textures are cached in IndexedDB. The backend flushes its "sent cache" every 30s to recover clients that refresh.
+
+### Coding Standards
+*   **Main Thread:** All RimWorld actions (spawning items, healing) MUST be executed on the main thread. Use `CoroutineHandler` or `LongEventHandler`.
+*   **No Allocations in Updates:** Avoid `new List<>` inside the 10Hz loop. Use pooled builders or static buffers where possible.
+*   **Safety:** `try/catch` blocks are mandatory in all Coroutines to prevent the loop from dying on a single error.

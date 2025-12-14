@@ -663,24 +663,41 @@ export class MapRenderer {
             return;
         }
 
-        const halfX = Math.floor(this.tilesX / 2);
-        const halfY = Math.floor(this.tilesY / 2);
-        
-        // Round to keep the pawn centered even on odd tile counts
-        const startX = Math.round(this.camera.x - halfX + 0.5);
-        const startZ = Math.round(this.camera.z + halfY - 0.5);
+        // SMOOTH SCROLLING MATH
+        // Viewport dimensions in tiles
+        const viewW = width / this.tileSizePx;
+        const viewH = height / this.tileSizePx;
 
-        // Terrain layer
-        for (let row = 0; row < this.tilesY; row++) {
-            for (let col = 0; col < this.tilesX; col++) {
+        // Top-Left of the viewport in World Coordinates (Float)
+        // Camera is center, so subtract half view size
+        const viewLeft = this.camera.x - (viewW / 2);
+        const viewTop = this.camera.z + (viewH / 2);
+
+        // Integer tile coordinates to start iterating from (buffer -1 for edge clipping)
+        const startX = Math.floor(viewLeft);
+        const startZ = Math.ceil(viewTop); 
+
+        // Sub-pixel offset (how much we are shifted into the first tile)
+        // x: increasing camera moves view right -> map moves left. offset > 0 pushes drawing left?
+        // drawX = (worldX - viewLeft) * tile
+        //       = (startX + col - viewLeft) * tile
+        //       = (col - (viewLeft - startX)) * tile
+        //       = col * tile - pixelOffset
+        const pixelOffsetX = (viewLeft - startX) * this.tileSizePx;
+        const pixelOffsetY = (startZ - viewTop) * this.tileSizePx;
+
+        // Iterate tiles (add +1 buffer for smooth edge scrolling)
+        for (let row = 0; row <= this.tilesY + 1; row++) {
+            for (let col = 0; col <= this.tilesX + 1; col++) {
                 const worldX = startX + col;
                 const worldZ = startZ - row;
 
+                // Screen coordinates
+                const x = Math.floor(col * this.tileSizePx - pixelOffsetX);
+                const y = Math.floor(row * this.tileSizePx - pixelOffsetY);
+
                 const { textureName, paletteIndex } = this.terrainGrid.getTextureAt(worldX, worldZ);
                 const img = textureName ? this.paletteImages.get(textureName) : null;
-
-                const x = col * this.tileSizePx;
-                const y = row * this.tileSizePx;
 
                 if (img) {
                     this.ctx.drawImage(img, x, y, this.tileSizePx, this.tileSizePx);
@@ -688,73 +705,61 @@ export class MapRenderer {
                     this.ctx.fillStyle = this._fallbackColor(textureName, paletteIndex);
                     this.ctx.fillRect(x, y, this.tileSizePx, this.tileSizePx);
                 }
-            }
-        }
-
-        // Floor layer (constructed floors on top of terrain)
-        for (let row = 0; row < this.tilesY; row++) {
-            for (let col = 0; col < this.tilesX; col++) {
-                const worldX = startX + col;
-                const worldZ = startZ - row;
-
-                const { textureName } = this.terrainGrid.getFloorAt(worldX, worldZ);
-                if (textureName) {
-                    const img = this.paletteImages.get(textureName);
-                    const x = col * this.tileSizePx;
-                    const y = row * this.tileSizePx;
-
-                    if (img) {
-                        this.ctx.drawImage(img, x, y, this.tileSizePx, this.tileSizePx);
+                
+                // Floor Layer (Inline for performance)
+                const floor = this.terrainGrid.getFloorAt(worldX, worldZ);
+                if (floor.textureName) {
+                    const floorImg = this.paletteImages.get(floor.textureName);
+                    if (floorImg) {
+                        this.ctx.drawImage(floorImg, x, y, this.tileSizePx, this.tileSizePx);
                     }
                 }
             }
         }
 
-        // Things layer (items, buildings, stones) - rendered between floor and pawns
+        // Things layer (items, buildings, stones)
         for (const thing of this.things) {
-            // Support both snake_case (RimAPI) and PascalCase
             const pos = thing.position || thing.Position;
             if (!pos) continue;
 
             const posX = pos.x ?? pos.X;
             const posZ = pos.z ?? pos.Z;
 
-            // Quick Cull: Is it even near the camera?
-            if (posX < startX || posX >= startX + this.tilesX || 
-                posZ > startZ || posZ <= startZ - this.tilesY) {
+            // Strict Culling with buffer
+            if (posX < startX - 1 || posX > startX + this.tilesX + 1 || 
+                posZ > startZ + 1 || posZ < startZ - this.tilesY - 1) {
                 continue;
             }
 
-            const col = posX - startX;
-            const row = startZ - posZ;
-            // Redundant check but keeps logic clean
-            if (col < 0 || row < 0 || col >= this.tilesX || row >= this.tilesY) continue;
+            // Calculate screen pos using float math for smooth movement relative to map
+            const screenX = (posX - viewLeft) * this.tileSizePx;
+            // Z: WorldZ increases Up. ScreenY increases Down.
+            // ScreenY = (viewTop - posZ) * tile
+            const screenY = (viewTop - posZ) * this.tileSizePx;
 
             const defName = thing.def_name || thing.DefName || thing.Def;
             const img = this.thingImages.get(defName);
 
-            const x = col * this.tileSizePx;
-            const y = row * this.tileSizePx;
-
-            // Get thing size (default 1x1) - support both formats
             const size = thing.size || thing.Size || { x: 1, X: 1, z: 1, Z: 1 };
             const sizeX = size.x ?? size.X ?? 1;
             const sizeZ = size.z ?? size.Z ?? 1;
             const rotation = thing.rotation ?? thing.Rotation ?? 0;
 
             if (img) {
-                // Render the texture
-                // SCALE THINGS 1.2x (reduced from 2.1x)
                 const scaleFactor = 1.2;
                 const width = sizeX * this.tileSizePx * scaleFactor;
                 const height = sizeZ * this.tileSizePx * scaleFactor;
 
                 this.ctx.save();
-                // Center the scaled image on the tile
-                const offsetX = x - (width - this.tileSizePx) / 2;
-                const offsetY = y - (height - this.tileSizePx) / 2;
+                const offsetX = screenX - (width - this.tileSizePx) / 2;
+                // Note: RimWorld (0,0) is bottom-left of thing? or center? Usually bottom-left.
+                // If Bottom-Left, and sizeZ > 1, it extends UP (posZ increases).
+                // ScreenY is Top of the tile.
+                // If a thing is at (10, 10) size (1, 2). It covers (10,10) and (10,11).
+                // posZ=10. screenY points to bottom of (10,11)? No.
+                // Standard: render anchored at screenX, screenY.
+                const offsetY = screenY - (height - this.tileSizePx) / 2;
 
-                // Rotate if needed (rotation is 0-3 in RimWorld, each = 90 degrees)
                 if (rotation > 0) {
                     const centerX = offsetX + width / 2;
                     const centerY = offsetY + height / 2;
@@ -765,35 +770,35 @@ export class MapRenderer {
                 this.ctx.drawImage(img, offsetX, offsetY, width, height);
                 this.ctx.restore();
             } else {
-                // Fallback: Geometric Rendering for Missing Textures
                 const thingId = thing.thing_id ?? thing.ThingId ?? thing.Id ?? 0;
                 this.ctx.fillStyle = this._fallbackColor(defName, thingId);
                 
-                // Heuristic: Buildings (Walls, Doors, Tables) should fill the tile.
-                // Items (Meals, Steel) should be small.
                 const isBuilding = sizeX > 1 || sizeZ > 1 || 
                                    (defName && (defName.includes('Wall') || defName.includes('Door') || 
-                                   defName.includes('Table') || defName.includes('Bed') || 
-                                   defName.includes('Cooler') || defName.includes('Heater')));
+                                   defName.includes('Table') || defName.includes('Bed')));
 
                 if (isBuilding) {
-                    // Draw full block structure
                     const pad = 2;
                     const w = sizeX * this.tileSizePx - pad * 2;
                     const h = sizeZ * this.tileSizePx - pad * 2;
+                    // For multi-tile buildings extending Z+, we must draw UP (lower Y)
+                    // If anchored at (x,z), and sizeZ=2, it covers z, z+1.
+                    // ScreenY is the top-left of tile z. 
+                    // To cover z+1, we draw at screenY - (sizeZ-1)*tile?
+                    // Simplified: just draw at anchor for now (might clip).
+                    // Actually, if screenY is top-left of tile z, then z+1 is ABOVE it (Y - tile).
+                    // So we draw starting at screenY - (sizeZ-1)*tile.
+                    const drawY = screenY - (sizeZ - 1) * this.tileSizePx;
                     
-                    this.ctx.fillRect(x + pad, y + pad, w, h);
-                    
-                    // Add border for definition
+                    this.ctx.fillRect(screenX + pad, drawY + pad, w, h);
                     this.ctx.strokeStyle = 'rgba(0,0,0,0.5)';
                     this.ctx.lineWidth = 1;
-                    this.ctx.strokeRect(x + pad, y + pad, w, h);
+                    this.ctx.strokeRect(screenX + pad, drawY + pad, w, h);
                 } else {
-                    // Draw small item box (debris style)
                     const itemSize = Math.max(this.tileSizePx * 0.4, 6);
                     this.ctx.fillRect(
-                        x + (this.tileSizePx - itemSize) / 2,
-                        y + (this.tileSizePx - itemSize) / 2,
+                        screenX + (this.tileSizePx - itemSize) / 2,
+                        screenY + (this.tileSizePx - itemSize) / 2,
                         itemSize,
                         itemSize
                     );
@@ -801,70 +806,54 @@ export class MapRenderer {
             }
         }
 
-        // Grid overlay (subtle)
+        // Grid
         this.ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         this.ctx.lineWidth = 1;
-        
-        // Vertical lines
-        for (let i = 0; i <= this.tilesX; i++) {
-            const p = i * this.tileSizePx;
-            this.ctx.beginPath();
+        this.ctx.beginPath();
+        for (let i = 0; i <= this.tilesX + 1; i++) {
+            const p = Math.floor(i * this.tileSizePx - pixelOffsetX);
             this.ctx.moveTo(p, 0);
-            this.ctx.lineTo(p, this.tilesY * this.tileSizePx);
-            this.ctx.stroke();
+            this.ctx.lineTo(p, height);
         }
-        
-        // Horizontal lines
-        for (let i = 0; i <= this.tilesY; i++) {
-            const p = i * this.tileSizePx;
-            this.ctx.beginPath();
+        for (let i = 0; i <= this.tilesY + 1; i++) {
+            const p = Math.floor(i * this.tileSizePx - pixelOffsetY);
             this.ctx.moveTo(0, p);
-            this.ctx.lineTo(this.tilesX * this.tileSizePx, p);
-            this.ctx.stroke();
+            this.ctx.lineTo(width, p);
         }
+        this.ctx.stroke();
 
-        // Dynamic: colonists - RENDER FROM TRACKED DOTS (single source of truth)
-        // Each dot has unique ID, position, and portrait assignment
+        // Dots
         this.trackedDots.forEach((dot, dotId) => {
-            const col = dot.x - startX;
-            const row = startZ - dot.z;
-            if (col < 0 || row < 0 || col > this.tilesX || row > this.tilesY) return;
+            // Calculate EXACT screen position from float coordinates
+            const screenX = (dot.x - viewLeft) * this.tileSizePx;
+            const screenY = (viewTop - dot.z) * this.tileSizePx;
 
-            const centerX = col * this.tileSizePx + this.tileSizePx / 2;
-            const centerY = row * this.tileSizePx + this.tileSizePx / 2;
+            // Cull
+            if (screenX < -50 || screenX > width + 50 || screenY < -50 || screenY > height + 50) return;
+
+            const centerX = screenX + this.tileSizePx / 2;
+            const centerY = screenY + this.tileSizePx / 2;
             const isMyPawn = dot.pawnId === String(STATE.myPawnId);
-
-            // Use portrait assigned to this dot via proximity matching
             const portraitData = dot.portraitData;
 
             if (portraitData) {
-                // Use cached Image object or create new one (keyed by dotId for uniqueness)
                 let img = this.pawnPortraits.get(dotId);
                 if (!img || img.portraitData !== portraitData) {
                     img = new Image();
                     img.src = `data:image/png;base64,${portraitData}`;
-                    img.portraitData = portraitData; // Track for cache invalidation
+                    img.portraitData = portraitData;
                     this.pawnPortraits.set(dotId, img);
                 }
 
                 if (img.complete) {
-                    // Scale pawn 2x (1.6x tile size, up from 0.8x)
                     const portraitSize = this.tileSizePx * 1.6; 
                     this.ctx.save();
-
-                    // Draw circular clipped portrait
                     this.ctx.beginPath();
                     this.ctx.arc(centerX, centerY, portraitSize / 2, 0, Math.PI * 2);
                     this.ctx.clip();
-                    this.ctx.drawImage(img,
-                        centerX - portraitSize / 2,
-                        centerY - portraitSize / 2,
-                        portraitSize,
-                        portraitSize
-                    );
+                    this.ctx.drawImage(img, centerX - portraitSize / 2, centerY - portraitSize / 2, portraitSize, portraitSize);
                     this.ctx.restore();
 
-                    // Add border for my pawn
                     if (isMyPawn) {
                         this.ctx.strokeStyle = '#00ff41';
                         this.ctx.lineWidth = 3;
@@ -873,22 +862,24 @@ export class MapRenderer {
                         this.ctx.stroke();
                     }
                 } else {
-                    // Fallback while loading
                     this._drawPawnDot(centerX, centerY, isMyPawn);
                 }
             } else {
-                // No portrait available - draw dot
                 this._drawPawnDot(centerX, centerY, isMyPawn);
             }
         });
 
-        // Hover highlight
         if (this.hoverTile) {
-            const col = this.hoverTile.col;
-            const row = this.hoverTile.row;
+            // Hover tile logic must also be updated to float math or reverse-projection
+            // Re-calc based on current pixel offsets
+            // Or just draw simple rect if we have the col/row relative to viewport?
+            // hoverTile = _screenToTile gives absolute world coords.
+            const hX = (this.hoverTile.x - viewLeft) * this.tileSizePx;
+            const hY = (viewTop - this.hoverTile.z) * this.tileSizePx;
+            
             this.ctx.strokeStyle = 'rgba(0,255,65,0.6)';
             this.ctx.lineWidth = 2;
-            this.ctx.strokeRect(col * this.tileSizePx, row * this.tileSizePx, this.tileSizePx, this.tileSizePx);
+            this.ctx.strokeRect(hX, hY, this.tileSizePx, this.tileSizePx);
         }
     }
 
@@ -949,6 +940,18 @@ export class MapRenderer {
             if (t >= 1.0) {
                 dot.x = dot.targetX;
                 dot.z = dot.targetZ;
+            }
+        }
+
+        // CAMERA TRACKING: Update every frame to lock to interpolated position
+        if (this.isFollowing && STATE.myPawnId) {
+            const dotId = this.pawnIdToDotId.get(String(STATE.myPawnId));
+            if (dotId) {
+                const dot = this.trackedDots.get(dotId);
+                if (dot) {
+                    // Update camera to exact interpolated position
+                    this.setCameraTarget(dot.x, dot.z);
+                }
             }
         }
 

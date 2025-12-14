@@ -11,44 +11,75 @@ This documentation describes the HTTP API exposed by the **RatLab Server** (`rat
 
 ## Endpoints
 
-### 1. Game State Updates
+### 1. Game State & Optical View
 
 **POST** `/api/update`
 
-Called by the Mod to push the latest game state.
+Called by the Mod to push "Fast" and "Slow" tier game state.
 
-*   **Headers:**
-    *   `x-stream-key`: [String] Secret key.
-    *   `Content-Encoding`: `gzip` (Payload is compressed).
 *   **Body (JSON):**
     ```json
     {
       "gameState": {
-        "colonists": [...],
-        "resources": {...},
-        "map_size": {"x": 250, "z": 250},
-        "camera": {...}
-      },
-      "screenshot": null // Deprecated (video used instead)
+        "pawn_positions": [{"id": 123, "position": {"x":10, "z":20}}], // Ultrafast (10Hz)
+        "colonists_light": [...], // Fast (1Hz)
+        "colonists_full": [...], // Slow (5s+)
+        "resources": {...}
+      }
     }
     ```
 
-### 2. Session Info
+**POST** `/api/v1/map/things/:sessionId`
 
-**GET** `/api/session/:sessionId`
+Called by the Mod (Fast Tier) to update the Optical View environment.
 
-Returns public information about a specific game session.
-
-*   **Response:**
+*   **Body:**
     ```json
     {
-      "session": {
-        "sessionId": "seed-12345",
-        "mapName": "My Colony",
-        "colonistCount": 5,
-        "wealth": 150000,
-        "requiresPassword": false
-      }
+      "things": [{"DefName": "Wall", "Position": {...}}],
+      "textures": {"Wall": "base64_png_data"}, // Delta compressed
+      "focus_zones": [{"x": 10, "z": 20, "radius": 25}] // Areas to clear/update
+    }
+    ```
+
+**POST** `/api/v1/map/terrain/:sessionId`
+
+Called by the Mod once per session (or on change) to upload the map grid.
+
+*   **Body:**
+    ```json
+    {
+      "width": 250,
+      "height": 250,
+      "grid": [RLE_Compressed_Int16_Array],
+      "palette": ["Soil", "Sand", "WaterDeep"]
+    }
+    ```
+
+### 2. Adoption System
+
+**GET** `/api/adoptions/:sessionId/status/:username`
+
+Returns adoption status for a viewer.
+
+*   **Response:** `{ "hasAdopted": true, "adoption": { "pawnId": "123" } }`
+
+**POST** `/api/adoptions/:sessionId/request`
+
+Requests adoption of a colonist.
+
+*   **Body:** `{ "username": "User", "nickname": "MyName" }`
+
+**POST** `/api/adoptions/:sessionId/command`
+
+Sends a direct command to the adopted pawn.
+
+*   **Body:**
+    ```json
+    {
+      "username": "User",
+      "command": "draft", // or "order", "set_work_priorities"
+      "data": { "x": 10, "z": 20 }
     }
     ```
 
@@ -64,26 +95,10 @@ Called by the Mod to fetch pending actions queued by viewers.
       "success": true,
       "actions": [
         {
-          "id": "evt_123",
-          "action": "heal_colonist",
-          "data": "{ \"target\": \"Pawn_1\" }",
-          "timestamp": "..."
+          "action": "colonist_command",
+          "data": "{ \"type\": \"draft\", \"pawnId\": \"123\" }"
         }
       ]
-    }
-    ```
-
-**POST** `/api/action`
-
-Called by the Dashboard (Viewer) to trigger an event.
-
-*   **Body:**
-    ```json
-    {
-      "sessionId": "seed-12345",
-      "action": "send_trader",
-      "data": {},
-      "password": "optional_password"
     }
     ```
 
@@ -91,26 +106,14 @@ Called by the Dashboard (Viewer) to trigger an event.
 
 **WS** `/stream`
 
-*   **Protocol:** WebSocket
-*   **Query:** `?session=SESSION_ID`
-*   **Mod Behavior:** Sends binary H.264 video packets.
-*   **Client Behavior:** Receives binary H.264 video packets for MSE decoding.
+*   **Protocol:** WebSocket (Socket.io)
+*   **Channels:**
+    *   `map-things-update`: Optical View updates.
+    *   `gamestate-update`: Main dashboard updates.
+    *   `queue-update`: Voting queue status.
 
 ### 5. Mod Settings (Sync)
 
 **GET** `/api/settings/:sessionId`
 
 Called by the Mod to synchronize remote settings (e.g., enabled events, costs).
-
-*   **Response:**
-    ```json
-    {
-      "settings": {
-        "fastDataInterval": 2.0,
-        "actions": {
-          "raid": true,
-          "drop_food": true
-        }
-      }
-    }
-    ```

@@ -374,7 +374,7 @@ namespace PlayerStoryteller
                 {
                     Log.Error($"[Player Storyteller] Error in PortraitPollCoroutine: {ex.Message}");
                 }
-                yield return new WaitForSeconds(30f);
+                yield return new WaitForSeconds(3f); // Increased frequency (was 30s) for throttled queue
             }
         }
 

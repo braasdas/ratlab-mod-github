@@ -38,9 +38,12 @@ namespace PlayerStoryteller
 
         #region Portrait Data
 
+        private readonly Queue<string> pendingPortraits = new Queue<string>();
+        private readonly HashSet<string> queuedPortraitIds = new HashSet<string>();
+
         /// <summary>
-        /// Updates colonist portraits, fetching only missing portraits.
-        /// Should be called every 30 seconds.
+        /// Updates colonist portraits. Identifies missing portraits and fetches them one by one (throttled).
+        /// Should be called frequently (e.g. every 2-3 seconds).
         /// </summary>
         public async void UpdatePortraitsAsync()
         {
@@ -62,50 +65,42 @@ namespace PlayerStoryteller
                     return;
                 }
 
-                // Only log the first time we discover colonists
-                var cachedPortraits = dataCache.GetAllCachedPortraits();
-                if (cachedPortraits.Count == 0 && colonistIds.Count > 0)
-                {
-                    Log.Message($"[Player Storyteller] Found {colonistIds.Count} colonists, will fetch portraits");
-                }
-
-                // Fetch portraits for colonists we don't have cached
-                // SEQUENTIAL FETCH to prevent flooding the API and causing timeouts
-                int fetchCount = 0;
-                int successCount = 0;
-                
+                // Identify missing portraits and add to queue
                 foreach (var colonistId in colonistIds)
                 {
-                    if (!dataCache.HasPortraitCached(colonistId))
+                    if (!dataCache.HasPortraitCached(colonistId) && !queuedPortraitIds.Contains(colonistId))
                     {
-                        fetchCount++;
-                        // Await each request individually
-                        var (id, portrait) = await FetchColonistPortraitAsync(colonistId);
-                        if (!string.IsNullOrEmpty(portrait))
-                        {
-                            dataCache.CachePortrait(id, portrait);
-                            successCount++;
-                        }
-                        
-                        // Small delay to be gentle
-                        await Task.Delay(50); 
+                        pendingPortraits.Enqueue(colonistId);
+                        queuedPortraitIds.Add(colonistId);
+                        Log.Message($"[Player Storyteller] Portrait queued for fetch: {colonistId}");
                     }
                 }
 
-                if (successCount > 0)
+                // Process ONE item from the queue (Throttling)
+                if (pendingPortraits.Count > 0)
                 {
-                    Log.Message($"[Player Storyteller] Successfully fetched {successCount}/{fetchCount} colonist portraits");
+                    string idToFetch = pendingPortraits.Dequeue();
+                    queuedPortraitIds.Remove(idToFetch);
+
+                    // Fetch
+                    var (id, portrait) = await FetchColonistPortraitAsync(idToFetch);
+                    if (!string.IsNullOrEmpty(portrait))
+                    {
+                        dataCache.CachePortrait(id, portrait);
+                        // Log.Message($"[Player Storyteller] Portrait fetched: {id}");
+                    }
                 }
 
-                // Build JSON with all cached portraits
-                cachedPortraits = dataCache.GetAllCachedPortraits();
+                // Build JSON with all cached portraits (ALWAYS update this to ensure cache consistency)
+                var cachedPortraits = dataCache.GetAllCachedPortraits();
                 var sb = new StringBuilder(capacity: cachedPortraits.Count * 256);
                 sb.Append("{");
                 bool first = true;
                 foreach (var kvp in cachedPortraits)
                 {
-                    // Only include portraits for current colonists
-                    if (!colonistIds.Contains(kvp.Key)) continue;
+                    // Only include portraits for current colonists (cleanup)
+                    // if (!colonistIds.Contains(kvp.Key)) continue; 
+                    // Actually, keep them cached for now to avoid re-fetching if they flicker
 
                     if (!first) sb.Append(',');
                     sb.Append("\"");
@@ -118,11 +113,6 @@ namespace PlayerStoryteller
                 sb.Append("}");
 
                 dataCache.SetPortraits(sb.ToString());
-
-                if (successCount > 0) // Only log if we actually updated something
-                {
-                    Log.Message($"[Player Storyteller] Portrait cache updated: {cachedPortraits.Count} portraits");
-                }
             }
             catch (Exception ex)
             {

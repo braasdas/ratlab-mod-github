@@ -116,12 +116,17 @@ namespace PlayerStoryteller
             }
         }
 
+        private bool isSendingPawnPositions = false;
+
         /// <summary>
         /// ULTRAFAST TIER: Updates ONLY pawn positions for smooth map interpolation.
         /// DIRECT ACCESS - bypasses RimAPI for zero latency.
         /// </summary>
         public async void UpdatePawnPositionsAsync()
         {
+            if (isSendingPawnPositions) return;
+            isSendingPawnPositions = true;
+
             try
             {
                 // Direct access to pawns - no RimAPI call!
@@ -162,6 +167,10 @@ namespace PlayerStoryteller
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Error in UpdatePawnPositionsAsync: {ex.Message}");
+            }
+            finally
+            {
+                isSendingPawnPositions = false;
             }
         }
 

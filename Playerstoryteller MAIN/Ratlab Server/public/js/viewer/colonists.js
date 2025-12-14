@@ -323,9 +323,19 @@ function attachColonistCardEventListeners(colonists) {
         const newHandler = (e) => {
             e.stopPropagation();
             const pawnId = card.dataset.pawnId;
-            const colonist = colonists.find(c => String(c.colonist?.id || c.colonist?.pawn_id) === pawnId);
+            
+            // DYNAMIC LOOKUP: Always fetch the latest data from global state
+            // This fixes the issue where listeners captured old "Light" data and never updated to "Heavy" data
+            const currentData = window.lastGameState?.colonists || [];
+            const colonist = currentData.find(c => {
+                const p = c.colonist || c;
+                return String(p.id || p.pawn_id) === pawnId;
+            });
+
             if (colonist) {
                 showColonistSnapshot(colonist, pawnId);
+            } else {
+                console.warn('Colonist data not found for ID:', pawnId);
             }
         };
         card.addEventListener('click', newHandler);

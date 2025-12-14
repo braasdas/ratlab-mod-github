@@ -151,7 +151,7 @@ module.exports = (io, definitionManager) => {
 
         session.mapTerrain = { width, height, palette, grid, textures: textureMap };
         sessionStore.updateSession(sessionId, { mapTerrain: session.mapTerrain });
-        console.log(`[Terrain] Stored terrain for ${sessionId} (${width}x${height}), palette=${palette.length}, textures=${Object.keys(textureMap).length}`);
+        // console.log(`[Terrain] Stored terrain for ${sessionId} (${width}x${height}), palette=${palette.length}, textures=${Object.keys(textureMap).length}`);
         res.json({ success: true });
     });
 
@@ -256,7 +256,7 @@ module.exports = (io, definitionManager) => {
         session.mapThings.textures = { ...session.mapThings.textures, ...textureBuffers };
         
         sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
-        console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things, merged ${Object.keys(textureBuffers).length} new textures for ${sessionId}`);
+        // console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things, merged ${Object.keys(textureBuffers).length} new textures for ${sessionId}`);
 
         // Broadcast update to viewers with debouncing
         // Convert NEW texture buffers back to base64 for transport
