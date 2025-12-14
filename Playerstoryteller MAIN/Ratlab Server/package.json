@@ -1,7 +1,7 @@
 {
-  "name": "player-storyteller-server",
-  "version": "1.0.0",
-  "description": "Server for RimWorld Player Storyteller mod",
+  "name": "ratlab-server",
+  "version": "3.0.0",
+  "description": "Node.js server for RimWorld Rat Lab integration",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
