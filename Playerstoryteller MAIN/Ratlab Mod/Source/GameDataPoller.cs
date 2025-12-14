@@ -33,41 +33,17 @@ namespace PlayerStoryteller
         /// <summary>
         /// Updates fast-changing data (colonists positions/health).
         /// </summary>
-        public void UpdateFastDataAsync()
+        public async void UpdateFastDataAsync()
         {
             try
             {
-                // PERFORMANCE FIX: Direct memory access instead of RimAPI call
-                var colonists = map.mapPawns.FreeColonists;
-                var colonistsArray = new JArray();
+                int mapId = map.uniqueID;
 
-                foreach (var pawn in colonists)
-                {
-                    if (pawn == null || !pawn.Spawned) continue;
-
-                    var c = new JObject();
-                    c["id"] = pawn.ThingID;
-                    c["name"] = pawn.LabelShortCap;
-                    
-                    float health = pawn.health?.summaryHealth?.SummaryHealthPercent ?? 0f;
-                    c["health"] = Math.Round(health, 2);
-
-                    float mood = 0f;
-                    if (pawn.needs != null && pawn.needs.mood != null)
-                    {
-                        mood = pawn.needs.mood.CurLevelPercentage;
-                    }
-                    c["mood"] = Math.Round(mood, 2);
-
-                    var pos = new JObject();
-                    pos["x"] = pawn.Position.x;
-                    pos["z"] = pawn.Position.z;
-                    c["position"] = pos;
-
-                    colonistsArray.Add(c);
-                }
-
-                string colonistsJson = colonistsArray.ToString(Newtonsoft.Json.Formatting.None);
+                // REVERT: Use API for now to fix data format regression, but Log it for debugging
+                string colonistsJson = await apiClient.GetColonists(mapId);
+                
+                // Debug Log to see the correct format
+                // if (!string.IsNullOrEmpty(colonistsJson)) Log.Message($"[Player Storyteller] API Colonists Format: {colonistsJson}");
 
                 // Get Adoptions (Fast enough to keep here)
                 var viewerManager = map.GetComponent<ViewerManager>();
@@ -89,7 +65,7 @@ namespace PlayerStoryteller
                     }
                 }
 
-                if (colonistsArray.Count > 0)
+                if (!string.IsNullOrEmpty(colonistsJson))
                 {
                     // Send as 'colonists_light' to signal it's a partial update
                     string result = "{\"colonists_light\":" + colonistsJson + adoptionsJson + "}";
