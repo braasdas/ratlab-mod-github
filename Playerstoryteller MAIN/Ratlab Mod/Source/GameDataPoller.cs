@@ -668,6 +668,10 @@ namespace PlayerStoryteller
                     foreach (var thing in thingsInRadius)
                     {
                         if (thing == null || thing.def == null) continue;
+                        
+                        // EXCLUDE PAWNS: They are handled by UpdatePawnPositionsAsync and UpdateFastDataAsync
+                        // Sending them here causes double-rendering and ID conflicts ("Human123" vs 123)
+                        if (thing is Pawn) continue;
 
                         string thingId = thing.ThingID;
                         if (processedIds.Contains(thingId)) continue;
