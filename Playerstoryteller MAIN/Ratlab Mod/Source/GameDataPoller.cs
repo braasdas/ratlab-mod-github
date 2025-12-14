@@ -693,28 +693,27 @@ namespace PlayerStoryteller
                     }
                 }
 
-                // DELTA OPTIMIZATION: Only send if things changed
-                // EXCEPTION: If we just cleared cache, we MUST send to ensure textures go through if needed
-                bool forceUpdate = (liveViewTickCounter % 30 == 0);
-                bool hasChanges = !currentThingIds.SetEquals(lastLiveViewThingIds);
-
-                if (!hasChanges && !forceUpdate && allThings.Count > 0)
-                {
-                    // No changes, skip this update to reduce bandwidth
-                    isUpdatingLiveView = false;
-                    return;
-                }
-
+                // DELTA OPTIMIZATION REMOVED: Always send update to ensure frontend sync
+                // Previously, if the set of IDs didn't change, we sent nothing.
+                // But if the frontend missed a packet or cleared its cache, it would show empty/checkered.
+                // At 1Hz, sending the JSON for visible things is acceptable bandwidth.
+                
                 lastLiveViewThingIds = currentThingIds;
 
                 // 2. Fetch Textures (Optimized: Only new DefNames, smaller batches to prevent spikes)
                 var textures = new JObject();
-                const int MAX_TEXTURES_PER_TICK = 50; // Increased to 50
+                const int MAX_TEXTURES_PER_TICK = 50; 
 
                 var texturesToFetch = uniqueDefNames
                     .Where(defName => !sentTextures.Contains(defName))
                     .Take(MAX_TEXTURES_PER_TICK)
                     .ToList();
+
+                // Debug Log (Periodic) to monitor stream health
+                if (liveViewTickCounter % 10 == 0)
+                {
+                    // Log.Message($"[Player Storyteller] LiveView: Sending {allThings.Count} things, fetching {texturesToFetch.Count} textures.");
+                }
 
                 // Batch texture fetching to spread load over time
                 if (texturesToFetch.Count > 0)

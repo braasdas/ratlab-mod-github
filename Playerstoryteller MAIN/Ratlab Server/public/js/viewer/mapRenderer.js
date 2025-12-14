@@ -288,8 +288,9 @@ export class MapRenderer {
                     const dx = Math.abs(existingPos.x - pos.x);
                     const dz = Math.abs(existingPos.z - pos.z);
 
-                    if (dx <= 1 && dz <= 1) {
-                        // Same position, reuse existing ID to prevent duplicates
+                    if (dx === 0 && dz === 0) {
+                        // Same exact position, reuse existing ID to prevent duplicates (only if ID missing)
+                        // If both have explicit IDs and they differ, this might be incorrect, but for 'Things' it's safer.
                         existingId = nearbyId;
                         break;
                     }
