@@ -37,10 +37,42 @@ namespace PlayerStoryteller
         {
             try
             {
-                int mapId = map.uniqueID;
+                // PERFORMANCE FIX: Direct memory access instead of RimAPI call
+                var colonists = map.mapPawns.FreeColonists;
+                var sb = new StringBuilder();
+                sb.Append("[");
+                bool first = true;
 
-                // PERFORMANCE FIX: Use Light DTO for fast updates
-                string colonistsJson = await apiClient.GetColonists(mapId);
+                foreach (var pawn in colonists)
+                {
+                    if (pawn == null || !pawn.Spawned) continue;
+
+                    if (!first) sb.Append(",");
+                    first = false;
+
+                    sb.Append("{\"id\":\"");
+                    sb.Append(pawn.ThingID);
+                    sb.Append("\",\"name\":\"");
+                    sb.Append(pawn.LabelShortCap); // Use ShortCap for name
+                    sb.Append("\",\"health\":");
+                    sb.Append((pawn.health?.summaryHealth?.SummaryHealthPercent ?? 0f).ToString("0.##"));
+                    
+                    float mood = 0f;
+                    if (pawn.needs != null && pawn.needs.mood != null)
+                    {
+                        mood = pawn.needs.mood.CurLevelPercentage;
+                    }
+                    sb.Append(",\"mood\":");
+                    sb.Append(mood.ToString("0.##"));
+
+                    sb.Append(",\"position\":{\"x\":");
+                    sb.Append(pawn.Position.x);
+                    sb.Append(",\"z\":");
+                    sb.Append(pawn.Position.z);
+                    sb.Append("}}");
+                }
+                sb.Append("]");
+                string colonistsJson = sb.ToString();
 
                 // Get Adoptions (Fast enough to keep here)
                 var viewerManager = map.GetComponent<ViewerManager>();
@@ -342,31 +374,30 @@ namespace PlayerStoryteller
 
                 if (string.IsNullOrEmpty(colonistsData) || colonistsData == "{}") return;
 
-                // Parse colonist IDs (simple string search to avoid JSON library dependency)
-                var colonistIds = new System.Collections.Generic.List<string>();
-                int startIndex = 0;
-                while (true)
+                // Parse colonist IDs using Newtonsoft.Json
+                var colonistIds = new List<string>();
+
+                try
                 {
-                    int idIndex = colonistsData.IndexOf("\"id\":", startIndex);
-                    if (idIndex == -1) break;
-
-                    int valueStart = idIndex + 5;
-                    int commaIndex = colonistsData.IndexOf(',', valueStart);
-                    int braceIndex = colonistsData.IndexOf('}', valueStart);
-                    int valueEnd = commaIndex != -1 && (braceIndex == -1 || commaIndex < braceIndex) ? commaIndex : braceIndex;
-
-                    if (valueEnd == -1) break;
-
-                    string idValue = colonistsData.Substring(valueStart, valueEnd - valueStart).Trim();
-                    // Remove quotes if present
-                    idValue = idValue.Trim('"', ' ', '\t', '\n', '\r');
-
-                    if (!string.IsNullOrEmpty(idValue))
+                    var root = JObject.Parse(colonistsData);
+                    var colonistsArray = root["colonists_light"] as JArray;
+                    
+                    if (colonistsArray != null)
                     {
-                        colonistIds.Add(idValue);
+                        foreach (var item in colonistsArray)
+                        {
+                            string id = item["id"]?.ToString();
+                            if (!string.IsNullOrEmpty(id))
+                            {
+                                colonistIds.Add(id);
+                            }
+                        }
                     }
-
-                    startIndex = valueEnd;
+                }
+                catch (Exception jsonEx)
+                {
+                    Log.Error($"[Player Storyteller] Error parsing colonist IDs in UpdateInventoryAsync: {jsonEx.Message}");
+                    return;
                 }
 
                 if (colonistIds.Count == 0) return;

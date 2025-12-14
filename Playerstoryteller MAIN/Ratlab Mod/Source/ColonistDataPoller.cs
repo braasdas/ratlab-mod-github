@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using Verse;
 
 namespace PlayerStoryteller
@@ -174,96 +175,36 @@ namespace PlayerStoryteller
 
         #endregion
 
-        #region Inventory Data
 
-        /// <summary>
-        /// Updates inventory data for all colonists.
-        /// Should be called every 5-10 seconds.
-        /// </summary>
-        public async void UpdateInventoryAsync()
-        {
-            try
-            {
-                // Get list of current colonists from cached fast data
-                string colonistsData = dataCache.GetFastData();
-
-                if (string.IsNullOrEmpty(colonistsData) || colonistsData == "{}") return;
-
-                // Parse colonist IDs
-                var colonistIds = ExtractColonistIds(colonistsData);
-
-                if (colonistIds.Count == 0) return;
-
-                // Fetch inventory for all colonists in parallel
-                var inventoryTasks = colonistIds.Select(id => apiClient.GetColonistInventory(id)).ToList();
-                var inventories = await Task.WhenAll(inventoryTasks);
-
-                // Build JSON
-                var sb = new StringBuilder(capacity: 1024);
-                sb.Append("{");
-                bool first = true;
-                bool hasData = false;
-
-                for (int i = 0; i < colonistIds.Count; i++)
-                {
-                    string inventoryJson = inventories[i];
-                    if (!string.IsNullOrEmpty(inventoryJson))
-                    {
-                        if (!first) sb.Append(',');
-                        sb.Append($"\"{colonistIds[i]}\":");
-                        sb.Append(inventoryJson);
-                        first = false;
-                        hasData = true;
-                    }
-                }
-
-                sb.Append("}");
-
-                if (hasData)
-                {
-                    dataCache.SetInventoryData(sb.ToString());
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[Player Storyteller] Error in UpdateInventoryAsync: {ex.Message}");
-            }
-        }
-
-        #endregion
 
         #region Helper Methods
 
         /// <summary>
-        /// Extracts colonist IDs from JSON data using simple string parsing.
-        /// Avoids JSON library dependency.
+        /// Extracts colonist IDs from JSON data using Newtonsoft.Json.
         /// </summary>
         private List<string> ExtractColonistIds(string colonistsData)
         {
             var colonistIds = new List<string>();
-            int startIndex = 0;
-            while (true)
+            try
             {
-                int idIndex = colonistsData.IndexOf("\"id\":", startIndex);
-                if (idIndex == -1) break;
+                var root = JObject.Parse(colonistsData);
+                var colonistsArray = root["colonists_light"] as JArray;
 
-                int valueStart = idIndex + 5;
-                int commaIndex = colonistsData.IndexOf(',', valueStart);
-                int braceIndex = colonistsData.IndexOf('}', valueStart);
-                int valueEnd = commaIndex != -1 && (braceIndex == -1 || commaIndex < braceIndex) ? commaIndex : braceIndex;
-
-                if (valueEnd == -1) break;
-
-                string idValue = colonistsData.Substring(valueStart, valueEnd - valueStart).Trim();
-                // Remove quotes if present (handle both numeric and string IDs)
-                idValue = idValue.Trim('"', ' ', '\t', '\n', '\r');
-
-                if (!string.IsNullOrEmpty(idValue))
+                if (colonistsArray != null)
                 {
-                    colonistIds.Add(idValue);
+                    foreach (var item in colonistsArray)
+                    {
+                        string id = item["id"]?.ToString();
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            colonistIds.Add(id);
+                        }
+                    }
                 }
-
-                startIndex = valueEnd;
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error parsing colonist IDs: {ex.Message}");
             }
 
             return colonistIds;
