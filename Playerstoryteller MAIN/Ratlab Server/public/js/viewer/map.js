@@ -163,6 +163,7 @@ window.addEventListener('resize', () => {
 
 export function updateMapOverlays(gameState) {
     const colonists = gameState.colonists || [];
+    const animals = gameState.animals || [];
     const overlaysContainer = document.getElementById('map-overlays');
     if (!overlaysContainer) return;
 
@@ -174,8 +175,8 @@ export function updateMapOverlays(gameState) {
     // Full redraw
     overlaysContainer.innerHTML = '';
 
-    colonists.forEach((colonist, index) => {
-        const pos = colonist.position;
+    const renderMarker = (pawn, isAnimal) => {
+        const pos = pawn.position;
         if (!pos) return;
 
         // Normalize coordinates (RimWorld Bottom-Left -> CSS Top-Left)
@@ -183,36 +184,51 @@ export function updateMapOverlays(gameState) {
         const topPct = ((STATE.mapSize.z - pos.z) / STATE.mapSize.z) * 100;
 
         const marker = document.createElement('div');
-        marker.className = 'absolute w-6 h-6 -ml-3 -mt-3 border border-black rounded-full overflow-hidden shadow-sm cursor-pointer transition-transform z-10';
+        marker.className = 'absolute border border-black rounded-full overflow-hidden shadow-sm cursor-pointer transition-transform z-10';
+        
+        // Size: Animals slightly smaller
+        if (isAnimal) {
+            marker.classList.add('w-4', 'h-4', '-ml-2', '-mt-2'); 
+        } else {
+            marker.classList.add('w-6', 'h-6', '-ml-3', '-mt-3');
+        }
+
         marker.style.left = `${leftPct}%`;
         marker.style.top = `${topPct}%`;
         marker.style.transform = 'scale(var(--marker-scale, 1))';
-        marker.title = colonist.name;
+        marker.title = pawn.name || pawn.label;
 
         marker.onmouseenter = () => marker.style.transform = 'scale(calc(var(--marker-scale, 1) * 1.5))';
         marker.onmouseleave = () => marker.style.transform = 'scale(var(--marker-scale, 1))';
 
-        if (colonist.drafted) {
+        if (pawn.drafted) {
             marker.classList.add('ring-2', 'ring-rat-red');
+        } else if (isAnimal) {
+             marker.classList.add('ring-1', 'ring-rat-yellow'); // Animals yellow ring
         } else {
             marker.classList.add('ring-1', 'ring-white');
         }
 
-        const pawnId = String(colonist.id);
-        const portrait = STATE.colonistPortraits[pawnId];
+        const pawnId = String(pawn.id);
+        const portrait = STATE.colonistPortraits[pawnId]; // Animals likely won't have portraits yet
         
         if (portrait) {
             marker.innerHTML = `<img src="data:image/png;base64,${portrait}" class="w-full h-full object-cover">`;
         } else {
             marker.className += ' bg-rat-dark flex items-center justify-center text-[8px] font-mono text-white';
-            marker.textContent = (colonist.name || '?').substring(0,2).toUpperCase();
+            const label = pawn.name || pawn.label || '?';
+            marker.textContent = label.substring(0,2).toUpperCase();
         }
 
         marker.onclick = (e) => {
             e.stopPropagation();
-            showColonistSnapshot(colonist, pawnId);
+            // Reuse snapshot for animals too? It handles missing data well.
+            showColonistSnapshot(pawn, pawnId);
         };
 
         overlaysContainer.appendChild(marker);
-    });
+    };
+
+    colonists.forEach(c => renderMarker(c, false));
+    animals.forEach(a => renderMarker(a, true));
 }

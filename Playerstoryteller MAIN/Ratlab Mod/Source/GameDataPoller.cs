@@ -150,8 +150,9 @@ namespace PlayerStoryteller
             try
             {
                 // Direct access to pawns - no RimAPI call!
-                var colonists = map.mapPawns.FreeColonists;
-                if (colonists == null || colonists.Count == 0) return;
+                // CHANGED: Include all player pawns (colonists + animals) for smooth rendering
+                var pawns = map.mapPawns.SpawnedPawnsInFaction(Faction.OfPlayer);
+                if (pawns == null || pawns.Count == 0) return;
 
                 // Get current timestamp and sequence ID
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -165,7 +166,7 @@ namespace PlayerStoryteller
                 sb.Append("[");
                 bool first = true;
 
-                foreach (var pawn in colonists)
+                foreach (var pawn in pawns)
                 {
                     if (pawn == null || !pawn.Spawned) continue;
 
@@ -244,6 +245,56 @@ namespace PlayerStoryteller
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Error in UpdateColonistDetailsAsync: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Updates animal data (Health, Name, etc).
+        /// Should be called moderately (e.g. every 2-5s).
+        /// </summary>
+        public void UpdateAnimalDataAsync()
+        {
+            try 
+            {
+                var animals = map.mapPawns.SpawnedColonyAnimals;
+                if (animals == null || animals.Count == 0) return;
+
+                var animalsArray = new JArray();
+
+                foreach (var pawn in animals)
+                {
+                    if (pawn == null || !pawn.Spawned) continue;
+
+                    var c = new JObject();
+                    c["id"] = pawn.thingIDNumber;
+                    c["name"] = pawn.Name?.ToStringShort ?? pawn.LabelShort;
+                    c["def_name"] = pawn.def.defName;
+                    c["label"] = pawn.Label;
+                    c["type"] = "animal"; // EXPLICIT TYPE TAG
+                    
+                    float health = pawn.health?.summaryHealth?.SummaryHealthPercent ?? 0f;
+                    c["health"] = Math.Round(health, 2);
+
+                    var pos = new JObject();
+                    pos["x"] = pawn.Position.x;
+                    pos["z"] = pawn.Position.z;
+                    c["position"] = pos;
+
+                    animalsArray.Add(c);
+                }
+
+                if (animalsArray.Count > 0)
+                {
+                    var resultObj = new JObject();
+                    resultObj["animals_light"] = animalsArray;
+                    string result = resultObj.ToString(Newtonsoft.Json.Formatting.None);
+                    
+                    dataCache.SetAnimalData(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                 Log.Error($"[Player Storyteller] Error in UpdateAnimalDataAsync: {ex}");
             }
         }
 
@@ -748,7 +799,7 @@ namespace PlayerStoryteller
                             ["ThingId"] = thingId,
                             ["DefName"] = thing.def.defName,
                             ["Position"] = new JObject { ["x"] = thing.Position.x, ["z"] = thing.Position.z },
-                            ["DrawSize"] = new JObject { ["x"] = thing.def.size.x, ["z"] = thing.def.size.z }
+                            ["Size"] = new JObject { ["x"] = thing.def.size.x, ["z"] = thing.def.size.z }
                         };
 
                         allThings.Add(thingObj);

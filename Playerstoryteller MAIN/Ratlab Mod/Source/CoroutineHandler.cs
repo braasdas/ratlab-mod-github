@@ -119,13 +119,10 @@ namespace PlayerStoryteller
                 {
                     // This routine finished, pop it and continue parent
                     executionStack.Pop();
-                    
+
                     if (executionStack.Count == 0) return false; // All done
-                    
-                    // Immediately try to move parent (or handle its current state)
-                    // But usually, we just wait for next tick. 
-                    // Actually, if we just popped, we should probably run the parent immediately 
-                    // to avoid 1-tick gaps, but for simplicity let's wait.
+
+                    // Wait for next tick to process parent routine
                     waitUntilTime = currentTime;
                     return true;
                 }

@@ -298,6 +298,17 @@ namespace PlayerStoryteller
                         ExecuteColonistCommand(action.data);
                         break;
 
+                    // ===== NEW INTERACTIONS =====
+                    case "setFire":
+                        SetFireAtLocation(action.data);
+                        break;
+                    case "destroyObject":
+                        DestroyObject(action.data);
+                        break;
+                    case "startSocialFight":
+                        StartSocialFight(action.data);
+                        break;
+
                     default:
                         Log.Warning($"[Player Storyteller] Unknown player action: {action.action}");
                         break;
@@ -342,11 +353,7 @@ namespace PlayerStoryteller
                 // Register
                 viewerManager.RegisterPawn(username, pawn);
 
-                // Optionally rename nickname to match viewer? 
-                // data.rename (bool) could be passed, but for now let's just notify.
-                // Or maybe we force nickname to match viewer if it's "Unknown"? 
-                // Let's just notify for now to be safe.
-                
+                // Notify player of adoption (nickname preserved from existing pawn)
                 string label = "Colonist Adopted";
                 string text = $"Viewer {username} has adopted {pawn.Name.ToStringShort} via the Neural Link.";
                 Find.LetterStack.ReceiveLetter(label, text, LetterDefOf.PositiveEvent, pawn);
@@ -422,9 +429,7 @@ namespace PlayerStoryteller
                             }
                             else
                             {
-                                // If not drafted, maybe create a float menu or just ignore?
-                                // For now, auto-draft and move if player intends to control?
-                                // Or better: just ignore to respect game rules.
+                                // Undrafted pawns cannot receive move orders (respect game rules)
                                 Messages.Message($"{pawn.Name.ToStringShort} is not drafted.", MessageTypeDefOf.RejectInput, false);
                             }
                         }
@@ -1392,6 +1397,194 @@ namespace PlayerStoryteller
                 Log.Error($"[Player Storyteller] Error triggering mech ship: {ex}");
             }
         }
+        private void SetFireAtLocation(string json)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(json)) return;
+                var data = JsonConvert.DeserializeObject<LocationData>(json);
+                if (data == null) return;
+
+                IntVec3 targetCell = new IntVec3(data.x, 0, data.z);
+                if (!targetCell.InBounds(map)) return;
+
+                // Pawn-driven action
+                if (!string.IsNullOrEmpty(data.pawnId))
+                {
+                    Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber.ToString() == data.pawnId);
+                    if (pawn != null && pawn.Spawned && !pawn.Downed && !pawn.Dead)
+                    {
+                        // Find something to burn at the location
+                        Thing targetThing = null;
+                        foreach (var t in targetCell.GetThingList(map))
+                        {
+                            if (t.FlammableNow)
+                            {
+                                targetThing = t;
+                                break;
+                            }
+                        }
+                        
+                        // If nothing flammable (like stone floor), maybe there's a plant?
+                        if (targetThing == null) targetThing = targetCell.GetPlant(map);
+
+                        if (targetThing != null)
+                        {
+                            // Create the job
+                            Job job = JobMaker.MakeJob(JobDefOf.Ignite, targetThing);
+                            
+                            // Force draft if needed to ensure compliance
+                            if (!pawn.Drafted)
+                            {
+                                pawn.drafter.Drafted = true;
+                            }
+
+                            pawn.jobs.TryTakeOrderedJob(job, JobTag.DraftedOrder);
+                            Messages.Message($"{pawn.Name.ToStringShort} is setting a fire!", MessageTypeDefOf.NegativeEvent);
+                            return;
+                        }
+                        else
+                        {
+                            Messages.Message($"{pawn.Name.ToStringShort} found nothing flammable there.", MessageTypeDefOf.RejectInput, false);
+                            return;
+                        }
+                    }
+                }
+
+                // Fallback: God Mode (if no pawn ID or pawn unavailable)
+                FireUtility.TryStartFireIn(targetCell, map, 0.5f, null);
+                Messages.Message("Viewers started a fire!", MessageTypeDefOf.NegativeEvent);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error setting fire: {ex}");
+            }
+        }
+
+        private void DestroyObject(string json)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(json)) return;
+                var data = JsonConvert.DeserializeObject<TargetData>(json);
+                if (data == null) return;
+
+                Thing target = null;
+                
+                // Try by ID first
+                if (!string.IsNullOrEmpty(data.thingId))
+                {
+                    int id = int.Parse(data.thingId);
+                    target = map.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == id);
+                }
+                
+                // Fallback to location
+                if (target == null && data.x != 0 && data.z != 0)
+                {
+                    IntVec3 cell = new IntVec3(data.x, 0, data.z);
+                    if (cell.InBounds(map))
+                    {
+                        target = cell.GetFirstBuilding(map) as Thing ?? cell.GetFirstItem(map);
+                    }
+                }
+
+                if (target != null && !target.Destroyed)
+                {
+                    // Pawn-driven action
+                    if (!string.IsNullOrEmpty(data.pawnId))
+                    {
+                        Pawn pawn = map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber.ToString() == data.pawnId);
+                        if (pawn != null && pawn.Spawned && !pawn.Downed && !pawn.Dead)
+                        {
+                            // Ensure pawn can reach
+                            if (!pawn.CanReach(target, PathEndMode.Touch, Danger.Deadly))
+                            {
+                                Messages.Message($"{pawn.Name.ToStringShort} cannot reach the target!", MessageTypeDefOf.RejectInput, false);
+                                return;
+                            }
+
+                            // Create the job (AttackMelee)
+                            Job job = JobMaker.MakeJob(JobDefOf.AttackMelee, target);
+                            
+                            // Force draft
+                            if (!pawn.Drafted)
+                            {
+                                pawn.drafter.Drafted = true;
+                            }
+
+                            pawn.jobs.TryTakeOrderedJob(job, JobTag.DraftedOrder);
+                            Messages.Message($"{pawn.Name.ToStringShort} is attacking the object!", MessageTypeDefOf.NegativeEvent);
+                            return;
+                        }
+                    }
+
+                    // Fallback: God Mode
+                    target.Destroy(DestroyMode.Vanish);
+                    MoteMaker.ThrowText(target.DrawPos, map, "Destroyed!", Color.red);
+                    Messages.Message("Viewers destroyed an object!", MessageTypeDefOf.NegativeEvent);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error destroying object: {ex}");
+            }
+        }
+
+        private void StartSocialFight(string json)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(json)) return;
+                var data = JsonConvert.DeserializeObject<SocialFightData>(json);
+                if (data == null) return;
+
+                Pawn initiator = map.mapPawns.FreeColonists.FirstOrDefault(p => p.thingIDNumber.ToString() == data.initiatorId);
+                Pawn target = map.mapPawns.FreeColonists.FirstOrDefault(p => p.thingIDNumber.ToString() == data.targetId);
+
+                if (initiator != null && target != null && initiator != target)
+                {
+                    if (initiator.interactions.CheckSocialFightStart(InteractionDefOf.Insult, target))
+                    {
+                        initiator.interactions.StartSocialFight(target);
+                        Messages.Message($"Viewers incited a fight between {initiator.LabelShort} and {target.LabelShort}!", MessageTypeDefOf.NegativeEvent);
+                    }
+                    else
+                    {
+                        // Force it if natural check fails (mental break style)
+                        initiator.mindState.mentalStateHandler.TryStartMentalState(MentalStateDefOf.SocialFighting, null, true, false, false, target);
+                        Messages.Message($"Viewers forced a fight between {initiator.LabelShort} and {target.LabelShort}!", MessageTypeDefOf.NegativeEvent);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] Error starting social fight: {ex}");
+            }
+        }
+    }
+
+    [Serializable]
+    public class LocationData
+    {
+        public int x;
+        public int z;
+        public string pawnId; // Added for pawn-driven actions
+    }
+
+    [Serializable]
+    public class TargetData
+    {
+        public string thingId;
+        public int x;
+        public int z;
+        public string pawnId; // Added for pawn-driven actions
+    }
+
+    [Serializable]
+    public class SocialFightData
+    {
+        public string initiatorId;
+        public string targetId;
     }
 
     [Serializable]

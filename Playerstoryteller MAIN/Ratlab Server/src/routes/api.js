@@ -240,19 +240,9 @@ module.exports = (io, definitionManager) => {
             session.mapThings = { things: [], textures: {} };
         }
 
-        // Merge textures (keep old ones, overwrite with new ones)
-        // Replace things list entirely (it's a snapshot of the current chunk/view)
-        // Wait - if we replace things list, we lose things outside the chunk?
-        // But the client manages persistence.
-        // For SERVER state (used by NEW clients), we probably want to accumulate things too?
-        // But the user said "self exploring... builds up".
-        // If we only store the latest chunk on the server, a new client will only see that chunk.
-        // Ideally, we should merge things too based on ID or just append?
-        // But things move/die.
-        // For now, let's just merge textures to solve the "missing texture" issue for new clients.
-        // The client-side "building up" logic handles the things list.
-        
-        session.mapThings.things = things; 
+        // Server stores latest things snapshot; clients manage persistence via exploration
+        // Textures are accumulated server-side for new client initialization
+        session.mapThings.things = things;
         session.mapThings.textures = { ...session.mapThings.textures, ...textureBuffers };
         
         sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
@@ -634,7 +624,30 @@ module.exports = (io, definitionManager) => {
                 // === ECONOMY CHECK === (ALWAYS run this, regardless of settings)
                 if (session.economy && username) {
                     const costs = session.economy.actionCosts || {};
-                    const cost = costs[action] !== undefined ? costs[action] : (costs[settingKey] !== undefined ? costs[settingKey] : 0);
+                    let cost = costs[action] !== undefined ? costs[action] : (costs[settingKey] !== undefined ? costs[settingKey] : 0);
+
+                    // Dynamic Pricing (Server-Side Validation)
+                    if (cost === 0 && definitionManager) {
+                        const defs = definitionManager.getDefinitions(sessionId);
+                        if (defs) {
+                            if (action === 'spawn_pawn_dynamic') {
+                                const animal = defs.animals ? defs.animals.find(a => a.defName === data) : null;
+                                if (animal) {
+                                    cost = Math.max(100, Math.floor((animal.combatPower || 10) * 2));
+                                } else {
+                                    // If def not found, maybe deny? For now, fallback or deny.
+                                    // If we allow free, it defeats the purpose.
+                                    // Let's log warning and deny if strict, or fallback to base price?
+                                    // Fallback base price to prevent free spam:
+                                    cost = 100; 
+                                }
+                            } else if (action === 'trigger_incident_dynamic') {
+                                cost = 1000;
+                            } else if (action === 'change_weather_dynamic') {
+                                cost = 500;
+                            }
+                        }
+                    }
 
                     if (cost > 0) {
                         const profile = session.economy.viewers.get(username);
@@ -756,6 +769,11 @@ module.exports = (io, definitionManager) => {
         // Verify cost if action is known
         if (action && session.economy.actionCosts[action] !== undefined) {
             finalCost = session.economy.actionCosts[action];
+        }
+        
+        // Security: Prevent negative/zero cost exploits
+        if (!finalCost || isNaN(finalCost) || finalCost <= 0) {
+            return res.status(400).json({ error: 'Invalid cost' });
         }
         
         if (profile.coins < finalCost) {

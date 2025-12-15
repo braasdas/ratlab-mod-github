@@ -118,11 +118,9 @@ namespace PlayerStoryteller
 
             List<Thing> thingsToDrop = new List<Thing>();
 
-            // Generate Boss
             Pawn boss = PawnGenerator.GeneratePawn(bossKind, Faction.OfMechanoids);
             thingsToDrop.Add(boss);
 
-            // Generate Escorts
             foreach (var kvp in escorts)
             {
                 PawnKindDef escortKind = DefDatabase<PawnKindDef>.GetNamedSilentFail(kvp.Key);
@@ -135,7 +133,6 @@ namespace PlayerStoryteller
                 }
             }
 
-            // Drop them
             IntVec3 dropSpot = DropCellFinder.FindRaidDropCenterDistant(map);
             DropPodUtility.DropThingsNear(dropSpot, map, thingsToDrop);
 

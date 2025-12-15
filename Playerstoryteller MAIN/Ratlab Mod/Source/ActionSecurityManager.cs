@@ -30,20 +30,17 @@ namespace PlayerStoryteller
                 int currentTick = Find.TickManager.TicksGame;
                 int oneMinuteAgo = currentTick - RateLimitWindowTicks;
 
-                // Remove timestamps older than 1 minute
                 while (actionTimestamps.Count > 0 && actionTimestamps.Peek() < oneMinuteAgo)
                 {
                     actionTimestamps.Dequeue();
                 }
 
-                // Check if we're under the limit
                 if (actionTimestamps.Count >= PlayerStorytellerMod.settings.maxActionsPerMinute)
                 {
                     Messages.Message($"Action rate limit exceeded! Max {PlayerStorytellerMod.settings.maxActionsPerMinute} actions per minute.", MessageTypeDefOf.RejectInput);
                     return false;
                 }
 
-                // Add current timestamp
                 actionTimestamps.Enqueue(currentTick);
                 return true;
             }
@@ -105,10 +102,8 @@ namespace PlayerStoryteller
                 return null;
             }
 
-            // Trim whitespace
             string sanitized = input.Trim();
 
-            // Check length constraints
             if (sanitized.Length < MinMessageLength)
             {
                 Messages.Message($"Message too short (minimum {MinMessageLength} characters)", MessageTypeDefOf.RejectInput);
@@ -121,7 +116,6 @@ namespace PlayerStoryteller
                 Messages.Message($"Message truncated to {MaxMessageLength} characters", MessageTypeDefOf.CautionInput);
             }
 
-            // Remove potentially dangerous characters
             // Allow: letters, numbers, spaces, basic punctuation
             var sb = new StringBuilder(sanitized.Length);
             foreach (char c in sanitized)

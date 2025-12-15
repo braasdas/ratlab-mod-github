@@ -326,6 +326,7 @@ namespace PlayerStoryteller
                 try
                 {
                     _ = gameDataPoller?.UpdateSlowDataAsync();
+                    gameDataPoller?.UpdateAnimalDataAsync(); // Synchronous
                     _ = gameDataPoller?.UpdateStoredResourcesAsync();
                     _ = itemIconManager?.UpdateItemIconsAsync();
                     _ = gameDataPoller?.UpdateInventoryAsync();

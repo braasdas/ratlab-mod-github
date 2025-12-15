@@ -314,8 +314,9 @@ function initializeHLS() {
     showLoading("BUFFERING SATELLITE FEED...");
     
     const video = document.getElementById('game-screenshot');
-    const streamKey = "74a978f8-5c3b-4da2-b20bc523cbae-322c-4464"; // Ideally this comes from session metadata
-    const hlsUrl = `${BUNNY_PULL_ZONE}/${streamKey}/playlist.m3u8`;
+    // FIX: Use current session ID for HLS stream name instead of hardcoded key
+    const streamName = currentSession || "default"; 
+    const hlsUrl = `${BUNNY_PULL_ZONE}/${streamName}/playlist.m3u8`;
 
     // Idempotency check
     if (hls && hls.media === video) {

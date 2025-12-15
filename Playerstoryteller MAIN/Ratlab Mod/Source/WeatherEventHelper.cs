@@ -76,10 +76,8 @@ namespace PlayerStoryteller
         
         public static void TriggerVomitRain(Map map)
         {
-            // Force Rain first
             map.weatherManager.TransitionTo(WeatherDef.Named("Rain"));
-            
-            // Add our VomitRain component
+
             var vomitComp = map.GetComponent<VomitRainMapComponent>();
             if (vomitComp == null)
             {

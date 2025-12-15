@@ -13,6 +13,7 @@ namespace PlayerStoryteller
     {
         // Cached data from different polling tiers
         private string cachedFastData = "{}";      // Colonists - updates frequently
+        private string cachedAnimalData = "{}";    // Animals - updates frequently
         private string cachedSlowData = "{}";      // Resources, power, creatures - updates slowly
         private string cachedStoredResources = "{}"; // Stored resources - updates slowly
         private string cachedStaticData = "{}";    // Factions, research projects - rarely changes
@@ -52,6 +53,19 @@ namespace PlayerStoryteller
             try
             {
                 cachedFastData = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
+            }
+        }
+
+        public void SetAnimalData(string data)
+        {
+            rwLock.EnterWriteLock();
+            try
+            {
+                cachedAnimalData = data ?? "{}";
             }
             finally
             {
@@ -156,6 +170,19 @@ namespace PlayerStoryteller
             try
             {
                 return cachedFastData;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
+            }
+        }
+
+        public string GetAnimalData()
+        {
+            rwLock.EnterReadLock();
+            try
+            {
+                return cachedAnimalData;
             }
             finally
             {
@@ -370,13 +397,14 @@ namespace PlayerStoryteller
         /// Creates a thread-safe snapshot of all cached data.
         /// This method can be called from background threads.
         /// </summary>
-        public (string fast, string slow, string staticData, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews) GetSnapshot()
+        public (string fast, string animal, string slow, string staticData, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews) GetSnapshot()
         {
             rwLock.EnterReadLock();
             try
             {
                 return (
                     cachedFastData,
+                    cachedAnimalData,
                     cachedSlowData,
                     cachedStaticData,
                     cachedPortraits,
@@ -402,6 +430,7 @@ namespace PlayerStoryteller
             var snapshot = GetSnapshot();
             return MergeCachedDataOffThread(
                 snapshot.fast,
+                snapshot.animal,
                 snapshot.slow,
                 snapshot.staticData,
                 snapshot.portraits,
@@ -414,7 +443,7 @@ namespace PlayerStoryteller
             );
         }
 
-        private string MergeCachedDataOffThread(string fast, string slow, string staticStr, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews, string cameraBounds)
+        private string MergeCachedDataOffThread(string fast, string animal, string slow, string staticStr, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews, string cameraBounds)
         {
             // PERFORMANCE FIX: Use StringBuilder instead of string concatenation
             // This runs on a background thread - safe to do heavy string manipulation
@@ -428,6 +457,17 @@ namespace PlayerStoryteller
                 string trimmed = fast.Trim();
                 if (trimmed.Length > 2)
                 {
+                    sb.Append(trimmed, 1, trimmed.Length - 2); // Skip outer braces
+                    hasContent = true;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(animal) && animal != "{}")
+            {
+                string trimmed = animal.Trim();
+                if (trimmed.Length > 2)
+                {
+                    if (hasContent) sb.Append(',');
                     sb.Append(trimmed, 1, trimmed.Length - 2); // Skip outer braces
                     hasContent = true;
                 }

@@ -25,6 +25,7 @@ export function updateGameState(gameState) {
     // Progressive enhancement: ultrafast → fast → full (each tier adds fields)
 
     if (!state.colonists) state.colonists = [];
+    if (!state.animals) state.animals = []; // Initialize animals
     if (!state.lastPositionSequenceId) state.lastPositionSequenceId = 0;
 
     // Tier 1: ULTRAFAST - Position updates only (10Hz)
@@ -42,18 +43,42 @@ export function updateGameState(gameState) {
 
             gameState.pawn_positions.forEach(posUpdate => {
                 let colonist = state.colonists.find(c => c.id === posUpdate.id);
-                if (!colonist) {
-                    // New colonist with minimal data
-                    colonist = { id: posUpdate.id };
-                    state.colonists.push(colonist);
-                }
-                // Only update position if this update is newer
-                if ((posUpdate.timestamp || 0) >= (colonist.positionTimestamp || 0)) {
-                    colonist.position = posUpdate.position;
-                    colonist.positionTimestamp = posUpdate.timestamp;
+                let animal = state.animals.find(a => a.id === posUpdate.id);
+
+                if (colonist) {
+                    if ((posUpdate.timestamp || 0) >= (colonist.positionTimestamp || 0)) {
+                        colonist.position = posUpdate.position;
+                        colonist.positionTimestamp = posUpdate.timestamp;
+                    }
+                } else if (animal) {
+                    if ((posUpdate.timestamp || 0) >= (animal.positionTimestamp || 0)) {
+                        animal.position = posUpdate.position;
+                        animal.positionTimestamp = posUpdate.timestamp;
+                    }
+                } else {
+                    // Unknown ID. Wait for metadata (Fast/Slow tier) to define it.
+                    // Do NOT auto-create as colonist to avoid UI artifacts.
                 }
             });
         }
+    }
+
+    // Tier 1.5: ANIMALS (Slow/Fast)
+    if (gameState.animals_light) {
+        gameState.animals_light.forEach(update => {
+            let animal = state.animals.find(a => a.id === update.id);
+            if (!animal) {
+                state.animals.push(update);
+            } else {
+                const oldPos = animal.position;
+                const oldTimestamp = animal.positionTimestamp;
+                Object.assign(animal, update);
+                if (oldTimestamp && oldTimestamp > (update.positionTimestamp || 0)) {
+                    animal.position = oldPos;
+                    animal.positionTimestamp = oldTimestamp;
+                }
+            }
+        });
     }
 
     // Tier 2: FAST - Vital stats (10Hz)

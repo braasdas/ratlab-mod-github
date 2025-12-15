@@ -109,6 +109,19 @@ export class MapRenderer {
             const tile = this._screenToTile(e);
             if (!tile) return;
             this.hoverTile = tile;
+
+            // Check for hovered pawn
+            this.hoveredPawn = null;
+            for (const [dotId, dot] of this.trackedDots.entries()) {
+                // Check proximity (within 0.5 tiles)
+                const dx = Math.abs(dot.x - tile.x);
+                const dz = Math.abs(dot.z - tile.z);
+                if (dx < 0.8 && dz < 0.8) {
+                    this.hoveredPawn = dot;
+                    break;
+                }
+            }
+
             this.render();
         });
 
@@ -392,12 +405,13 @@ export class MapRenderer {
         this.currentInterpolationDuration = 100; // Fixed 100ms for snappy movement
         this.lastUpdateTimestamp = now;
 
-        // Update all pawn target positions for interpolation
-        const pawns = gameState.colonists || [];
+        // Update all pawn target positions for interpolation (colonists + animals)
+        const pawns = [...(gameState.colonists || []), ...(gameState.animals || [])];
 
         for (const pawn of pawns) {
             const id = String(pawn.id);
             const pos = pawn.position;
+            const type = pawn.type || 'colonist';
             if (!pos) continue;
 
             // Check if we already have a tracked dot for this pawn
@@ -443,6 +457,9 @@ export class MapRenderer {
 
                     this.trackedDots.set(dotId, {
                         pawnId: id,
+                        type: type,
+                        name: pawn.name || pawn.label || 'Unknown',
+                        defName: pawn.def_name || null, // Store defName for texture lookup
                         x: pos.x,
                         z: pos.z,
                         startX: pos.x,
@@ -850,6 +867,7 @@ export class MapRenderer {
             const isMyPawn = dot.pawnId === String(STATE.myPawnId);
             const portraitData = dot.portraitData;
 
+            // 1. Try Colonist Portrait (Highest Priority)
             if (portraitData) {
                 let img = this.pawnPortraits.get(dotId);
                 if (!img || img.portraitData !== portraitData) {
@@ -875,13 +893,38 @@ export class MapRenderer {
                         this.ctx.arc(centerX, centerY, portraitSize / 2 + 2, 0, Math.PI * 2);
                         this.ctx.stroke();
                     }
-                } else {
-                    this._drawPawnDot(centerX, centerY, isMyPawn);
+                    return; // Done
                 }
-            } else {
-                this._drawPawnDot(centerX, centerY, isMyPawn);
+            } 
+            
+            // 2. Try Animal Texture
+            if (dot.type === 'animal' && dot.defName) {
+                const img = this.thingImages.get(dot.defName);
+                if (img && img.complete && img.naturalWidth > 0) {
+                    const size = this.tileSizePx * 1.2;
+                    this.ctx.drawImage(img, centerX - size/2, centerY - size/2, size, size);
+                    return; // Done
+                } else {
+                    // Queue load if missing
+                    if (!this.thingImages.has(dot.defName)) {
+                        this.missingTextures.add(dot.defName);
+                    }
+                }
             }
+
+            // 3. Fallback: Dot
+            this._drawPawnDot(centerX, centerY, isMyPawn, dot.type);
         });
+
+        // Trigger background load for any missing animal textures found this frame
+        if (this.missingTextures.size > 0) {
+            const missing = Array.from(this.missingTextures);
+            // Filter to only new ones or throttle? _loadTexturesBackground handles batching.
+            // But we should clear missingTextures so we don't spam requests.
+            // Actually _loadTexturesBackground clears them from the Set as it processes.
+            // We just need to trigger it.
+            this._loadTexturesBackground(missing);
+        }
 
         if (this.hoverTile) {
             // Hover tile logic must also be updated to float math or reverse-projection
@@ -895,6 +938,43 @@ export class MapRenderer {
             this.ctx.lineWidth = 2;
             this.ctx.strokeRect(hX, hY, this.tileSizePx, this.tileSizePx);
         }
+
+        if (this.hoveredPawn) {
+            this._drawLabel(this.hoveredPawn);
+        }
+    }
+
+    _drawLabel(dot) {
+        if (!dot || !dot.name) return;
+        
+        const { width, height } = this.canvas;
+        const viewW = width / this.tileSizePx;
+        const viewH = height / this.tileSizePx;
+        const viewLeft = this.camera.x - (viewW / 2);
+        const viewTop = this.camera.z + (viewH / 2);
+
+        const screenX = (dot.x - viewLeft) * this.tileSizePx + (this.tileSizePx / 2);
+        const screenY = (viewTop - dot.z) * this.tileSizePx - 5; // Above dot
+
+        this.ctx.font = 'bold 12px "IBM Plex Mono", monospace';
+        const text = dot.name.toUpperCase();
+        const metrics = this.ctx.measureText(text);
+        const padding = 4;
+        
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(
+            screenX - metrics.width / 2 - padding,
+            screenY - 12 - padding,
+            metrics.width + padding * 2,
+            12 + padding * 2
+        );
+        
+        this.ctx.fillStyle = '#00ff41'; // Green text
+        if (dot.type === 'animal') this.ctx.fillStyle = '#ffc800'; // Yellow for animals
+        
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'bottom';
+        this.ctx.fillText(text, screenX, screenY);
     }
 
     _drawStatus(text) {
@@ -1009,8 +1089,13 @@ export class MapRenderer {
         return `rgb(${r},${g},${b})`;
     }
 
-    _drawPawnDot(x, y, isMyPawn) {
-        this.ctx.fillStyle = isMyPawn ? '#00ff41' : 'rgba(255,255,255,0.7)';
+    _drawPawnDot(x, y, isMyPawn, type) {
+        if (type === 'animal') {
+            this.ctx.fillStyle = 'rgba(255, 200, 0, 0.7)'; // Yellowish for animals
+        } else {
+            this.ctx.fillStyle = isMyPawn ? '#00ff41' : 'rgba(255,255,255,0.7)';
+        }
+        
         this.ctx.beginPath();
         this.ctx.arc(x, y, this.tileSizePx * 0.25, 0, Math.PI * 2);
         this.ctx.fill();
