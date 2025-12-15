@@ -28,7 +28,7 @@ namespace PlayerStoryteller
         /// Captures camera bounds and sends game state to server.
         /// Must be called from main thread.
         /// </summary>
-        public async void SendGameState()
+        public async Task SendGameState()
         {
             try
             {

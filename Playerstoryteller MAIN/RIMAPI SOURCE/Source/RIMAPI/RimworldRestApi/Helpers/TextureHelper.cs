@@ -156,7 +156,7 @@ namespace RIMAPI.Helpers
             catch (Exception ex)
             {
                 image.Result = ex.Message;
-                // LogApi.Error($"Texture extract error for {thingName}: {ex}");
+                LogApi.Error($"Texture extract error for {thingName}: {ex}");
             }
             return image;
         }

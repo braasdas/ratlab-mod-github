@@ -47,7 +47,7 @@ namespace PlayerStoryteller
             return $"ws://{host}:3001";
         }
 
-        public async void Connect()
+        public async Task Connect()
         {
             if (IsConnected || isConnecting) return;
             
@@ -96,9 +96,9 @@ namespace PlayerStoryteller
             }
         }
 
-        public async void SendImage(byte[] imageDataBuffer, int length)
+        public async Task SendImage(byte[] imageDataBuffer, int length)
         {
-            if (!IsConnected) { Connect(); return; }
+            if (!IsConnected) { _ = Connect(); return; }
 
             await sendLock.WaitAsync();
             try
@@ -127,7 +127,7 @@ namespace PlayerStoryteller
             }
         }
 
-        public async void SendMapImage(byte[] imageDataBuffer, int length)
+        public async Task SendMapImage(byte[] imageDataBuffer, int length)
         {
             if (!IsConnected) 
             {
@@ -161,7 +161,7 @@ namespace PlayerStoryteller
             }
         }
 
-        public async void SendGameState(string json)
+        public async Task SendGameState(string json)
         {
             if (!IsConnected) return;
 

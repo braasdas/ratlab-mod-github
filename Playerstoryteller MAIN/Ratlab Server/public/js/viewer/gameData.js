@@ -38,16 +38,21 @@ export function updateGameState(gameState) {
 
             if (existingEntry) {
                 const target = existingEntry.colonist || existingEntry;
-                // ALWAYS update position - no caching for ultrafast tier
-                if (posUpdate.position) {
+                const posTimestamp = posUpdate.timestamp || 0;
+                const currentTimestamp = target.positionTimestamp || 0;
+
+                // Only update if this position is newer (or no timestamp available)
+                if (posTimestamp >= currentTimestamp && posUpdate.position) {
                     target.position = posUpdate.position;
+                    target.positionTimestamp = posTimestamp;
                 }
             } else {
                 // New pawn with just position data - create minimal entry
                 effectiveState.colonists.push({
                     id: posUpdate.id,
                     pawn_id: posUpdate.id, // Add both for compatibility
-                    position: posUpdate.position
+                    position: posUpdate.position,
+                    positionTimestamp: posUpdate.timestamp || 0
                 });
             }
         });
@@ -68,7 +73,15 @@ export function updateGameState(gameState) {
                 // Update existing detailed record
                 const target = existingEntry.colonist || existingEntry;
                 // Merge dynamic fields
-                if (light.position) target.position = light.position;
+                // Don't overwrite position if we have a newer timestamp from ultrafast tier
+                if (light.position) {
+                    const lightTimestamp = light.positionTimestamp || 0;
+                    const currentTimestamp = target.positionTimestamp || 0;
+                    if (lightTimestamp >= currentTimestamp) {
+                        target.position = light.position;
+                        if (lightTimestamp > 0) target.positionTimestamp = lightTimestamp;
+                    }
+                }
                 if (light.health !== undefined) target.health = light.health;
                 if (light.mood !== undefined) target.mood = light.mood;
                 if (light.hunger !== undefined) target.hunger = light.hunger; // check dto
@@ -95,10 +108,16 @@ export function updateGameState(gameState) {
 
                 if (existing) {
                     const oldPos = existing.colonist ? existing.colonist.position : existing.position;
-                    // If we have a valid current position, keep it
+                    const oldTimestamp = existing.colonist ? existing.colonist.positionTimestamp : existing.positionTimestamp;
+                    // If we have a valid current position, keep it (colonists_full is slow and stale)
                     if (oldPos) {
-                        if (newCol.colonist) newCol.colonist.position = oldPos;
-                        else newCol.position = oldPos;
+                        if (newCol.colonist) {
+                            newCol.colonist.position = oldPos;
+                            newCol.colonist.positionTimestamp = oldTimestamp;
+                        } else {
+                            newCol.position = oldPos;
+                            newCol.positionTimestamp = oldTimestamp;
+                        }
                     }
                 }
             });
@@ -629,7 +648,10 @@ function updateInventoryList(colonists, gameState) {
     colonists.forEach((c, index) => {
         const data = c.colonist || c;
         const pawnId = String(data.id || data.pawn_id || index);
-        const name = data.name || 'Unknown';
+        const name = data.name;
+
+        // Skip colonists without names (position-only entries from ultrafast tier)
+        if (!name) return;
         
         let isExpanded = false;
         if (existingRows.has(pawnId)) {

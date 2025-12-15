@@ -41,7 +41,7 @@ namespace PlayerStoryteller
         /// Polls for viewer actions from the server and queues them for main thread execution.
         /// Should be called every 2 seconds.
         /// </summary>
-        public async void PollForActionsAsync()
+        public async Task PollForActionsAsync()
         {
             try
             {

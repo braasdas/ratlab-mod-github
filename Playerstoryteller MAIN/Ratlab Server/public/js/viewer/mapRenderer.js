@@ -437,6 +437,7 @@ export class MapRenderer {
                     this.pawnIdToDotId.set(id, dotId);
                     nearbyDot.pawnId = id;
                     nearbyDot.lastUpdate = now;
+                    nearbyDot.positionTimestamp = pawn.positionTimestamp || pawn.timestamp || 0;
                 } else {
                     // New pawn - create tracked dot
                     dotId = `dot_${this.nextDotId++}`;
@@ -453,7 +454,8 @@ export class MapRenderer {
                         portraitData: null,
                         lastUpdate: now,
                         timestamp: now,
-                        duration: 0
+                        duration: 0,
+                        positionTimestamp: pawn.positionTimestamp || pawn.timestamp || 0
                     });
 
                     // Add to spatial hash
@@ -477,6 +479,21 @@ export class MapRenderer {
                 const existing = this.pawnPositions.get(id);
 
                 if (dot && existing && (existing.target.x !== pos.x || existing.target.z !== pos.z)) {
+                    // Check timestamp to prevent old data from overwriting new positions
+                    const posTimestamp = pawn.positionTimestamp || pawn.timestamp || 0;
+                    const lastPosTimestamp = dot.positionTimestamp || 0;
+
+                    // Only update if this position data is newer than what we have (or no timestamps available)
+                    if (posTimestamp > 0 && lastPosTimestamp > 0 && posTimestamp < lastPosTimestamp) {
+                        // Skip this update - it's stale data
+                        continue;
+                    }
+
+                    // Store the timestamp for future comparisons
+                    if (posTimestamp > 0) {
+                        dot.positionTimestamp = posTimestamp;
+                    }
+
                     // Check for large jumps (teleport, fast travel, etc.) - snap instantly
                     const dx = Math.abs(pos.x - existing.current.x);
                     const dz = Math.abs(pos.z - existing.current.z);

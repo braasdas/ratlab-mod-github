@@ -622,32 +622,32 @@ module.exports = (io, definitionManager) => {
                     }
                 }
 
-                // Check if action is enabled
+                // Check if action is enabled (settings check)
+                const settingKey = action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+
                 if (session.settings && session.settings.actions) {
-                    const settingKey = action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-                    
                     if (session.settings.actions[settingKey] === false || session.settings.actions[action] === false) {
                          return res.status(403).json({ success: false, message: 'Action disabled by streamer.' });
                     }
+                }
 
-                    // === ECONOMY CHECK ===
-                    if (session.economy && username) {
-                        const costs = session.economy.actionCosts || {};
-                        const cost = costs[action] !== undefined ? costs[action] : (costs[settingKey] !== undefined ? costs[settingKey] : 0);
-                        
-                        if (cost > 0) {
-                            const profile = session.economy.viewers.get(username);
-                            if (!profile) {
-                                return res.status(400).json({ success: false, message: 'User wallet not found. Please log in.' });
-                            }
-                            if (profile.coins < cost) {
-                                return res.status(402).json({ success: false, message: `Insufficient funds. Required: ${cost}, Balance: ${profile.coins}` });
-                            }
-                            
-                            // Deduct funds
-                            profile.coins -= cost;
-                            io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
+                // === ECONOMY CHECK === (ALWAYS run this, regardless of settings)
+                if (session.economy && username) {
+                    const costs = session.economy.actionCosts || {};
+                    const cost = costs[action] !== undefined ? costs[action] : (costs[settingKey] !== undefined ? costs[settingKey] : 0);
+
+                    if (cost > 0) {
+                        const profile = session.economy.viewers.get(username);
+                        if (!profile) {
+                            return res.status(400).json({ success: false, message: 'User wallet not found. Please log in.' });
                         }
+                        if (profile.coins < cost) {
+                            return res.status(402).json({ success: false, message: `Insufficient funds. Required: ${cost}, Balance: ${profile.coins}` });
+                        }
+
+                        // Deduct funds
+                        profile.coins -= cost;
+                        io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
                     }
                 }
 
@@ -791,18 +791,28 @@ module.exports = (io, definitionManager) => {
             return res.status(400).json({ error: 'Invalid action specified' });
         }
 
-        // Check cost
-        // Convert action to camelCase for cost lookup if needed (assuming passed action is camelCase)
-        const cost = session.economy.actionCosts[action] || 0;
-        const profile = session.economy.viewers.get(username);
-        
-        if (!profile || profile.coins < cost) {
-            return res.status(402).json({ error: 'Insufficient funds' });
+        // Check cost (only if economy is enabled)
+        let cost = 0;
+        if (session.economy) {
+            const actionCosts = session.economy.actionCosts || {};
+            cost = actionCosts[action] || 0;
+
+            if (cost > 0) {
+                const profile = session.economy.viewers.get(username);
+
+                if (!profile) {
+                    return res.status(400).json({ error: 'User wallet not found' });
+                }
+
+                if (profile.coins < cost) {
+                    return res.status(402).json({ error: 'Insufficient funds', required: cost, balance: profile.coins });
+                }
+
+                // Deduct cost
+                profile.coins -= cost;
+                io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
+            }
         }
-        
-        // Deduct cost
-        profile.coins -= cost;
-        io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
         
         const request = {
             id: Date.now().toString(36) + Math.random().toString(36).substr(2),

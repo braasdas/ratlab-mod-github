@@ -35,6 +35,9 @@ namespace PlayerStoryteller
         /// </summary>
         public void UpdateFastDataAsync()
         {
+            if (isUpdatingFastData) return;
+            isUpdatingFastData = true;
+
             try
             {
                 // PERFORMANCE FIX: Direct memory access instead of RimAPI call
@@ -114,15 +117,24 @@ namespace PlayerStoryteller
             {
                 Log.Error($"[Player Storyteller] Error in UpdateFastDataAsync: {ex.Message}");
             }
+            finally
+            {
+                isUpdatingFastData = false;
+            }
         }
 
         private bool isSendingPawnPositions = false;
+        private bool isUpdatingFastData = false;
+        private bool isUpdatingSlowData = false;
+        private bool isUpdatingStaticData = false;
+        private bool isUpdatingStoredResources = false;
+        private bool isUpdatingInventory = false;
 
         /// <summary>
         /// ULTRAFAST TIER: Updates ONLY pawn positions for smooth map interpolation.
         /// DIRECT ACCESS - bypasses RimAPI for zero latency.
         /// </summary>
-        public async void UpdatePawnPositionsAsync()
+        public async Task UpdatePawnPositionsAsync()
         {
             if (isSendingPawnPositions) return;
             isSendingPawnPositions = true;
@@ -132,6 +144,9 @@ namespace PlayerStoryteller
                 // Direct access to pawns - no RimAPI call!
                 var colonists = map.mapPawns.FreeColonists;
                 if (colonists == null || colonists.Count == 0) return;
+
+                // Get current timestamp in milliseconds since epoch
+                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
                 var sb = new StringBuilder(capacity: 512);
                 sb.Append("[");
@@ -143,7 +158,7 @@ namespace PlayerStoryteller
 
                     if (!first) sb.Append(",");
 
-                    // Minimal JSON: just ID and position
+                    // Minimal JSON: ID, position, and timestamp to prevent old data from overwriting new
                     // FIXED: Use thingIDNumber (numeric) to match other data streams and avoid duplication
                     sb.Append("{\"id\":");
                     sb.Append(pawn.thingIDNumber);
@@ -151,7 +166,9 @@ namespace PlayerStoryteller
                     sb.Append(pawn.Position.x);
                     sb.Append(",\"z\":");
                     sb.Append(pawn.Position.z);
-                    sb.Append("}}");
+                    sb.Append("},\"timestamp\":");
+                    sb.Append(timestamp);
+                    sb.Append("}");
 
                     first = false;
                 }
@@ -178,7 +195,7 @@ namespace PlayerStoryteller
         /// Updates heavy colonist data (Skills, Gear, Needs).
         /// Should be called less frequently (e.g. every 5s).
         /// </summary>
-        public async void UpdateColonistDetailsAsync()
+        public async Task UpdateColonistDetailsAsync()
         {
             try
             {
@@ -229,8 +246,11 @@ namespace PlayerStoryteller
         /// Updates slow-changing data (resources, power, creatures, quests, zones).
         /// Should be called every 5-10 seconds.
         /// </summary>
-        public async void UpdateSlowDataAsync()
+        public async Task UpdateSlowDataAsync()
         {
+            if (isUpdatingSlowData) return;
+            isUpdatingSlowData = true;
+
             try
             {
                 // Capture focus positions on Main Thread before any await
@@ -315,6 +335,10 @@ namespace PlayerStoryteller
             {
                 Log.Error($"[Player Storyteller] Error in UpdateSlowDataAsync: {ex.Message}");
             }
+            finally
+            {
+                isUpdatingSlowData = false;
+            }
         }
 
         #endregion
@@ -355,8 +379,11 @@ namespace PlayerStoryteller
         /// Updates stored resources data.
         /// Should be called every 5-10 seconds.
         /// </summary>
-        public async void UpdateStoredResourcesAsync()
+        public async Task UpdateStoredResourcesAsync()
         {
+            if (isUpdatingStoredResources) return;
+            isUpdatingStoredResources = true;
+
             try
             {
                 int mapId = map.uniqueID;
@@ -372,6 +399,10 @@ namespace PlayerStoryteller
             {
                 Log.Error($"[Player Storyteller] Error in UpdateStoredResourcesAsync: {ex.Message}");
             }
+            finally
+            {
+                isUpdatingStoredResources = false;
+            }
         }
 
         #endregion
@@ -382,8 +413,11 @@ namespace PlayerStoryteller
         /// Updates inventory data for all colonists.
         /// Should be called every 5-10 seconds.
         /// </summary>
-        public async void UpdateInventoryAsync()
+        public async Task UpdateInventoryAsync()
         {
+            if (isUpdatingInventory) return;
+            isUpdatingInventory = true;
+
             try
             {
                 // Get list of current colonists from cached fast data
@@ -458,6 +492,10 @@ namespace PlayerStoryteller
             {
                 Log.Error($"[Player Storyteller] Error in UpdateInventoryAsync: {ex.Message}");
             }
+            finally
+            {
+                isUpdatingInventory = false;
+            }
         }
 
         #endregion
@@ -470,8 +508,11 @@ namespace PlayerStoryteller
         /// Updates static data (factions, research, mods, network quality).
         /// Should be called every 30-60 seconds.
         /// </summary>
-        public async void UpdateStaticDataAsync()
+        public async Task UpdateStaticDataAsync()
         {
+            if (isUpdatingStaticData) return;
+            isUpdatingStaticData = true;
+
             try
             {
                 int mapId = map.uniqueID;
@@ -480,7 +521,7 @@ namespace PlayerStoryteller
                 if (!hasPushedDefinitions)
                 {
                     hasPushedDefinitions = true; // Set immediately to prevent re-entry
-                    PushDefinitionsAsync();
+                    _ = PushDefinitionsAsync();
                 }
 
                 // PERFORMANCE FIX: Fetch all in parallel
@@ -565,6 +606,10 @@ namespace PlayerStoryteller
             {
                 Log.Error($"[Player Storyteller] Error in UpdateStaticDataAsync: {ex.Message}");
             }
+            finally
+            {
+                isUpdatingStaticData = false;
+            }
         }
 
         #endregion
@@ -636,7 +681,7 @@ namespace PlayerStoryteller
         /// OPTIMIZED TIER: Updates the Live Optical View.
         /// Direct game access, no RimAPI calls, delta updates only.
         /// </summary>
-        public async void UpdateLiveViewAsync()
+        public async Task UpdateLiveViewAsync()
         {
             if (!PlayerStorytellerMod.settings.enableLiveScreen) return;
             if (isUpdatingLiveView) return;
@@ -795,7 +840,7 @@ namespace PlayerStoryteller
             }
         }
 
-        private async void PushDefinitionsAsync()
+        private async Task PushDefinitionsAsync()
         {
             try
             {

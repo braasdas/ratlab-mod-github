@@ -184,7 +184,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    gameDataPoller?.UpdatePawnPositionsAsync();
+                    _ = gameDataPoller?.UpdatePawnPositionsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -201,7 +201,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    gameDataPoller?.UpdateLiveViewAsync();
+                    _ = gameDataPoller?.UpdateLiveViewAsync();
                 }
                 catch (Exception ex)
                 {
@@ -218,7 +218,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    gameDataPoller?.UpdateColonistDetailsAsync();
+                    _ = gameDataPoller?.UpdateColonistDetailsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -287,7 +287,7 @@ namespace PlayerStoryteller
                 try
                 {
                     // Send game state (video is captured externally by Go sidecar)
-                    gameStateStreamingService?.SendGameState();
+                    _ = gameStateStreamingService?.SendGameState();
                 }
                 catch (Exception ex)
                 {
@@ -325,10 +325,10 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    gameDataPoller?.UpdateSlowDataAsync();
-                    gameDataPoller?.UpdateStoredResourcesAsync();
-                    itemIconManager?.UpdateItemIconsAsync();
-                    gameDataPoller?.UpdateInventoryAsync();
+                    _ = gameDataPoller?.UpdateSlowDataAsync();
+                    _ = gameDataPoller?.UpdateStoredResourcesAsync();
+                    _ = itemIconManager?.UpdateItemIconsAsync();
+                    _ = gameDataPoller?.UpdateInventoryAsync();
                 }
                 catch (Exception ex)
                 {
@@ -348,7 +348,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    gameDataPoller?.UpdateStaticDataAsync();
+                    _ = gameDataPoller?.UpdateStaticDataAsync();
                 }
                 catch (Exception ex)
                 {
@@ -368,7 +368,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    colonistDataPoller?.UpdatePortraitsAsync();
+                    _ = colonistDataPoller?.UpdatePortraitsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -385,7 +385,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    viewerActionProcessor?.PollForActionsAsync();
+                    _ = viewerActionProcessor?.PollForActionsAsync();
                 }
                 catch (Exception ex)
                 {

@@ -45,7 +45,7 @@ namespace PlayerStoryteller
         /// Updates colonist portraits. Identifies missing portraits and fetches them one by one (throttled).
         /// Should be called frequently (e.g. every 2-3 seconds).
         /// </summary>
-        public async void UpdatePortraitsAsync()
+        public async Task UpdatePortraitsAsync()
         {
             try
             {

@@ -37,7 +37,7 @@ namespace PlayerStoryteller
         /// Only fetches icons that aren't already cached.
         /// Should be called every 5-10 seconds.
         /// </summary>
-        public async void UpdateItemIconsAsync()
+        public async Task UpdateItemIconsAsync()
         {
             try
             {

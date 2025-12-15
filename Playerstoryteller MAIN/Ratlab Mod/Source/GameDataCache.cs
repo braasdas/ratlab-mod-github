@@ -22,7 +22,7 @@ namespace PlayerStoryteller
         private string cachedDLCData = "{}";       // Active DLCs - set once
         private string cachedPawnViews = "{}";     // Pawn views - updates frequently
 
-        private readonly object dataLock = new object();
+        private readonly System.Threading.ReaderWriterLockSlim rwLock = new System.Threading.ReaderWriterLockSlim();
 
         public GameDataCache()
         {
@@ -48,129 +48,209 @@ namespace PlayerStoryteller
 
         public void SetFastData(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedFastData = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetSlowData(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedSlowData = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetStoredResources(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedStoredResources = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetStaticData(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedStaticData = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetInventoryData(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedInventoryData = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetPortraits(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedPortraits = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetItemIcons(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedItemIcons = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public void SetPawnViews(string data)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 cachedPawnViews = data ?? "{}";
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public string GetFastData()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedFastData;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetSlowData()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedSlowData;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetStoredResources()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedStoredResources;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetStaticData()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedStaticData;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetInventoryData()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedInventoryData;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetPortraits()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedPortraits;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetItemIcons()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedItemIcons;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public string GetPawnViews()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return cachedPawnViews;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
@@ -180,65 +260,105 @@ namespace PlayerStoryteller
 
         public bool HasPortraitCached(string colonistId)
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return colonistPortraitCache.ContainsKey(colonistId);
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public void CachePortrait(string colonistId, string base64Portrait)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 colonistPortraitCache[colonistId] = base64Portrait;
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public string GetCachedPortrait(string colonistId)
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return colonistPortraitCache.TryGetValue(colonistId, out var portrait) ? portrait : null;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public bool HasItemIconCached(string defName)
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return itemIconCache.ContainsKey(defName);
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public void CacheItemIcon(string defName, string base64Icon)
         {
-            lock (dataLock)
+            rwLock.EnterWriteLock();
+            try
             {
                 itemIconCache[defName] = base64Icon;
+            }
+            finally
+            {
+                rwLock.ExitWriteLock();
             }
         }
 
         public string GetCachedItemIcon(string defName)
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return itemIconCache.TryGetValue(defName, out var icon) ? icon : null;
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public Dictionary<string, string> GetAllCachedPortraits()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return new Dictionary<string, string>(colonistPortraitCache);
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
         public Dictionary<string, string> GetAllCachedItemIcons()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return new Dictionary<string, string>(itemIconCache);
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 
@@ -252,7 +372,8 @@ namespace PlayerStoryteller
         /// </summary>
         public (string fast, string slow, string staticData, string portraits, string inventory, string storedResources, string itemIcons, string dlcData, string pawnViews) GetSnapshot()
         {
-            lock (dataLock)
+            rwLock.EnterReadLock();
+            try
             {
                 return (
                     cachedFastData,
@@ -265,6 +386,10 @@ namespace PlayerStoryteller
                     cachedDLCData,
                     cachedPawnViews
                 );
+            }
+            finally
+            {
+                rwLock.ExitReadLock();
             }
         }
 

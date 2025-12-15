@@ -136,7 +136,7 @@ namespace PlayerStoryteller
             // Queue Control
             if (listingStandard.ButtonText("Trigger Queue Now"))
             {
-                TriggerQueueNow();
+                _ = TriggerQueueNow();
             }
             Text.Font = GameFont.Tiny;
             listingStandard.Label("Immediately executes the top-voted action and resets the timer.");
@@ -338,12 +338,12 @@ namespace PlayerStoryteller
             // Check connection state
             if (!wsClient.IsConnected)
             {
-                 wsClient.Connect();
+                 _ = wsClient.Connect();
             }
 
             if (!string.IsNullOrEmpty(gameState))
             {
-                wsClient.SendGameState(gameState);
+                _ = wsClient.SendGameState(gameState);
             }
         }
 
@@ -369,9 +369,9 @@ namespace PlayerStoryteller
                 wsClient = new WebSocketClient(serverUrl, currentSessionId, settings.secretKey, settings.isPublicStream, settings.interactionPassword);
             }
 
-            if (!wsClient.IsConnected) wsClient.Connect();
+            if (!wsClient.IsConnected) _ = wsClient.Connect();
 
-            wsClient.SendMapImage(image, image.Length);
+            _ = wsClient.SendMapImage(image, image.Length);
         }
 
         public static async Task<bool> SendTerrainDataAsync(string terrainPayload)
@@ -642,7 +642,7 @@ namespace PlayerStoryteller
             return "default-session";
         }
 
-        public static async void TriggerQueueNow()
+        public static async Task TriggerQueueNow()
         {
             try
             {
