@@ -10,135 +10,93 @@ let hasLoggedInitialState = false;
 
 export function updateGameState(gameState) {
     if (!gameState) return;
-    
+
     // Initialize persistent state
     if (!window.lastGameState) window.lastGameState = {};
-    const effectiveState = window.lastGameState;
+    const state = window.lastGameState;
 
     if (!hasLoggedInitialState) {
         console.log('Game State received:', gameState);
         hasLoggedInitialState = true;
     }
 
-    // === MERGE STRATEGY ===
+    // === UNIFIED MERGE STRATEGY (Simplified) ===
+    // All colonist data now uses flat structure with consistent 'id' field
+    // Progressive enhancement: ultrafast → fast → full (each tier adds fields)
 
-    // 0. ULTRAFAST Position-Only Update (bypasses all caching)
+    if (!state.colonists) state.colonists = [];
+
+    // Tier 1: ULTRAFAST - Position updates only (10Hz)
     if (gameState.pawn_positions) {
-        if (!effectiveState.colonists) effectiveState.colonists = [];
-
         gameState.pawn_positions.forEach(posUpdate => {
-            const updateId = String(posUpdate.id);
-
-            const existingEntry = effectiveState.colonists.find(c => {
-                const p = c.colonist || c;
-                // Check all possible ID fields
-                const existingId = String(p.id || p.pawn_id || p.ThingID || p.thingIDNumber || p.thing_id);
-                return existingId === updateId;
-            });
-
-            if (existingEntry) {
-                const target = existingEntry.colonist || existingEntry;
-                const posTimestamp = posUpdate.timestamp || 0;
-                const currentTimestamp = target.positionTimestamp || 0;
-
-                // Only update if this position is newer (or no timestamp available)
-                if (posTimestamp >= currentTimestamp && posUpdate.position) {
-                    target.position = posUpdate.position;
-                    target.positionTimestamp = posTimestamp;
-                }
-            } else {
-                // New pawn with just position data - create minimal entry
-                effectiveState.colonists.push({
-                    id: posUpdate.id,
-                    pawn_id: posUpdate.id, // Add both for compatibility
-                    position: posUpdate.position,
-                    positionTimestamp: posUpdate.timestamp || 0
-                });
+            let colonist = state.colonists.find(c => c.id === posUpdate.id);
+            if (!colonist) {
+                // New colonist with minimal data
+                colonist = { id: posUpdate.id };
+                state.colonists.push(colonist);
+            }
+            // Only update position if this update is newer
+            if ((posUpdate.timestamp || 0) >= (colonist.positionTimestamp || 0)) {
+                colonist.position = posUpdate.position;
+                colonist.positionTimestamp = posUpdate.timestamp;
             }
         });
     }
 
-    // 1. Light Update (Fast Tier - Pos/Health)
+    // Tier 2: FAST - Vital stats (10Hz)
     if (gameState.colonists_light) {
-        if (!effectiveState.colonists) effectiveState.colonists = [];
-        
-        gameState.colonists_light.forEach(light => {
-            // "light" is ColonistDto { id, health, mood, position... }
-            const existingEntry = effectiveState.colonists.find(c => {
-                const p = c.colonist || c;
-                return (p.id || p.pawn_id) == (light.id || light.pawn_id);
-            });
-
-            if (existingEntry) {
-                // Update existing detailed record
-                const target = existingEntry.colonist || existingEntry;
-                // Merge dynamic fields
-                // Don't overwrite position if we have a newer timestamp from ultrafast tier
-                if (light.position) {
-                    const lightTimestamp = light.positionTimestamp || 0;
-                    const currentTimestamp = target.positionTimestamp || 0;
-                    if (lightTimestamp >= currentTimestamp) {
-                        target.position = light.position;
-                        if (lightTimestamp > 0) target.positionTimestamp = lightTimestamp;
-                    }
-                }
-                if (light.health !== undefined) target.health = light.health;
-                if (light.mood !== undefined) target.mood = light.mood;
-                if (light.hunger !== undefined) target.hunger = light.hunger; // check dto
-                if (light.drafted !== undefined) target.drafted = light.drafted;
+        gameState.colonists_light.forEach(update => {
+            let colonist = state.colonists.find(c => c.id === update.id);
+            if (!colonist) {
+                // New colonist
+                state.colonists.push(update);
             } else {
-                // New colonist (or first load), add light entry
-                effectiveState.colonists.push(light);
+                // Preserve newer position from ultrafast tier
+                const oldPos = colonist.position;
+                const oldTimestamp = colonist.positionTimestamp;
+                Object.assign(colonist, update);
+                if (oldTimestamp && oldTimestamp > (update.positionTimestamp || 0)) {
+                    colonist.position = oldPos;
+                    colonist.positionTimestamp = oldTimestamp;
+                }
             }
         });
     }
 
-    // 2. Heavy Update (Slow Tier - Full Details)
+    // Tier 3: FULL - Detailed data (slow ~5s)
     if (gameState.colonists_full) {
-        // Anti-Rubberband: Preserve current positions from the existing state
-        // The heavy update is slow and its position data is likely stale.
-        if (effectiveState.colonists) {
-            gameState.colonists_full.forEach(newCol => {
-                const newId = newCol.colonist ? (newCol.colonist.id || newCol.colonist.pawn_id) : (newCol.id || newCol.pawn_id);
-                
-                const existing = effectiveState.colonists.find(c => {
-                    const p = c.colonist || c;
-                    return (p.id || p.pawn_id) == newId;
-                });
-
-                if (existing) {
-                    const oldPos = existing.colonist ? existing.colonist.position : existing.position;
-                    const oldTimestamp = existing.colonist ? existing.colonist.positionTimestamp : existing.positionTimestamp;
-                    // If we have a valid current position, keep it (colonists_full is slow and stale)
-                    if (oldPos) {
-                        if (newCol.colonist) {
-                            newCol.colonist.position = oldPos;
-                            newCol.colonist.positionTimestamp = oldTimestamp;
-                        } else {
-                            newCol.position = oldPos;
-                            newCol.positionTimestamp = oldTimestamp;
-                        }
-                    }
+        gameState.colonists_full.forEach(update => {
+            let colonist = state.colonists.find(c => c.id === update.id);
+            if (!colonist) {
+                // New colonist
+                state.colonists.push(update);
+            } else {
+                // Preserve newer position (full tier is slow and may have stale positions)
+                const oldPos = colonist.position;
+                const oldTimestamp = colonist.positionTimestamp;
+                Object.assign(colonist, update);
+                if (oldTimestamp && oldTimestamp > (update.positionTimestamp || 0)) {
+                    colonist.position = oldPos;
+                    colonist.positionTimestamp = oldTimestamp;
                 }
-            });
-        }
-        effectiveState.colonists = gameState.colonists_full;
+            }
+        });
     }
 
-    // 3. Standard/Legacy Update
+    // Legacy: Fallback for old format
     if (gameState.colonists) {
-        effectiveState.colonists = gameState.colonists;
+        state.colonists = gameState.colonists;
     }
 
-    // 4. Merge other root keys
-    // We iterate keys to ensure we catch everything (resources, power, etc)
+    // Merge other root keys
     Object.keys(gameState).forEach(key => {
-        if (key !== 'colonists' && key !== 'colonists_light' && key !== 'colonists_full') {
-            effectiveState[key] = gameState[key];
+        if (!['colonists', 'colonists_light', 'colonists_full', 'pawn_positions'].includes(key)) {
+            state[key] = gameState[key];
         }
     });
 
-    // Update Caches
+    // Update caches
+    const effectiveState = state; // Keep variable name for backwards compatibility with rest of function
     if (effectiveState.camera) STATE.cameraBounds = effectiveState.camera;
     if (effectiveState.colonist_portraits) Object.assign(STATE.colonistPortraits, effectiveState.colonist_portraits);
     if (effectiveState.item_icons) {
@@ -226,12 +184,10 @@ function updateMedicalAlerts(colonists) {
     if (!medicalAlertsList) return;
 
     const medicalAlerts = [];
-    colonists.forEach(colonistDetailed => {
-        const colonistData = colonistDetailed.colonist || colonistDetailed;
-        const medicalInfo = colonistDetailed.colonist_medical_info || {};
-        const name = colonistData.name || 'Unknown';
-        const pawnId = colonistData.id || colonistData.pawn_id;
-        const hediffs = medicalInfo.hediffs || [];
+    colonists.forEach(colonist => {
+        const name = colonist.name || 'Unknown';
+        const pawnId = colonist.id;
+        const hediffs = colonist.hediffs || []; // Direct access - no nested structure
 
         hediffs.forEach(hediff => {
             const hediffName = hediff.label || hediff.def_name || 'Unknown';
@@ -645,10 +601,9 @@ function updateInventoryList(colonists, gameState) {
         if (row.dataset.pawnId) existingRows.set(row.dataset.pawnId, row);
     });
 
-    colonists.forEach((c, index) => {
-        const data = c.colonist || c;
-        const pawnId = String(data.id || data.pawn_id || index);
-        const name = data.name;
+    colonists.forEach((colonist, index) => {
+        const pawnId = String(colonist.id || index);
+        const name = colonist.name;
 
         // Skip colonists without names (position-only entries from ultrafast tier)
         if (!name) return;

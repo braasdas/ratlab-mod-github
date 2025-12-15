@@ -115,7 +115,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateFastDataAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateFastDataAsync: {ex}");
             }
             finally
             {
@@ -183,7 +183,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdatePawnPositionsAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdatePawnPositionsAsync: {ex}");
             }
             finally
             {
@@ -204,37 +204,28 @@ namespace PlayerStoryteller
 
                 if (!string.IsNullOrEmpty(detailedJson))
                 {
-                    // Send as 'colonists_full' (or 'colonists' for legacy compat if merge logic handles it)
-                    // We'll use 'colonists_full' to be explicit
-                    string result = "{\"colonists_full\":" + detailedJson + "}";
-                    // We don't cache this in 'FastData' slot, maybe send directly?
-                    // Or reuse SetFastData? SetFastData merges?
-                    // Actually dataCache.SetFastData just stores it to be sent by GameStateStreamingService.
-                    // If we overwrite it, the next stream update sends this.
-                    // Ideally we want to send it immediately or let it ride the stream.
-                    
-                    // Let's send it immediately via SendUpdateToServerAsync like MapThings? 
-                    // No, GameStateStreamingService bundles 'FastData' and 'SlowData'.
-                    // We should probably just UpdateFastDataAsync's cache?
-                    // But if we overwrite FastData (Light) with Heavy, then next Fast overwrites Heavy with Light.
-                    // The Stream service sends whatever is in cache.
-                    
-                    // Hack: We'll use a new cache slot or just rely on the fact that Fast overwrites it quickly.
-                    // Actually, if we use a different key in the JSON, we can merge them in GameStateStreamingService?
-                    // GameStateStreamingService.cs: "return "{" + fastData + "," + slowData + "}";"
-                    // If FastData = "colonists_light":..., and we have no slot for "colonists_full", it's tricky.
-                    
-                    // Simplest approach: Send it as a separate update packet, ignoring the StreamService?
-                    // Or add a method to StreamService/DataCache to hold "HeavyData".
-                    
-                    // For now, let's just send it as a direct update to ensure it gets there.
+                    // Parse the nested structure from RIMAPI
+                    var colonistsArray = JArray.Parse(detailedJson);
+
+                    // Flatten each colonist to unified structure
+                    var flattenedArray = new JArray();
+                    foreach (var colonist in colonistsArray)
+                    {
+                        var flattened = ColonistDtoTransformer.FlattenColonistDetailed(colonist);
+                        flattenedArray.Add(flattened);
+                    }
+
+                    // Send flattened structure as 'colonists_full'
+                    string result = "{\"colonists_full\":" + flattenedArray.ToString(Newtonsoft.Json.Formatting.None) + "}";
+
+                    // Send as direct update to ensure immediate delivery
                     var payload = new UpdatePayload { gameState = result };
                     await PlayerStorytellerMod.SendUpdateToServerAsync(payload);
                 }
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateColonistDetailsAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateColonistDetailsAsync: {ex}");
             }
         }
 
@@ -333,7 +324,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateSlowDataAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateSlowDataAsync: {ex}");
             }
             finally
             {
@@ -397,7 +388,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateStoredResourcesAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateStoredResourcesAsync: {ex}");
             }
             finally
             {
@@ -490,7 +481,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateInventoryAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateInventoryAsync: {ex}");
             }
             finally
             {
@@ -604,7 +595,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateStaticDataAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateStaticDataAsync: {ex}");
             }
             finally
             {
@@ -832,7 +823,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Live View Error: {ex.Message}");
+                Log.Error($"[Player Storyteller] Live View Error: {ex}");
             }
             finally
             {

@@ -116,7 +116,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdatePortraitsAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdatePortraitsAsync: {ex}");
             }
         }
 
@@ -194,7 +194,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error parsing colonist IDs: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error parsing colonist IDs: {ex}");
             }
 
             return colonistIds;

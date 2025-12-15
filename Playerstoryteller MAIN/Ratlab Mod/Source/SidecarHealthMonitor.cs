@@ -34,7 +34,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in SidecarHealthMonitor: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in SidecarHealthMonitor: {ex}");
             }
         }
     }

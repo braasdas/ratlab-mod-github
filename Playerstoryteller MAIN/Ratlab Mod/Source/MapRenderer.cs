@@ -131,7 +131,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Map Render Error: {ex.Message}");
+                Log.Error($"[Player Storyteller] Map Render Error: {ex}");
                 return null;
             }
             finally

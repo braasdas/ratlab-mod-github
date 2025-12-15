@@ -261,7 +261,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error validating URL: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error validating URL: {ex}");
                 return false;
             }
         }
@@ -590,7 +590,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in SendUpdateToServerAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in SendUpdateToServerAsync: {ex}");
 
                 lock (connectionLock)
                 {
@@ -669,7 +669,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering queue: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering queue: {ex}");
                 Messages.Message("Error triggering queue.", MessageTypeDefOf.RejectInput);
             }
         }
@@ -1117,7 +1117,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Failed to encrypt data: {ex.Message}");
+                Log.Error($"[Player Storyteller] Failed to encrypt data: {ex}");
                 return plainText; // Fallback to plaintext if encryption fails
             }
         }
@@ -1139,7 +1139,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Failed to decrypt data: {ex.Message}");
+                Log.Error($"[Player Storyteller] Failed to decrypt data: {ex}");
                 return ""; // Return empty on decryption failure
             }
         }

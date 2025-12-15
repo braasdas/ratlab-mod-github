@@ -349,21 +349,13 @@ export function updateMyPawnUI(gameState) {
     if (!STATE.myPawnId || !gameState.colonists) return;
 
     // Find our pawn
-    const myPawnEntry = gameState.colonists.find(c => {
-        const p = c.colonist || c;
-        // Check all possible ID fields for robust matching
-        const pawnId = String(p.id || p.pawn_id || p.ThingID || p.thingIDNumber || p.thing_id);
-        return pawnId === String(STATE.myPawnId);
-    });
+    const pawn = gameState.colonists.find(c => String(c.id) === String(STATE.myPawnId));
 
-    if (!myPawnEntry) {
+    if (!pawn) {
         const el = document.getElementById('my-pawn-name');
         if(el) el.textContent = "SIGNAL LOST (PAWN NOT FOUND)";
         return;
     }
-
-    const pawn = myPawnEntry.colonist || myPawnEntry;
-    const workInfo = myPawnEntry.colonist_work_info || {};
 
     // Update draft button state from game data
     const draftBtn = document.querySelector('.btn-cmd[data-cmd="draft"]');
@@ -377,7 +369,7 @@ export function updateMyPawnUI(gameState) {
     if(nameEl) nameEl.textContent = (pawn.name || 'Unknown').toUpperCase();
     
     const jobEl = document.getElementById('my-pawn-job');
-    if(jobEl) jobEl.textContent = `ACTIVITY: ${(pawn.current_activity || workInfo.current_job || 'Idle').toUpperCase()}`;
+    if(jobEl) jobEl.textContent = `ACTIVITY: ${(pawn.current_job || pawn.current_activity || 'Idle').toUpperCase()}`;
     
     const pos = pawn.position || {x:0, z:0};
     const locEl = document.getElementById('my-pawn-location');
@@ -431,9 +423,9 @@ export function updateMyPawnUI(gameState) {
     if (needsList) {
         const needs = [
             { label: 'NUTRITION', value: pawn.food || pawn.hunger },
-            { label: 'REST', value: myPawnEntry.sleep }, // sleep is often top-level
+            { label: 'REST', value: pawn.sleep },
             { label: 'RECREATION', value: pawn.joy || pawn.recreation },
-            { label: 'COMFORT', value: myPawnEntry.comfort }
+            { label: 'COMFORT', value: pawn.comfort }
         ];
 
         needsList.innerHTML = needs.map(n => {
@@ -509,14 +501,14 @@ export function updateMyPawnUI(gameState) {
     // 6. Work Priorities
     const workList = document.getElementById('my-pawn-work-list');
     const saveBtn = document.getElementById('btn-save-priorities');
-    
+
     // Only render if list is empty or completely changed (to avoid wiping user input while typing)
     const hasInputs = workList.querySelector('.work-priority-input');
-    
-    if (workList && workInfo.work_priorities && !hasInputs) {
+
+    if (workList && pawn.work_priorities && !hasInputs) {
         // Sort by key for consistent order
         // Use numeric sort if keys are numbers
-        const entries = Object.entries(workInfo.work_priorities).sort((a, b) => {
+        const entries = Object.entries(pawn.work_priorities).sort((a, b) => {
              const nA = parseInt(a[0]);
              const nB = parseInt(b[0]);
              if (!isNaN(nA) && !isNaN(nB)) return nA - nB;

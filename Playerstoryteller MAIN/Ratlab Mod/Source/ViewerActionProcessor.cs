@@ -59,7 +59,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error polling for actions: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error polling for actions: {ex}");
             }
         }
 

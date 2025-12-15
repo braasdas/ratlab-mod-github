@@ -74,7 +74,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Screen capture failed: {ex.Message}");
+                Log.Error($"[Player Storyteller] Screen capture failed: {ex}");
                 isCapturing = false;
                 asyncReadbackPending = false;
             }

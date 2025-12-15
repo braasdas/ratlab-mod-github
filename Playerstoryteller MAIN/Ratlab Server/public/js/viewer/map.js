@@ -174,9 +174,8 @@ export function updateMapOverlays(gameState) {
     // Full redraw
     overlaysContainer.innerHTML = '';
 
-    colonists.forEach((c, index) => {
-        const data = c.colonist || c;
-        const pos = data.position;
+    colonists.forEach((colonist, index) => {
+        const pos = colonist.position;
         if (!pos) return;
 
         // Normalize coordinates (RimWorld Bottom-Left -> CSS Top-Left)
@@ -188,30 +187,30 @@ export function updateMapOverlays(gameState) {
         marker.style.left = `${leftPct}%`;
         marker.style.top = `${topPct}%`;
         marker.style.transform = 'scale(var(--marker-scale, 1))';
-        marker.title = data.name;
-        
+        marker.title = colonist.name;
+
         marker.onmouseenter = () => marker.style.transform = 'scale(calc(var(--marker-scale, 1) * 1.5))';
         marker.onmouseleave = () => marker.style.transform = 'scale(var(--marker-scale, 1))';
-        
-        if (data.drafted) {
+
+        if (colonist.drafted) {
             marker.classList.add('ring-2', 'ring-rat-red');
         } else {
             marker.classList.add('ring-1', 'ring-white');
         }
 
-        const pawnId = String(data.id || data.pawn_id || index);
+        const pawnId = String(colonist.id);
         const portrait = STATE.colonistPortraits[pawnId];
         
         if (portrait) {
             marker.innerHTML = `<img src="data:image/png;base64,${portrait}" class="w-full h-full object-cover">`;
         } else {
             marker.className += ' bg-rat-dark flex items-center justify-center text-[8px] font-mono text-white';
-            marker.textContent = (data.name || '?').substring(0,2).toUpperCase();
+            marker.textContent = (colonist.name || '?').substring(0,2).toUpperCase();
         }
 
         marker.onclick = (e) => {
             e.stopPropagation();
-            showColonistSnapshot(c, pawnId);
+            showColonistSnapshot(colonist, pawnId);
         };
 
         overlaysContainer.appendChild(marker);

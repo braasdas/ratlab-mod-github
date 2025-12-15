@@ -127,7 +127,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateItemIconsAsync: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in UpdateItemIconsAsync: {ex}");
             }
         }
 

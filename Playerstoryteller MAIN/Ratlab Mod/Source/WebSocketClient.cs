@@ -151,7 +151,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                 Log.Error($"[Player Storyteller] SendMapImage Failed: {ex.Message}");
+                 Log.Error($"[Player Storyteller] SendMapImage Failed: {ex}");
                  try { ws.Dispose(); } catch {}
                  ws = null;
             }

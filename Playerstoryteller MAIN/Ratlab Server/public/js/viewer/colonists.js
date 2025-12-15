@@ -15,9 +15,8 @@ export function updateColonistsList(newColonistsData, gameState) {
     
     // Deduplicate newColonists based on pawnId
     const processedPawnIds = new Set();
-    const newColonists = newColonistsData.filter(colonistDetailed => {
-        const colonistData = colonistDetailed.colonist || colonistDetailed;
-        const pawnId = String(colonistData.id || colonistData.pawn_id);
+    const newColonists = newColonistsData.filter(colonist => {
+        const pawnId = String(colonist.id);
         if (processedPawnIds.has(pawnId)) return false;
         processedPawnIds.add(pawnId);
         return true;
@@ -40,17 +39,16 @@ export function updateColonistsList(newColonistsData, gameState) {
     const newColonistIds = new Set();
     let domChanged = false;
 
-    newColonists.forEach((colonistDetailed, index) => {
-        const colonistData = colonistDetailed.colonist || colonistDetailed;
-        const pawnId = String(colonistData.id || colonistData.pawn_id || index);
+    newColonists.forEach((colonist, index) => {
+        const pawnId = String(colonist.id);
         newColonistIds.add(pawnId);
 
         if (existingCards.has(pawnId)) {
             const existingCard = existingCards.get(pawnId);
-            updateColonistCard(existingCard, colonistDetailed, index, gameState); 
+            updateColonistCard(existingCard, colonist, index, gameState);
             existingCards.delete(pawnId);
         } else {
-            const newHtml = createColonistCardHtml(colonistDetailed, index, gameState);
+            const newHtml = createColonistCardHtml(colonist, index, gameState);
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = newHtml;
             const newCardElement = tempDiv.firstElementChild;
@@ -71,13 +69,12 @@ export function updateColonistsList(newColonistsData, gameState) {
     }
 }
 
-function updateColonistCard(existingCard, colonistDetailed, index, gameState) {
-    const colonistData = colonistDetailed.colonist || colonistDetailed;
-    const name = colonistData.name || 'Unknown';
-    const health = colonistData.health !== undefined ? colonistData.health : 0;
-    const mood = colonistData.mood !== undefined ? colonistData.mood : 0;
-    const position = colonistData.position || { x: 0, z: 0 };
-    const pawnId = String(colonistData.id || colonistData.pawn_id || index);
+function updateColonistCard(existingCard, colonist, index, gameState) {
+    const name = colonist.name || 'Unknown';
+    const health = colonist.health !== undefined ? colonist.health : 0;
+    const mood = colonist.mood !== undefined ? colonist.mood : 0;
+    const position = colonist.position || { x: 0, z: 0 };
+    const pawnId = String(colonist.id);
 
     // Get inventory
     const inventoryData = gameState.inventory || {};
@@ -189,13 +186,12 @@ function updateColonistCard(existingCard, colonistDetailed, index, gameState) {
     }
 }
 
-function createColonistCardHtml(colonistDetailed, index, gameState) {
-    const colonistData = colonistDetailed.colonist || colonistDetailed;
-    const pawnId = colonistData.id || colonistData.pawn_id || index;
-    const name = colonistData.name || 'Unknown';
-    const health = colonistData.health !== undefined ? colonistData.health : 0;
-    const mood = colonistData.mood !== undefined ? colonistData.mood : 0;
-    const position = colonistData.position || { x: 0, z: 0 };
+function createColonistCardHtml(colonist, index, gameState) {
+    const pawnId = colonist.id;
+    const name = colonist.name || 'Unknown';
+    const health = colonist.health !== undefined ? colonist.health : 0;
+    const mood = colonist.mood !== undefined ? colonist.mood : 0;
+    const position = colonist.position || { x: 0, z: 0 };
 
     // Get inventory
     const inventoryData = gameState.inventory || {};
@@ -327,10 +323,7 @@ function attachColonistCardEventListeners(colonists) {
             // DYNAMIC LOOKUP: Always fetch the latest data from global state
             // This fixes the issue where listeners captured old "Light" data and never updated to "Heavy" data
             const currentData = window.lastGameState?.colonists || [];
-            const colonist = currentData.find(c => {
-                const p = c.colonist || c;
-                return String(p.id || p.pawn_id) === pawnId;
-            });
+            const colonist = currentData.find(c => String(c.id) === pawnId);
 
             if (colonist) {
                 showColonistSnapshot(colonist, pawnId);
@@ -343,28 +336,20 @@ function attachColonistCardEventListeners(colonists) {
     });
 }
 
-export async function showColonistSnapshot(colonistDetailed, pawnId) {
-    const colonistData = colonistDetailed.colonist || colonistDetailed;
-    const workInfo = colonistDetailed.colonist_work_info || {};
-    // const medicalInfo = colonistDetailed.colonist_medical_info || {};
-
-    const name = colonistData.name || 'Unknown';
-    // const health = colonistData.health !== undefined ? colonistData.health : 0;
-    // const mood = colonistData.mood !== undefined ? colonistData.mood : 0;
-    // const position = colonistData.position || { x: 0, z: 0 };
-
-    const age = colonistData.age || 'Unknown';
-    const gender = colonistData.gender || 'Unknown';
-    const currentActivity = workInfo.current_job || colonistData.current_activity || 'Idle';
-    const traits = workInfo.traits || [];
-    const skills = workInfo.skills || [];
+export async function showColonistSnapshot(colonist, pawnId) {
+    const name = colonist.name || 'Unknown';
+    const age = colonist.age || 'Unknown';
+    const gender = colonist.gender || 'Unknown';
+    const currentActivity = colonist.current_job || colonist.current_activity || 'Idle';
+    const traits = colonist.traits || [];
+    const skills = colonist.skills || [];
 
     // Needs
     const needs = {
-        sleep: colonistDetailed.sleep,
-        comfort: colonistDetailed.comfort,
-        recreation: colonistData.joy || colonistData.recreation,
-        food: colonistData.food || colonistData.hunger,
+        sleep: colonist.sleep,
+        comfort: colonist.comfort,
+        recreation: colonist.joy || colonist.recreation,
+        food: colonist.food || colonist.hunger,
     };
 
     // Build skills HTML

@@ -958,12 +958,14 @@ module.exports = (io, definitionManager) => {
         if (index === -1) return res.status(404).json({ error: 'Request not found' });
         
         const reqItem = session.queue.requests[index];
-        
-        // Refund
-        const profile = session.economy.viewers.get(reqItem.submittedBy);
-        if (profile) {
-            profile.coins += reqItem.cost;
-            io.to(sessionId).emit('coin-update', { username: reqItem.submittedBy, coins: profile.coins });
+
+        // Refund (only if economy is initialized)
+        if (session.economy) {
+            const profile = session.economy.viewers.get(reqItem.submittedBy);
+            if (profile) {
+                profile.coins += reqItem.cost;
+                io.to(sessionId).emit('coin-update', { username: reqItem.submittedBy, coins: profile.coins });
+            }
         }
         
         // Remove from queue

@@ -188,7 +188,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in PositionPoll: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in PositionPoll: {ex}");
                 }
                 yield return new WaitForSecondsRealtime(0.1f); // 10Hz updates
             }
@@ -205,7 +205,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in LiveViewPoll: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in LiveViewPoll: {ex}");
                 }
                 yield return new WaitForSecondsRealtime(1.0f); // Reverted to 1Hz
             }
@@ -222,7 +222,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in HeavyDataPoll: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in HeavyDataPoll: {ex}");
                 }
                 yield return new WaitForSeconds(5.0f);
             }
@@ -241,7 +241,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error checking map capture settings: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error checking map capture settings: {ex}");
                 }
 
                 if (shouldCapture && mapCaptureManager != null)
@@ -273,7 +273,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in SidecarMonitor: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in SidecarMonitor: {ex}");
                 }
                 yield return new WaitForSeconds(5f);
             }
@@ -291,7 +291,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in GameStateCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in GameStateCoroutine: {ex}");
                 }
 
                 yield return new WaitForSecondsRealtime(GameStateUpdateInterval);
@@ -309,7 +309,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in FastDataPollCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in FastDataPollCoroutine: {ex}");
                 }
 
                 float interval = PlayerStorytellerMod.settings.fastDataInterval;
@@ -332,7 +332,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in SlowDataPollCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in SlowDataPollCoroutine: {ex}");
                 }
 
                 float interval = PlayerStorytellerMod.settings.slowDataInterval;
@@ -352,7 +352,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in StaticDataPollCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in StaticDataPollCoroutine: {ex}");
                 }
 
                 float interval = PlayerStorytellerMod.settings.staticDataInterval;
@@ -372,7 +372,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in PortraitPollCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in PortraitPollCoroutine: {ex}");
                 }
                 yield return new WaitForSeconds(3f); // Increased frequency (was 30s) for throttled queue
             }
@@ -389,7 +389,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in ActionPollCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in ActionPollCoroutine: {ex}");
                 }
                 yield return new WaitForSeconds(ActionPollInterval);
             }
@@ -406,7 +406,7 @@ namespace PlayerStoryteller
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[Player Storyteller] Error in SettingsPollCoroutine: {ex.Message}");
+                    Log.Error($"[Player Storyteller] Error in SettingsPollCoroutine: {ex}");
                 }
                 yield return new WaitForSeconds(5f);
             }

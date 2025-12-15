@@ -395,10 +395,8 @@ export class MapRenderer {
         // Update all pawn target positions for interpolation
         const pawns = gameState.colonists || [];
 
-        for (const entry of pawns) {
-            const pawn = entry.colonist || entry;
-            // Check all possible ID fields for robust matching
-            const id = String(pawn.id || pawn.pawn_id || pawn.ThingID || pawn.thingIDNumber || pawn.thing_id);
+        for (const pawn of pawns) {
+            const id = String(pawn.id);
             const pos = pawn.position;
             if (!pos) continue;
 
@@ -591,9 +589,8 @@ export class MapRenderer {
         const PROXIMITY_THRESHOLD = 5; // Only match if within 5 tiles
 
         const colonistsWithPortraits = colonists
-            .map(entry => {
-                const pawn = entry.colonist || entry;
-                const pawnId = String(pawn.id || pawn.pawn_id || pawn.ThingID || pawn.thingIDNumber || pawn.thing_id);
+            .map(pawn => {
+                const pawnId = String(pawn.id);
                 const portraitData = STATE.colonistPortraits?.[pawnId];
                 return portraitData && pawn.position ? { pawnId, pos: pawn.position, portraitData } : null;
             })

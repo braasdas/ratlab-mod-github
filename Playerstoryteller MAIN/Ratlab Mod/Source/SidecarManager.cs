@@ -186,7 +186,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error(string.Format("[PlayerStoryteller] Failed to start sidecar: {0}", ex.Message));
+                Log.Error(string.Format("[PlayerStoryteller] Failed to start sidecar: {0}", ex));
                 isRunning = false;
             }
         }

@@ -305,7 +305,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error processing action '{action.action}': {ex.Message}");
+                Log.Error($"[Player Storyteller] Error processing action '{action.action}': {ex}");
             }
         }
 
@@ -354,7 +354,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error adopting colonist: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error adopting colonist: {ex}");
             }
         }
 
@@ -478,7 +478,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error executing colonist command: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error executing colonist command: {ex}");
             }
         }
 
@@ -582,7 +582,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in BuyPawn: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error in BuyPawn: {ex}");
             }
         }
 
@@ -620,7 +620,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error starting quest: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error starting quest: {ex}");
             }
         }
 
@@ -645,7 +645,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error sending refugee: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error sending refugee: {ex}");
             }
         }
 
@@ -662,7 +662,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error sending wanderer: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error sending wanderer: {ex}");
             }
         }
 
@@ -692,7 +692,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error healing colonist: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error healing colonist: {ex}");
             }
         }
 
@@ -722,7 +722,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error inspiring colonist: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error inspiring colonist: {ex}");
             }
         }
 
@@ -747,7 +747,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error healing colonists: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error healing colonists: {ex}");
             }
         }
 
@@ -776,7 +776,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error inspiring colonists: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error inspiring colonists: {ex}");
             }
         }
 
@@ -811,7 +811,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error dropping resource: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error dropping resource: {ex}");
             }
         }
 
@@ -839,7 +839,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error gifting legendary item: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error gifting legendary item: {ex}");
             }
         }
 
@@ -859,7 +859,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error sending trader: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error sending trader: {ex}");
             }
         }
 
@@ -884,7 +884,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error taming animal: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error taming animal: {ex}");
             }
         }
 
@@ -903,7 +903,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error spawning animal: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error spawning animal: {ex}");
             }
         }
 
@@ -930,7 +930,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering positive event: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering positive event: {ex}");
             }
         }
 
@@ -970,7 +970,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering raid: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering raid: {ex}");
             }
         }
 
@@ -986,7 +986,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering manhunter pack: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering manhunter pack: {ex}");
             }
         }
 
@@ -1006,7 +1006,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering mad animal: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering mad animal: {ex}");
             }
         }
 
@@ -1022,7 +1022,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering solar flare: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering solar flare: {ex}");
             }
         }
 
@@ -1038,7 +1038,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering eclipse: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering eclipse: {ex}");
             }
         }
 
@@ -1054,7 +1054,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering toxic fallout: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering toxic fallout: {ex}");
             }
         }
 
@@ -1074,7 +1074,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering flashstorm: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering flashstorm: {ex}");
             }
         }
 
@@ -1101,7 +1101,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering meteor shower: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering meteor shower: {ex}");
             }
         }
 
@@ -1123,7 +1123,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering tornado: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering tornado: {ex}");
             }
         }
 
@@ -1137,7 +1137,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering lightning: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering lightning: {ex}");
             }
         }
 
@@ -1162,7 +1162,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering random event: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering random event: {ex}");
             }
         }
 
@@ -1207,7 +1207,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering dynamic incident {defName}: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering dynamic incident {defName}: {ex}");
             }
         }
 
@@ -1231,7 +1231,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error spawning dynamic pawn {defName}: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error spawning dynamic pawn {defName}: {ex}");
             }
         }
 
@@ -1266,7 +1266,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error changing goodwill: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error changing goodwill: {ex}");
             }
         }
 
@@ -1343,7 +1343,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error creating ping: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error creating ping: {ex}");
             }
         }
 
@@ -1376,7 +1376,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering {defName}: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering {defName}: {ex}");
             }
         }
 
@@ -1389,7 +1389,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error triggering mech ship: {ex.Message}");
+                Log.Error($"[Player Storyteller] Error triggering mech ship: {ex}");
             }
         }
     }
