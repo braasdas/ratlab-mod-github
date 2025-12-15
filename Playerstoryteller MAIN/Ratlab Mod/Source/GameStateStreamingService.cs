@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using Verse;
 using RimWorld;
 
@@ -39,8 +40,16 @@ namespace PlayerStoryteller
                 var snapshot = dataCache.GetSnapshot();
 
                 // Use cached bounds to avoid Unity API call on background thread
+                // Build camera bounds as JObject to avoid string interpolation in hot path
                 CellRect viewRect = cachedViewRect;
-                string cameraBounds = $"{{\"minX\":{viewRect.minX},\"maxX\":{viewRect.maxX},\"minZ\":{viewRect.minZ},\"maxZ\":{viewRect.maxZ},\"width\":{viewRect.Width},\"height\":{viewRect.Height}}}";
+                var cameraBoundsObj = new JObject();
+                cameraBoundsObj["minX"] = viewRect.minX;
+                cameraBoundsObj["maxX"] = viewRect.maxX;
+                cameraBoundsObj["minZ"] = viewRect.minZ;
+                cameraBoundsObj["maxZ"] = viewRect.maxZ;
+                cameraBoundsObj["width"] = viewRect.Width;
+                cameraBoundsObj["height"] = viewRect.Height;
+                string cameraBounds = cameraBoundsObj.ToString(Newtonsoft.Json.Formatting.None);
 
                 // Move heavy processing OFF main thread
                 string combinedGameState = await Task.Run(() =>

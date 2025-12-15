@@ -25,22 +25,35 @@ export function updateGameState(gameState) {
     // Progressive enhancement: ultrafast → fast → full (each tier adds fields)
 
     if (!state.colonists) state.colonists = [];
+    if (!state.lastPositionSequenceId) state.lastPositionSequenceId = 0;
 
     // Tier 1: ULTRAFAST - Position updates only (10Hz)
     if (gameState.pawn_positions) {
-        gameState.pawn_positions.forEach(posUpdate => {
-            let colonist = state.colonists.find(c => c.id === posUpdate.id);
-            if (!colonist) {
-                // New colonist with minimal data
-                colonist = { id: posUpdate.id };
-                state.colonists.push(colonist);
+        // Check sequence ID to discard out-of-order packets
+        const sequenceId = gameState.sequence_id || 0;
+        if (sequenceId > 0 && sequenceId <= state.lastPositionSequenceId) {
+            // Discard old packet
+            console.debug(`Discarded stale position update (seq ${sequenceId} <= ${state.lastPositionSequenceId})`);
+        } else {
+            // Update sequence ID
+            if (sequenceId > 0) {
+                state.lastPositionSequenceId = sequenceId;
             }
-            // Only update position if this update is newer
-            if ((posUpdate.timestamp || 0) >= (colonist.positionTimestamp || 0)) {
-                colonist.position = posUpdate.position;
-                colonist.positionTimestamp = posUpdate.timestamp;
-            }
-        });
+
+            gameState.pawn_positions.forEach(posUpdate => {
+                let colonist = state.colonists.find(c => c.id === posUpdate.id);
+                if (!colonist) {
+                    // New colonist with minimal data
+                    colonist = { id: posUpdate.id };
+                    state.colonists.push(colonist);
+                }
+                // Only update position if this update is newer
+                if ((posUpdate.timestamp || 0) >= (colonist.positionTimestamp || 0)) {
+                    colonist.position = posUpdate.position;
+                    colonist.positionTimestamp = posUpdate.timestamp;
+                }
+            });
+        }
     }
 
     // Tier 2: FAST - Vital stats (10Hz)

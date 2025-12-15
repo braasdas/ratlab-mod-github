@@ -21,6 +21,10 @@ namespace PlayerStoryteller
         private bool terrainPushed = false;
         private readonly HashSet<string> sentTextures = new HashSet<string>();
 
+        // Sequence ID for position updates (prevents out-of-order packet processing)
+        private long positionSequenceId = 0;
+        private readonly object positionSequenceLock = new object();
+
         public GameDataPoller(RimApiClient apiClient, GameDataCache dataCache, Map map)
         {
             this.apiClient = apiClient;
@@ -84,17 +88,15 @@ namespace PlayerStoryteller
                     colonistsArray.Add(c);
                 }
 
-                string colonistsJson = colonistsArray.ToString(Newtonsoft.Json.Formatting.None);
-
                 // Get Adoptions (Fast enough to keep here)
                 var viewerManager = map.GetComponent<ViewerManager>();
-                string adoptionsJson = "";
+                JArray adoptionsArray = null;
                 if (viewerManager != null)
                 {
                     var adoptions = viewerManager.GetAdoptionsList();
                     if (adoptions.Count > 0)
                     {
-                        var adoptionsArray = new JArray();
+                        adoptionsArray = new JArray();
                         foreach (var kvp in adoptions)
                         {
                             var a = new JObject();
@@ -102,14 +104,20 @@ namespace PlayerStoryteller
                             a["pawnId"] = kvp.Value;
                             adoptionsArray.Add(a);
                         }
-                        adoptionsJson = ",\"adoptions\":" + adoptionsArray.ToString(Newtonsoft.Json.Formatting.None);
                     }
                 }
 
                 if (colonistsArray.Count > 0)
                 {
-                    // Send as 'colonists_light' to signal it's a partial update
-                    string result = "{\"colonists_light\":" + colonistsJson + adoptionsJson + "}";
+                    // Build result as JObject to avoid string concatenation in hot path
+                    var resultObj = new JObject();
+                    resultObj["colonists_light"] = colonistsArray;
+                    if (adoptionsArray != null)
+                    {
+                        resultObj["adoptions"] = adoptionsArray;
+                    }
+
+                    string result = resultObj.ToString(Newtonsoft.Json.Formatting.None);
                     dataCache.SetFastData(result);
                 }
             }
@@ -145,8 +153,13 @@ namespace PlayerStoryteller
                 var colonists = map.mapPawns.FreeColonists;
                 if (colonists == null || colonists.Count == 0) return;
 
-                // Get current timestamp in milliseconds since epoch
+                // Get current timestamp and sequence ID
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                long sequenceId;
+                lock (positionSequenceLock)
+                {
+                    sequenceId = ++positionSequenceId;
+                }
 
                 var sb = new StringBuilder(capacity: 512);
                 sb.Append("[");
@@ -175,7 +188,12 @@ namespace PlayerStoryteller
 
                 sb.Append("]");
 
-                string result = "{\"pawn_positions\":" + sb.ToString() + "}";
+                // Build result as JObject to avoid string concatenation in hot path
+                var positionsArray = JArray.Parse(sb.ToString());
+                var resultObj = new JObject();
+                resultObj["pawn_positions"] = positionsArray;
+                resultObj["sequence_id"] = sequenceId;
+                string result = resultObj.ToString(Newtonsoft.Json.Formatting.None);
 
                 // Send directly to avoid cache/batching delay
                 var payload = new UpdatePayload { gameState = result };
