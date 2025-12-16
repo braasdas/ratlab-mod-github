@@ -4,14 +4,91 @@ import { socket } from './socket.js';
 
 let queueTimerInterval = null;
 
-// ============================================
-// PUBLIC EXPORTS
-// ============================================
-
 export function initializeQueue() {
-    const btnSubmit = document.getElementById('btn-submit-request');
-    if (btnSubmit) {
-        btnSubmit.addEventListener('click', handleNewRequest);
+    const btnOpenModal = document.getElementById('btn-submit-request');
+    const modal = document.getElementById('queue-modal');
+    const btnClose = document.getElementById('close-queue-modal');
+    const btnSubmit = document.getElementById('submit-queue-btn');
+    
+    // Tab Logic
+    const tabSuggestion = document.getElementById('qtab-suggestion');
+    const tabMonument = document.getElementById('qtab-monument');
+    const viewSuggestion = document.getElementById('qview-suggestion');
+    const viewMonument = document.getElementById('qview-monument');
+    
+    let activeTab = 'suggestion';
+
+    if (btnOpenModal && modal) {
+        btnOpenModal.addEventListener('click', () => {
+            if (!STATE.username) {
+                showFeedback('error', 'LOGIN REQUIRED');
+                return;
+            }
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Default to suggestion
+            activeTab = 'suggestion';
+            updateTabs();
+            document.getElementById('queue-input').focus();
+        });
+        
+        // Close on X
+        if (btnClose) {
+            btnClose.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            });
+        }
+        
+        // Close on Submit
+        if (btnSubmit) {
+            btnSubmit.addEventListener('click', () => submitQueueRequest(activeTab));
+        }
+        
+        // Close on Outside Click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        });
+
+        // Tab Switching
+        if (tabSuggestion && tabMonument) {
+            tabSuggestion.onclick = () => { activeTab = 'suggestion'; updateTabs(); };
+            tabMonument.onclick = () => { activeTab = 'monument'; updateTabs(); };
+        }
+    }
+
+    function updateTabs() {
+        if (activeTab === 'suggestion') {
+            tabSuggestion.classList.add('text-rat-green', 'border-rat-green');
+            tabSuggestion.classList.remove('text-rat-text-dim', 'border-transparent', 'hover:text-white');
+            tabMonument.classList.remove('text-rat-green', 'border-rat-green');
+            tabMonument.classList.add('text-rat-text-dim', 'border-transparent', 'hover:text-white');
+            
+            viewSuggestion.classList.remove('hidden');
+            viewMonument.classList.add('hidden');
+            if (btnSubmit) {
+                btnSubmit.textContent = 'Submit to Vote';
+                btnSubmit.disabled = false;
+                btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        } else {
+            tabMonument.classList.add('text-rat-green', 'border-rat-green');
+            tabMonument.classList.remove('text-rat-text-dim', 'border-transparent', 'hover:text-white');
+            tabSuggestion.classList.remove('text-rat-green', 'border-rat-green');
+            tabSuggestion.classList.add('text-rat-text-dim', 'border-transparent', 'hover:text-white');
+            
+            viewMonument.classList.remove('hidden');
+            viewSuggestion.classList.add('hidden');
+            if (btnSubmit) {
+                btnSubmit.textContent = 'Blueprint Uplink Offline';
+                btnSubmit.disabled = true;
+                btnSubmit.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
     }
     
     // Initial fetch if session is active
@@ -40,14 +117,26 @@ export function fetchQueueData(sessionId) {
 // INTERNAL LOGIC
 // ============================================
 
-function handleNewRequest() {
+function submitQueueRequest(type) {
     if (!STATE.username) {
         showFeedback('error', 'LOGIN REQUIRED');
         return;
     }
 
-    const suggestion = prompt("Enter your suggestion for the next colony action:");
-    if (!suggestion || suggestion.trim().length === 0) return;
+    if (type === 'monument') {
+        showFeedback('error', 'FEATURE DISABLED');
+        return;
+    }
+
+    const input = document.getElementById('queue-input');
+    const suggestion = input.value.trim();
+    if (suggestion.length === 0) return;
+
+    // Loading state
+    const btn = document.getElementById('submit-queue-btn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'TRANSMITTING...';
 
     fetch(`/api/queue/${encodeURIComponent(STATE.currentSession)}/submit`, {
         method: 'POST',
@@ -55,7 +144,7 @@ function handleNewRequest() {
         body: JSON.stringify({
             username: STATE.username,
             type: 'suggestion',
-            data: suggestion.trim()
+            data: suggestion
         })
     })
     .then(res => res.json())
@@ -63,6 +152,12 @@ function handleNewRequest() {
         if (result.success) {
             showFeedback('success', 'REQUEST SUBMITTED');
             fetchQueueData(STATE.currentSession);
+            
+            // Clear and Close
+            input.value = '';
+            const modal = document.getElementById('queue-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
         } else {
             showFeedback('error', result.error || 'SUBMISSION FAILED');
         }
@@ -70,6 +165,10 @@ function handleNewRequest() {
     .catch(e => {
         console.error(e);
         showFeedback('error', 'NETWORK ERROR');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.textContent = originalText;
     });
 }
 

@@ -305,7 +305,7 @@ namespace PlayerStoryteller
             {
                 try
                 {
-                    gameDataPoller?.UpdateFastDataAsync();
+                    gameDataPoller?.UpdateFastData();
                 }
                 catch (Exception ex)
                 {
@@ -326,7 +326,7 @@ namespace PlayerStoryteller
                 try
                 {
                     _ = gameDataPoller?.UpdateSlowDataAsync();
-                    gameDataPoller?.UpdateAnimalDataAsync(); // Synchronous
+                    gameDataPoller?.UpdateAnimalData();
                     _ = gameDataPoller?.UpdateStoredResourcesAsync();
                     _ = itemIconManager?.UpdateItemIconsAsync();
                     _ = gameDataPoller?.UpdateInventoryAsync();

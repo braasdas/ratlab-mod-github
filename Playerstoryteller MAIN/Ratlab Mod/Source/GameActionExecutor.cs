@@ -1439,7 +1439,19 @@ namespace PlayerStoryteller
                                 pawn.drafter.Drafted = true;
                             }
 
+                            // 1. Assign Ignite Job
                             pawn.jobs.TryTakeOrderedJob(job, JobTag.DraftedOrder);
+
+                            // 2. Queue "Run Away" Job
+                            // This prevents the pawn from immediately extinguishing the fire they just set
+                            // (which non-pyromaniacs will do if undrafted/idle in Home Area)
+                            IntVec3 fleeSpot;
+                            if (CellFinder.TryFindRandomCellNear(pawn.Position, map, 4, (c) => c.Standable(map) && c.DistanceTo(targetCell) > 2, out fleeSpot))
+                            {
+                                Job fleeJob = JobMaker.MakeJob(JobDefOf.Goto, fleeSpot);
+                                pawn.jobs.jobQueue.EnqueueLast(fleeJob, JobTag.DraftedOrder);
+                            }
+
                             Messages.Message($"{pawn.Name.ToStringShort} is setting a fire!", MessageTypeDefOf.NegativeEvent);
                             return;
                         }

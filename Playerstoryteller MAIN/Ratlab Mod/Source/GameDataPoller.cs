@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Verse;
 using RimWorld;
+using UnityEngine;
 
 namespace PlayerStoryteller
 {
@@ -20,10 +21,23 @@ namespace PlayerStoryteller
         private readonly Map map;
         private bool terrainPushed = false;
         private readonly HashSet<string> sentTextures = new HashSet<string>();
+        
+        // Global Texture Cache
+        private readonly HashSet<string> knownRemoteTextures = new HashSet<string>();
+        private bool manifestSynced = false;
+        private int manifestSyncFailures = 0;
+        // 3 failures before backoff; quick retry for transient errors, then slow down
+        private const int MAX_MANIFEST_SYNC_FAILURES = 3;
 
         // Sequence ID for position updates (prevents out-of-order packet processing)
         private long positionSequenceId = 0;
         private readonly object positionSequenceLock = new object();
+
+        // PERF FIX #2: Reusable StringBuilder (saves 36,000 allocs/hour at 10Hz)
+        private readonly StringBuilder positionBuilder = new StringBuilder(1024);
+
+        // PERF FIX #1: Delta tracking - only send positions that changed
+        private readonly Dictionary<int, (int x, int z)> lastPawnPositions = new Dictionary<int, (int x, int z)>();
 
         public GameDataPoller(RimApiClient apiClient, GameDataCache dataCache, Map map)
         {
@@ -32,12 +46,49 @@ namespace PlayerStoryteller
             this.map = map;
         }
 
+        private async Task EnsureManifestSynced()
+        {
+            // PERFORMANCE FIX: Re-sync manifest every 30 updates to catch server restarts
+            // But don't spam retries if server is unreachable
+            // 30 ticks = ~30 seconds at 1Hz LiveView rate; re-sync to catch server restarts
+            if (manifestSynced && liveViewTickCounter % 30 != 0) return;
+
+            // 100 ticks = ~100 seconds backoff when server is unreachable to reduce log spam
+            if (manifestSyncFailures >= MAX_MANIFEST_SYNC_FAILURES && liveViewTickCounter % 100 != 0) return;
+
+            try
+            {
+                var manifest = await PlayerStorytellerMod.FetchTextureManifestAsync();
+                if (manifest != null && manifest.Count > 0)
+                {
+                    lock(knownRemoteTextures)
+                    {
+                        knownRemoteTextures.Clear(); // Clear before re-populating
+                        foreach(var t in manifest) knownRemoteTextures.Add(t);
+                    }
+                    Log.Message($"[Player Storyteller] Synced {knownRemoteTextures.Count} cached textures from server.");
+                }
+                manifestSynced = true;
+                manifestSyncFailures = 0; // Reset on success
+            }
+            catch(Exception ex)
+            {
+                manifestSyncFailures++;
+                if (manifestSyncFailures <= MAX_MANIFEST_SYNC_FAILURES)
+                {
+                    Log.Warning($"[Player Storyteller] Manifest sync warning ({manifestSyncFailures}/{MAX_MANIFEST_SYNC_FAILURES}): {ex.Message}");
+                }
+                manifestSynced = false; // Retry next time (with backoff)
+            }
+        }
+
         #region Fast Data (Colonists - frequently changing)
 
         /// <summary>
         /// Updates fast-changing data (colonists positions/health).
+        /// Note: Synchronous method - runs on main thread for direct game access.
         /// </summary>
-        public void UpdateFastDataAsync()
+        public void UpdateFastData()
         {
             if (isUpdatingFastData) return;
             isUpdatingFastData = true;
@@ -59,6 +110,7 @@ namespace PlayerStoryteller
                     c["pawn_id"] = pawn.thingIDNumber; 
                     
                     c["name"] = pawn.LabelShortCap;
+                    c["drafted"] = pawn.Drafted;
                     c["gender"] = pawn.gender.ToString();
                     c["age"] = pawn.ageTracker.AgeBiologicalYears;
 
@@ -123,7 +175,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                Log.Error($"[Player Storyteller] Error in UpdateFastDataAsync: {ex}");
+                Log.Error($"[Player Storyteller] Error in UpdateFastData: {ex}");
             }
             finally
             {
@@ -150,11 +202,9 @@ namespace PlayerStoryteller
             try
             {
                 // Direct access to pawns - no RimAPI call!
-                // CHANGED: Include all player pawns (colonists + animals) for smooth rendering
                 var pawns = map.mapPawns.SpawnedPawnsInFaction(Faction.OfPlayer);
                 if (pawns == null || pawns.Count == 0) return;
 
-                // Get current timestamp and sequence ID
                 long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 long sequenceId;
                 lock (positionSequenceLock)
@@ -162,43 +212,68 @@ namespace PlayerStoryteller
                     sequenceId = ++positionSequenceId;
                 }
 
-                var sb = new StringBuilder(capacity: 512);
-                sb.Append("[");
+                // PERF FIX #2: Reuse StringBuilder instead of new allocation
+                positionBuilder.Clear();
+                positionBuilder.Append("{\"pawn_positions\":[");
                 bool first = true;
+                int changedCount = 0;
+                var currentPawnIds = new HashSet<int>();
 
                 foreach (var pawn in pawns)
                 {
                     if (pawn == null || !pawn.Spawned) continue;
 
-                    if (!first) sb.Append(",");
+                    int pawnId = pawn.thingIDNumber;
+                    int x = pawn.Position.x;
+                    int z = pawn.Position.z;
+                    currentPawnIds.Add(pawnId);
 
-                    // Minimal JSON: ID, position, and timestamp to prevent old data from overwriting new
-                    // FIXED: Use thingIDNumber (numeric) to match other data streams and avoid duplication
-                    sb.Append("{\"id\":");
-                    sb.Append(pawn.thingIDNumber);
-                    sb.Append(",\"position\":{\"x\":");
-                    sb.Append(pawn.Position.x);
-                    sb.Append(",\"z\":");
-                    sb.Append(pawn.Position.z);
-                    sb.Append("},\"timestamp\":");
-                    sb.Append(timestamp);
-                    sb.Append("}");
+                    // PERF FIX #1: Delta tracking - skip if position unchanged
+                    bool changed = true;
+                    if (lastPawnPositions.TryGetValue(pawnId, out var lastPos))
+                    {
+                        changed = (lastPos.x != x || lastPos.z != z);
+                    }
 
-                    first = false;
+                    if (changed)
+                    {
+                        lastPawnPositions[pawnId] = (x, z);
+                        changedCount++;
+
+                        if (!first) positionBuilder.Append(",");
+                        positionBuilder.Append("{\"id\":");
+                        positionBuilder.Append(pawnId);
+                        positionBuilder.Append(",\"position\":{\"x\":");
+                        positionBuilder.Append(x);
+                        positionBuilder.Append(",\"z\":");
+                        positionBuilder.Append(z);
+                        positionBuilder.Append("},\"timestamp\":");
+                        positionBuilder.Append(timestamp);
+                        positionBuilder.Append("}");
+                        first = false;
+                    }
                 }
 
-                sb.Append("]");
+                // Cleanup tracking for dead/despawned pawns (every ~50 calls to avoid overhead)
+                if (sequenceId % 50 == 0 && lastPawnPositions.Count > currentPawnIds.Count)
+                {
+                    var toRemove = new List<int>();
+                    foreach (var id in lastPawnPositions.Keys)
+                        if (!currentPawnIds.Contains(id)) toRemove.Add(id);
+                    foreach (var id in toRemove) lastPawnPositions.Remove(id);
+                }
 
-                // Build result as JObject to avoid string concatenation in hot path
-                var positionsArray = JArray.Parse(sb.ToString());
-                var resultObj = new JObject();
-                resultObj["pawn_positions"] = positionsArray;
-                resultObj["sequence_id"] = sequenceId;
-                string result = resultObj.ToString(Newtonsoft.Json.Formatting.None);
+                // Only send if something changed
+                if (changedCount > 0)
+                {
+                    // PERF FIX #3: Build final JSON directly - no JArray.Parse roundtrip
+                    positionBuilder.Append("],\"sequence_id\":");
+                    positionBuilder.Append(sequenceId);
+                    positionBuilder.Append("}");
 
-                // Send directly to avoid cache/batching delay
-                var payload = new UpdatePayload { gameState = result };
-                await PlayerStorytellerMod.SendUpdateToServerAsync(payload);
+                    var payload = new UpdatePayload { gameState = positionBuilder.ToString() };
+                    await PlayerStorytellerMod.SendUpdateToServerAsync(payload);
+                }
             }
             catch (Exception ex)
             {
@@ -251,8 +326,9 @@ namespace PlayerStoryteller
         /// <summary>
         /// Updates animal data (Health, Name, etc).
         /// Should be called moderately (e.g. every 2-5s).
+        /// Note: Synchronous method - runs on main thread for direct game access.
         /// </summary>
-        public void UpdateAnimalDataAsync()
+        public void UpdateAnimalData()
         {
             try 
             {
@@ -294,7 +370,7 @@ namespace PlayerStoryteller
             }
             catch (Exception ex)
             {
-                 Log.Error($"[Player Storyteller] Error in UpdateAnimalDataAsync: {ex}");
+                 Log.Error($"[Player Storyteller] Error in UpdateAnimalData: {ex}");
             }
         }
 
@@ -743,18 +819,21 @@ namespace PlayerStoryteller
         /// </summary>
         public async Task UpdateLiveViewAsync()
         {
-            if (!PlayerStorytellerMod.settings.enableLiveScreen) return;
+            if (!PlayerStorytellerMod.settings.enableLiveScreen)
+            {
+                // Log.Message("[Player Storyteller] LiveView skipped - enableLiveScreen is false");
+                return;
+            }
             if (isUpdatingLiveView) return;
 
             isUpdatingLiveView = true;
             try
             {
-                // Periodically clear texture cache to handle client refreshes (every ~30 updates)
                 liveViewTickCounter++;
-                if (liveViewTickCounter % 30 == 0)
-                {
-                    sentTextures.Clear();
-                }
+
+                // PERFORMANCE FIX: Don't clear sentTextures - server maintains the cache
+                // Clearing this forces re-rendering of all textures every 30 seconds!
+                // Instead, rely on knownRemoteTextures synced from server manifest
 
                 // Capture focus positions on Main Thread
                 var focusPositions = GetFocusPositions();
@@ -762,6 +841,12 @@ namespace PlayerStoryteller
                 {
                     isUpdatingLiveView = false;
                     return;
+                }
+
+                // Debug: Log texture cache stats every 30 ticks (~30 seconds at 1Hz)
+                if (liveViewTickCounter % 30 == 0)
+                {
+                    Log.Message($"[Player Storyteller] LiveView tick {liveViewTickCounter}: sentTextures={sentTextures.Count}, knownRemote={knownRemoteTextures.Count}");
                 }
 
                 // LOCALIZED: Direct game access instead of RimAPI
@@ -774,7 +859,8 @@ namespace PlayerStoryteller
                 foreach (var pos in focusPositions)
                 {
                     IntVec3 center = new IntVec3(pos.x, 0, pos.z);
-                    const int radius = 25;
+                    // 15 cells = ~700 cells queried vs 25 cells = ~2000 cells; balances visibility vs CPU cost
+                    const int radius = 15;
 
                     // Get all things in radius using RimWorld's native spatial query
                     var thingsInRadius = GenRadial.RadialDistinctThingsAround(center, map, radius, true);
@@ -783,7 +869,7 @@ namespace PlayerStoryteller
                     {
                         if (thing == null || thing.def == null) continue;
                         
-                        // EXCLUDE PAWNS: They are handled by UpdatePawnPositionsAsync and UpdateFastDataAsync
+                        // EXCLUDE PAWNS: They are handled by UpdatePawnPositionsAsync and UpdateFastData
                         // Sending them here causes double-rendering and ID conflicts ("Human123" vs 123)
                         if (thing is Pawn) continue;
 
@@ -799,7 +885,8 @@ namespace PlayerStoryteller
                             ["ThingId"] = thingId,
                             ["DefName"] = thing.def.defName,
                             ["Position"] = new JObject { ["x"] = thing.Position.x, ["z"] = thing.Position.z },
-                            ["Size"] = new JObject { ["x"] = thing.def.size.x, ["z"] = thing.def.size.z }
+                            ["Size"] = new JObject { ["x"] = thing.def.size.x, ["z"] = thing.def.size.z },
+                            ["Color"] = "#" + ColorUtility.ToHtmlStringRGB(thing.DrawColor)
                         };
 
                         allThings.Add(thingObj);
@@ -808,31 +895,29 @@ namespace PlayerStoryteller
                 }
 
                 // DELTA OPTIMIZATION REMOVED: Always send update to ensure frontend sync
-                // Previously, if the set of IDs didn't change, we sent nothing.
-                // But if the frontend missed a packet or cleared its cache, it would show empty/checkered.
-                // At 1Hz, sending the JSON for visible things is acceptable bandwidth.
-                
                 lastLiveViewThingIds = currentThingIds;
+                
+                // Ensure we know what the server has
+                await EnsureManifestSynced();
 
                 // 2. Fetch Textures (Optimized: Only new DefNames, smaller batches to prevent spikes)
                 var textures = new JObject();
-                const int MAX_TEXTURES_PER_TICK = 50; 
+                // 50 textures/tick max; caps RimAPI calls per frame to prevent game stutter
+                const int MAX_TEXTURES_PER_TICK = 50;
 
+                // PERFORMANCE FIX: Check BOTH local cache (sentTextures) AND server cache (knownRemoteTextures)
+                // This prevents re-fetching if server manifest is empty/failed
                 var texturesToFetch = uniqueDefNames
-                    .Where(defName => !sentTextures.Contains(defName))
+                    .Where(defName => !sentTextures.Contains(defName) && !knownRemoteTextures.Contains(defName))
                     .Take(MAX_TEXTURES_PER_TICK)
                     .ToList();
-
-                // Debug Log (Periodic) to monitor stream health
-                if (liveViewTickCounter % 10 == 0)
-                {
-                    // Log.Message($"[Player Storyteller] LiveView: Sending {allThings.Count} things, fetching {texturesToFetch.Count} textures.");
-                }
 
                 // Batch texture fetching to spread load over time
                 if (texturesToFetch.Count > 0)
                 {
-                    // Process in smaller batches of 5 to prevent blocking
+                    var newTexturesForServer = new JObject();
+
+                    // 5 concurrent RimAPI calls per batch; small enough to not block main thread
                     const int BATCH_SIZE = 5;
                     for (int i = 0; i < texturesToFetch.Count; i += BATCH_SIZE)
                     {
@@ -859,14 +944,35 @@ namespace PlayerStoryteller
                             if (result != null)
                             {
                                 textures[result.defName] = result.base64String;
+                                newTexturesForServer[result.defName] = result.base64String;
                                 sentTextures.Add(result.defName);
                             }
                         }
 
-                        // Small yield between batches to let other work happen
+                        // 10ms yield between batches; lets Unity process other work without noticeable delay
                         if (i + BATCH_SIZE < texturesToFetch.Count)
                         {
-                            await Task.Delay(10); // 10ms pause between batches
+                            await Task.Delay(10);
+                        }
+                    }
+
+                    // Upload new textures to server cache (Wait for success before caching locally)
+                    if (newTexturesForServer.Count > 0)
+                    {
+                        Log.Message($"[Player Storyteller] Uploading {newTexturesForServer.Count} textures to server cache...");
+                        // Wrap in "textures" key as server expects { textures: { DefName: base64, ... } }
+                        var payload = new JObject { ["textures"] = newTexturesForServer };
+                        bool success = await PlayerStorytellerMod.SendTexturesBatchAsync(payload.ToString(Newtonsoft.Json.Formatting.None));
+                        Log.Message($"[Player Storyteller] Texture upload {(success ? "succeeded" : "FAILED")}");
+                        if (success)
+                        {
+                            lock(knownRemoteTextures)
+                            {
+                                foreach (var prop in newTexturesForServer.Properties())
+                                {
+                                    knownRemoteTextures.Add(prop.Name);
+                                }
+                            }
                         }
                     }
                 }
@@ -883,7 +989,7 @@ namespace PlayerStoryteller
                     var z = new JObject();
                     z["x"] = pos.x;
                     z["z"] = pos.z;
-                    z["radius"] = 25;
+                    z["radius"] = 15; // Must match query radius above for frontend culling
                     zones.Add(z);
                 }
                 bundled["focus_zones"] = zones;

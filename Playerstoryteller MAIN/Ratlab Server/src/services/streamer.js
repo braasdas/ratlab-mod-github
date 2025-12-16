@@ -8,8 +8,16 @@ function setupStreamService() {
 
     streamWss.on('connection', (ws, req) => {
         const params = url.parse(req.url, true).query;
-        const sessionId = params.session || 'default';
-        const streamKey = params.key || '';
+
+        // SECURITY FIX: Accept session ID and stream key from headers (preferred) or query params (fallback)
+        const sessionId = req.headers['session-id'] || params.session || 'default';
+
+        let streamKey = params.key || '';
+        const authHeader = req.headers['authorization'];
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            streamKey = authHeader.substring(7); // Extract token from "Bearer <token>"
+        }
+
         const isStreamer = !!streamKey; // Streamers provide a key
 
         log('info', `[WS Stream] ${isStreamer ? 'Streamer' : 'Viewer'} connected to session: ${sessionId}`);

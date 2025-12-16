@@ -48,13 +48,19 @@ func (w *WebSocketManager) connectLoop() {
 	for {
 		w.logger.Info("Connecting to streaming server: %s", w.config.ServerURL)
 
-		// Build WebSocket URL with session ID and stream key
-		wsURL := fmt.Sprintf("%s?session=%s&key=%s",
+		// SECURITY FIX: Use headers for authentication instead of URL query params
+		// This prevents stream keys from appearing in access logs
+		wsURL := fmt.Sprintf("%s?session=%s",
 			w.config.ServerURL,
-			w.config.SessionID,
-			w.config.StreamKey)
+			w.config.SessionID)
 
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		// Create request headers with authentication
+		headers := make(map[string][]string)
+		headers["Authorization"] = []string{fmt.Sprintf("Bearer %s", w.config.StreamKey)}
+		headers["Session-Id"] = []string{w.config.SessionID}
+
+		dialer := websocket.DefaultDialer
+		conn, _, err := dialer.Dial(wsURL, headers)
 		if err != nil {
 			w.logger.Error("WebSocket dial error: %v. Retrying in %v...", err, w.reconnectInterval)
 			time.Sleep(w.reconnectInterval)

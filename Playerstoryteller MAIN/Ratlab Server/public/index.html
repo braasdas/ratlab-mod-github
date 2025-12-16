@@ -111,7 +111,7 @@
                     <i class="fa-solid fa-flask"></i>
                 </div>
                 <div>
-                    <h1 class="font-mono text-xl tracking-wider text-white uppercase">Rat Lab <span class="text-rat-green text-xs align-top">v3.0</span></h1>
+                    <h1 class="font-mono text-xl tracking-wider text-white uppercase">Rat Lab <span id="version-number" class="text-rat-green text-xs align-top cursor-help transition-all duration-300">v3.1</span></h1>
                     <div id="connection-status" class="status disconnected flex items-center gap-2 text-xs font-mono">
                         <span class="status-dot w-2 h-2 rounded-full bg-rat-red"></span>
                         <span class="status-text uppercase tracking-widest">NO SIGNAL</span>
@@ -692,10 +692,88 @@
             </div>
         </div>
 
+        <!-- Queue Input Modal -->
+        <div id="queue-modal" class="modal-backdrop fixed inset-0 bg-black/90 backdrop-blur-sm z-50 hidden items-center justify-center">
+            <div class="modal-content bg-rat-panel border border-rat-green rounded-lg w-full max-w-md p-0 shadow-2xl shadow-rat-green/20 transform transition-all scale-100 opacity-100">
+                <div class="modal-header border-b border-rat-border p-4 flex justify-between items-center bg-rat-dark">
+                    <h3 class="font-mono text-rat-green text-lg uppercase tracking-wider">💡 Submit Idea</h3>
+                    <button class="modal-close-btn text-rat-text-dim hover:text-white text-2xl leading-none" id="close-queue-modal">&times;</button>
+                </div>
+                
+                <!-- Internal Tabs -->
+                <div class="flex border-b border-rat-border bg-rat-black/50">
+                    <button id="qtab-suggestion" class="flex-1 py-3 text-xs font-mono text-rat-green border-b-2 border-rat-green transition-colors">SUGGESTION</button>
+                    <button id="qtab-monument" class="flex-1 py-3 text-xs font-mono text-rat-text-dim border-b-2 border-transparent hover:text-white transition-colors">MONUMENT</button>
+                </div>
+
+                <div class="modal-body p-6">
+                    <!-- Suggestion View -->
+                    <div id="qview-suggestion">
+                        <p class="text-rat-text mb-4 text-sm font-mono">Suggest a new course of action for the colony:</p>
+                        <div class="form-group relative">
+                            <textarea id="queue-input" placeholder="Enter suggestion..." rows="3" class="full-width-input w-full bg-black border border-rat-border text-rat-green font-mono p-3 rounded focus:border-rat-green focus:ring-1 focus:ring-rat-green outline-none resize-none"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Monument View (WIP) -->
+                    <div id="qview-monument" class="hidden">
+                        <div class="border border-rat-yellow/30 bg-rat-yellow/10 rounded p-4 text-center">
+                            <i class="fa-solid fa-person-digging text-3xl text-rat-yellow mb-2"></i>
+                            <h4 class="font-mono text-rat-yellow text-sm font-bold">UNDER CONSTRUCTION</h4>
+                            <p class="text-rat-text-dim text-xs mt-2">Blueprint uplink offline.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer p-4 border-t border-rat-border bg-rat-dark">
+                    <button id="submit-queue-btn" class="btn-primary full-width w-full bg-rat-green text-black font-bold font-mono py-3 rounded hover:bg-white hover:scale-[1.02] transition-all uppercase tracking-wider">Submit to Vote</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Main Application Logic (Modular) -->
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="js/viewer/main.js"></script>
+
+    <!-- Pi Easter Egg -->
+    <script>
+        (function() {
+            const versionEl = document.getElementById('version-number');
+            if (!versionEl) return;
+
+            // Digits of pi (100 digits should be enough for anyone)
+            const piDigits = '3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679';
+            let currentLength = 3; // Start at "v3.1"
+            let interval = null;
+            let isExpanding = false;
+
+            versionEl.addEventListener('mouseenter', () => {
+                if (isExpanding) return;
+                isExpanding = true;
+                currentLength = 3; // Reset to "3.1"
+
+                interval = setInterval(() => {
+                    if (currentLength < piDigits.length) {
+                        currentLength++;
+                        versionEl.textContent = 'v' + piDigits.substring(0, currentLength);
+                    } else {
+                        clearInterval(interval);
+                        isExpanding = false;
+                    }
+                }, 100); // Reveal one digit every 100ms
+            });
+
+            versionEl.addEventListener('mouseleave', () => {
+                if (interval) {
+                    clearInterval(interval);
+                    interval = null;
+                }
+                isExpanding = false;
+                versionEl.textContent = 'v3.1';
+                currentLength = 3;
+            });
+        })();
+    </script>
 </body>
 </html>

@@ -53,14 +53,18 @@ export class TextureManager {
 
         // 3. Fetch from Network
         try {
-            const qs = new URLSearchParams();
-            if (this.sessionId) qs.set('sessionId', this.sessionId);
-            qs.set('name', textureName);
-
-            // Use different endpoint based on type
-            const endpoint = type === 'item' || type === 'building' || type === 'thing'
-                ? `/api/v1/map/thing/image?${qs.toString()}`
-                : `/api/v1/map/terrain/image?${qs.toString()}`;
+            let endpoint;
+            
+            if (type === 'item' || type === 'building' || type === 'thing') {
+                // New Global Texture Cache
+                endpoint = `/api/texture/${encodeURIComponent(textureName)}`;
+            } else {
+                // Legacy Terrain Logic
+                const qs = new URLSearchParams();
+                if (this.sessionId) qs.set('sessionId', this.sessionId);
+                qs.set('name', textureName);
+                endpoint = `/api/v1/map/terrain/image?${qs.toString()}`;
+            }
 
             const response = await fetch(endpoint);
             if (!response.ok) {

@@ -15,6 +15,7 @@ namespace PlayerStoryteller
 {
     public class PlayerStorytellerMod : Mod
     {
+        public static PlayerStorytellerMod Instance { get; private set; }
         public static PlayerStorytellerSettings settings;
         private static HttpClient httpClient;
         private const int MaxRetries = 5;
@@ -27,6 +28,7 @@ namespace PlayerStoryteller
 
         public PlayerStorytellerMod(ModContentPack content) : base(content)
         {
+            Instance = this;
             settings = GetSettings<PlayerStorytellerSettings>();
             httpClient = new HttpClient();
 
@@ -39,18 +41,10 @@ namespace PlayerStoryteller
         }
 
         private Vector2 scrollPosition = Vector2.zero;
-        private static readonly float SettingsHeight = 2500f; 
-        private static bool hasShownPrivacyNotice = false; 
+        private static readonly float SettingsHeight = 2500f;
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
-            // PRIVACY NOTICE: Show on first run (only once per session)
-            if (!settings.hasAcceptedPrivacyNotice && !hasShownPrivacyNotice)
-            {
-                hasShownPrivacyNotice = true;
-                ShowPrivacyNoticeDialog();
-            }
-
             // Create scrollable view
             Rect viewRect = new Rect(0f, 0f, inRect.width - 20f, SettingsHeight);
             Widgets.BeginScrollView(inRect, ref scrollPosition, viewRect);
@@ -427,6 +421,53 @@ namespace PlayerStoryteller
             catch (Exception ex)
             {
                 Log.Warning($"[Player Storyteller] Error sending map things data: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static async Task<HashSet<string>> FetchTextureManifestAsync()
+        {
+            try
+            {
+                string serverUrl = GetServerUrl();
+                var response = await httpClient.GetAsync($"{serverUrl}/textures/manifest");
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    string json = await response.Content.ReadAsStringAsync();
+                    var list = JsonConvert.DeserializeObject<List<string>>(json);
+                    return new HashSet<string>(list ?? new List<string>());
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to fetch texture manifest: {ex.Message}");
+            }
+            return new HashSet<string>();
+        }
+
+        public static async Task<bool> SendTexturesBatchAsync(string jsonPayload)
+        {
+            try
+            {
+                string serverUrl = GetServerUrl();
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{serverUrl}/textures");
+                request.Headers.Add("x-stream-key", settings.secretKey);
+                request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                Log.Message($"[Player Storyteller] Sending textures to {serverUrl}/textures (payload size: {jsonPayload.Length} bytes)");
+                var response = await httpClient.SendAsync(request);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorBody = await response.Content.ReadAsStringAsync();
+                    Log.Warning($"[Player Storyteller] Texture upload failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase} - {errorBody}");
+                }
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[Player Storyteller] Failed to upload textures: {ex.Message}");
                 return false;
             }
         }

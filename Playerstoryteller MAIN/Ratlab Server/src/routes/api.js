@@ -3,6 +3,24 @@ const router = express.Router();
 const sessionStore = require('../store/sessionStore');
 const log = require('../utils/logger');
 const { checkUpdateRateLimit, checkActionRateLimit } = require('../middleware/security');
+const fs = require('fs');
+const path = require('path');
+
+// ==========================================
+// GLOBAL TEXTURE CACHE - Initialize at module load
+// ==========================================
+const CACHE_DIR = path.join(__dirname, '../../cache/textures');
+try {
+    if (!fs.existsSync(CACHE_DIR)) {
+        fs.mkdirSync(CACHE_DIR, { recursive: true });
+        log('info', `[TextureCache] Created cache directory: ${CACHE_DIR}`);
+    } else {
+        const files = fs.readdirSync(CACHE_DIR).filter(f => f.endsWith('.png'));
+        log('info', `[TextureCache] Cache directory exists with ${files.length} textures: ${CACHE_DIR}`);
+    }
+} catch (err) {
+    log('error', `[TextureCache] Failed to create cache directory: ${err.message}`);
+}
 
 // Debounce mechanism for Socket.io broadcasts
 const broadcastDebounce = {
@@ -800,13 +818,19 @@ module.exports = (io, definitionManager) => {
     // Submit Request
     router.post('/api/queue/:sessionId/submit', (req, res) => {
         const { sessionId } = req.params;
-        const { username, action, type, data } = req.body;
+        const { username, type, data } = req.body;
+        let { action } = req.body;
         
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         
-        if (!action || typeof action !== 'string') {
-            return res.status(400).json({ error: 'Invalid action specified' });
+        // For suggestions, action is optional (defaults to 'suggestion')
+        if (type === 'suggestion') {
+            if (!action) action = 'suggestion';
+        } else {
+            if (!action || typeof action !== 'string') {
+                return res.status(400).json({ error: 'Invalid action specified' });
+            }
         }
 
         // Check cost (only if economy is enabled)
@@ -912,8 +936,16 @@ module.exports = (io, definitionManager) => {
         const index = session.queue.requests.indexOf(winner);
         
         if (index !== -1) {
-            // Validate Action
-            if (!winner.action) {
+            // Validate Action (Suggestion type is special case)
+            if (winner.type === 'suggestion') {
+                const votes = winner.votes ? winner.votes.filter(v => v.type === 'upvote').length - winner.votes.filter(v => v.type === 'downvote').length : 0;
+                session.actions.push({
+                    action: 'send_letter',
+                    data: `Suggestion: ${winner.data} (Net Votes: ${votes})`,
+                    timestamp: new Date()
+                });
+                log('info', `Queue forced: Sent suggestion letter for session ${sessionId}`);
+            } else if (!winner.action) {
                 log('warn', `Queue forced: Skipped invalid request ${winner.id} (missing action)`);
             } else {
                 // Execute Action
@@ -1113,6 +1145,70 @@ module.exports = (io, definitionManager) => {
         });
 
         res.json({ success: true });
+    });
+
+    // ==========================================
+    // GLOBAL TEXTURE CACHE ROUTES (CACHE_DIR defined at module level)
+    // ==========================================
+
+    // GET Manifest: Returns list of cached DefNames
+    router.get('/textures/manifest', (req, res) => {
+        fs.readdir(CACHE_DIR, (err, files) => {
+            if (err) return res.status(500).json([]);
+            // Return filenames without extension
+            const manifest = files
+                .filter(f => f.endsWith('.png'))
+                .map(f => f.replace('.png', ''));
+            res.json(manifest);
+        });
+    });
+
+    // POST Batch: Saves new textures
+    router.post('/textures', express.json({ limit: '50mb' }), (req, res) => {
+        // NOTE: We need large body limit for texture batches.
+        // If app.use(json) is global it might conflict, but router-level middleware is safer.
+        const { textures } = req.body; // { DefName: Base64String, ... }
+
+        log('info', `[TextureCache] POST /textures received. Body keys: ${Object.keys(req.body || {}).join(', ')}, textures: ${textures ? Object.keys(textures).length : 'null'}`);
+
+        if (!textures) return res.status(400).json({ error: 'No textures provided' });
+
+        let saved = 0;
+        Object.entries(textures).forEach(([defName, base64]) => {
+            if (!defName || !base64) return;
+            
+            // Validate filename (basic sanitization)
+            const safeName = defName.replace(/[^a-zA-Z0-9_\-]/g, '');
+            if (!safeName) return;
+
+            const filePath = path.join(CACHE_DIR, `${safeName}.png`);
+            
+            // Don't overwrite if exists (Global Cache - First Come First Serve)
+            if (!fs.existsSync(filePath)) {
+                try {
+                    const buffer = Buffer.from(base64, 'base64');
+                    fs.writeFileSync(filePath, buffer);
+                    saved++;
+                } catch (e) {
+                    console.error(`Failed to save texture ${safeName}:`, e);
+                }
+            }
+        });
+        
+        if (saved > 0) log('info', `[TextureCache] Cached ${saved} new textures.`);
+        res.json({ success: true, saved });
+    });
+
+    // GET Texture: Serves the image
+    router.get('/texture/:name', (req, res) => {
+        const name = req.params.name.replace(/[^a-zA-Z0-9_\-]/g, '');
+        const filePath = path.join(CACHE_DIR, `${name}.png`);
+        
+        if (fs.existsSync(filePath)) {
+            res.sendFile(filePath, { maxAge: '7d' }); // Cache for 7 days
+        } else {
+            res.status(404).send('Not found');
+        }
     });
 
     return router;

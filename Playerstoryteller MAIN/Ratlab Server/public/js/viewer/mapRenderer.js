@@ -21,6 +21,7 @@ export class MapRenderer {
         this.sessionId = null;
         this.things = []; // Array of things on the map (Render List)
         this.thingsMap = new Map(); // Persistent storage (ID -> Thing)
+        this.tintCache = new Map(); // Cache for tinted textures
 
         // DOT TRACKING SYSTEM: Track each visual dot independently
         this.trackedDots = new Map(); // visualDotId → {pawnId, x, z, portraitData, lastUpdate}
@@ -164,6 +165,15 @@ export class MapRenderer {
             
             this.render();
         }, { passive: false });
+
+        // Right Click (Cancel Order)
+        this.canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (this.onOrder) {
+                this.onOrder = null;
+                this.canvas.style.cursor = 'default';
+            }
+        });
     }
 
     async initialize(mapId = 0, sessionId = null) {
@@ -268,7 +278,7 @@ export class MapRenderer {
                     for (const zone of data.focus_zones) {
                         const dx = tx - zone.x;
                         const dz = tz - zone.z;
-                        const rSq = zone.radius * zone.radius; // usually 25*25=625
+                        const rSq = zone.radius * zone.radius; // usually 15*15=225 (optimized)
                         
                         if (dx*dx + dz*dz <= rSq) {
                             this.thingsMap.delete(id);
@@ -429,10 +439,17 @@ export class MapRenderer {
                 let nearbyDotId = null;
                 const PROXIMITY = 2;
 
+                // Build set of current pawn IDs for ownership check
+                const currentPawnIds = new Set(pawns.map(p => String(p.id)));
+
                 // Only check dots in the same grid cell (much faster than checking ALL dots)
                 for (const existingDotId of nearbyDots) {
                     const existingDot = this.trackedDots.get(existingDotId);
                     if (!existingDot) continue;
+
+                    // FIX: Only consider stealing a dot if its current owner is NOT in the incoming data
+                    // This prevents dot-stealing when two pawns are near each other
+                    if (currentPawnIds.has(existingDot.pawnId)) continue;
 
                     const dx = Math.abs(existingDot.x - pos.x);
                     const dz = Math.abs(existingDot.z - pos.z);
@@ -444,12 +461,41 @@ export class MapRenderer {
                 }
 
                 if (nearbyDot) {
-                    // Use existing nearby dot instead of creating duplicate
-                    dotId = nearbyDotId;
-                    this.pawnIdToDotId.set(id, dotId);
-                    nearbyDot.pawnId = id;
-                    nearbyDot.lastUpdate = now;
-                    nearbyDot.positionTimestamp = pawn.positionTimestamp || pawn.timestamp || 0;
+                    // PROTECTION: Never steal a dot that belongs to the user's adopted pawn
+                    if (nearbyDot.pawnId === String(STATE.myPawnId)) {
+                        // Create new dot instead of stealing
+                        dotId = `dot_${this.nextDotId++}`;
+                        this.pawnIdToDotId.set(id, dotId);
+
+                        this.trackedDots.set(dotId, {
+                            pawnId: id,
+                            type: type,
+                            name: pawn.name || pawn.label || 'Unknown',
+                            defName: pawn.def_name || null,
+                            x: pos.x,
+                            z: pos.z,
+                            startX: pos.x,
+                            startZ: pos.z,
+                            targetX: pos.x,
+                            targetZ: pos.z,
+                            portraitData: null,
+                            lastUpdate: now,
+                            positionTimestamp: pawn.positionTimestamp || pawn.timestamp || 0,
+                            facing: pawn.facing || 'South'
+                        });
+
+                        // Add to spatial hash
+                        if (!this.spatialHash.has(gridKey)) this.spatialHash.set(gridKey, []);
+                        this.spatialHash.get(gridKey).push(dotId);
+                    } else {
+                        // Reuse orphaned dot (previous pawn no longer exists)
+                        dotId = nearbyDotId;
+                        this.pawnIdToDotId.delete(nearbyDot.pawnId); // Clean up old mapping
+                        this.pawnIdToDotId.set(id, dotId);
+                        nearbyDot.pawnId = id;
+                        nearbyDot.lastUpdate = now;
+                        nearbyDot.positionTimestamp = pawn.positionTimestamp || pawn.timestamp || 0;
+                    }
                 } else {
                     // New pawn - create tracked dot
                     dotId = `dot_${this.nextDotId++}`;
@@ -648,11 +694,23 @@ export class MapRenderer {
             // Assign portrait to dot
             const dot = this.trackedDots.get(match.dotId);
             if (dot) {
-                dot.portraitData = match.colonist.portraitData;
-                dot.pawnId = match.colonist.pawnId; // Update to correct pawn ID
+                // PROTECTION: Never reassign pawnId if this dot belongs to user's adopted pawn
+                // or if we're trying to steal the adopted pawn's ID
+                const isMyPawnDot = dot.pawnId === String(STATE.myPawnId);
+                const isMyPawnId = match.colonist.pawnId === String(STATE.myPawnId);
 
-                // Update reverse lookup
-                this.pawnIdToDotId.set(match.colonist.pawnId, match.dotId);
+                if (isMyPawnDot && !isMyPawnId) {
+                    // Don't steal my pawn's dot
+                    continue;
+                }
+
+                dot.portraitData = match.colonist.portraitData;
+
+                // Only update pawnId if it's actually different and not stealing from myPawn
+                if (dot.pawnId !== match.colonist.pawnId) {
+                    dot.pawnId = match.colonist.pawnId;
+                    this.pawnIdToDotId.set(match.colonist.pawnId, match.dotId);
+                }
 
                 usedDots.add(match.dotId);
                 usedColonists.add(match.colonist.pawnId);
@@ -769,7 +827,12 @@ export class MapRenderer {
             const screenY = (viewTop - posZ) * this.tileSizePx;
 
             const defName = thing.def_name || thing.DefName || thing.Def;
-            const img = this.thingImages.get(defName);
+            let img = this.thingImages.get(defName);
+
+            // Apply Tint (if available)
+            if (img && (thing.color || thing.Color)) {
+                img = this._getTintedImage(img, thing.color || thing.Color);
+            }
 
             const size = thing.size || thing.Size || { x: 1, X: 1, z: 1, Z: 1 };
             const sizeX = size.x ?? size.X ?? 1;
@@ -1104,5 +1167,42 @@ export class MapRenderer {
             this.ctx.lineWidth = 2;
             this.ctx.stroke();
         }
+    }
+
+    _getTintedImage(img, color) {
+        if (!img || !img.complete || !color) return img;
+        
+        // Normalize color
+        if (color.toLowerCase() === '#ffffff' || color.toLowerCase() === '#ffffffff') return img;
+
+        const key = `${img.src}_${color}`;
+        if (this.tintCache.has(key)) {
+            return this.tintCache.get(key);
+        }
+
+        // Limit cache size
+        if (this.tintCache.size > 500) {
+            this.tintCache.clear();
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+
+        // Draw image
+        ctx.drawImage(img, 0, 0);
+
+        // Multiply color
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Restore alpha from original image
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(img, 0, 0);
+
+        this.tintCache.set(key, canvas);
+        return canvas;
     }
 }

@@ -116,10 +116,11 @@ namespace PlayerStoryteller
 
                 await ws.SendAsync(new ArraySegment<byte>(packet), WebSocketMessageType.Binary, true, cts.Token);
             }
-            catch
+            catch (Exception ex)
             {
-                 try { ws.Dispose(); } catch {}
-                 ws = null;
+                Log.Error($"[Player Storyteller] WebSocket SendImage failed: {ex.Message}");
+                try { ws.Dispose(); } catch {}
+                ws = null;
             }
             finally
             {
@@ -186,10 +187,11 @@ namespace PlayerStoryteller
 
                 await ws.SendAsync(new ArraySegment<byte>(packet), WebSocketMessageType.Binary, true, cts.Token);
             }
-            catch
-            { 
-                 try { ws.Dispose(); } catch {}
-                 ws = null;
+            catch (Exception ex)
+            {
+                Log.Error($"[Player Storyteller] WebSocket SendGameState failed: {ex.Message}");
+                try { ws.Dispose(); } catch {}
+                ws = null;
             }
             finally
             {

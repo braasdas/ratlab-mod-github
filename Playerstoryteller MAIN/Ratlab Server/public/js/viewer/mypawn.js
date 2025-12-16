@@ -240,6 +240,7 @@ function initializeActionButtons() {
             } else if (cmd === 'ignite') {
                 showFeedback('info', 'SELECT TARGET AREA TO IGNITE');
                 if (mapRenderer) {
+                    mapRenderer.canvas.style.cursor = 'crosshair';
                     mapRenderer.onOrder = (x, z) => {
                         sendAction('setFire', JSON.stringify({
                             x, z, pawnId: STATE.myPawnId
@@ -247,58 +248,52 @@ function initializeActionButtons() {
                         showFeedback('success', 'IGNITION ORDER SENT');
                         // Reset order handler
                         mapRenderer.onOrder = null;
+                        mapRenderer.canvas.style.cursor = 'default';
                     };
                 }
             } else if (cmd === 'smash') {
                 showFeedback('info', 'SELECT OBJECT TO DESTROY');
                 if (mapRenderer) {
+                    mapRenderer.canvas.style.cursor = 'crosshair';
                     mapRenderer.onOrder = (x, z) => {
                         sendAction('destroyObject', JSON.stringify({
                             x, z, pawnId: STATE.myPawnId
                         }));
                         showFeedback('success', 'DESTRUCTION ORDER SENT');
                         mapRenderer.onOrder = null;
+                        mapRenderer.canvas.style.cursor = 'default';
                     };
                 }
             } else if (cmd === 'fight') {
-                const targetName = prompt("ENTER NAME OF COLONIST TO FIGHT:");
-                if (targetName) {
-                    // We need to resolve name to ID. This is tricky client-side without a full list.
-                    // Ideally we pick from a list or click on the map.
-                    // Let's use map click for now to get target ID if possible, otherwise just send name and let backend resolve?
-                    // Backend expects ID.
-                    // Better approach: Click on map to select target.
-                    showFeedback('info', 'SELECT COLONIST TO FIGHT');
-                    if (mapRenderer) {
-                        mapRenderer.onOrder = (x, z) => {
-                            // Find colonist at x,z
-                            // We need access to the game state to find the pawn at this location
-                            // MapRenderer has `thingsMap` but maybe not pawns in easy lookup by pos?
-                            // Actually MapRenderer.trackedDots has positions.
-                            let targetId = null;
-                            const PROXIMITY = 1.5;
-                            
-                            for (const dot of mapRenderer.trackedDots.values()) {
-                                if (Math.abs(dot.x - x) < PROXIMITY && Math.abs(dot.z - z) < PROXIMITY) {
-                                    if (dot.pawnId !== STATE.myPawnId && dot.type !== 'animal') {
-                                        targetId = dot.pawnId;
-                                        break;
-                                    }
+                showFeedback('info', 'SELECT COLONIST TO FIGHT');
+                if (mapRenderer) {
+                    mapRenderer.canvas.style.cursor = 'crosshair';
+                    mapRenderer.onOrder = (x, z) => {
+                        // Find colonist at x,z
+                        let targetId = null;
+                        const PROXIMITY = 1.5;
+                        
+                        for (const dot of mapRenderer.trackedDots.values()) {
+                            if (Math.abs(dot.x - x) < PROXIMITY && Math.abs(dot.z - z) < PROXIMITY) {
+                                if (dot.pawnId !== String(STATE.myPawnId) && dot.type !== 'animal') {
+                                    targetId = dot.pawnId;
+                                    break;
                                 }
                             }
+                        }
 
-                            if (targetId) {
-                                sendAction('startSocialFight', JSON.stringify({
-                                    initiatorId: STATE.myPawnId,
-                                    targetId: targetId
-                                }));
-                                showFeedback('success', 'SOCIAL FIGHT INITIATED');
-                            } else {
-                                showFeedback('error', 'NO VALID TARGET FOUND');
-                            }
-                            mapRenderer.onOrder = null;
-                        };
-                    }
+                        if (targetId) {
+                            sendAction('startSocialFight', JSON.stringify({
+                                initiatorId: STATE.myPawnId,
+                                targetId: targetId
+                            }));
+                            showFeedback('success', 'SOCIAL FIGHT INITIATED');
+                        } else {
+                            showFeedback('error', 'NO VALID TARGET FOUND');
+                        }
+                        mapRenderer.onOrder = null;
+                        mapRenderer.canvas.style.cursor = 'default';
+                    };
                 }
             } else {
                 showFeedback('info', 'SELECT TARGET ON LIVE FEED');
