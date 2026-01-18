@@ -8,13 +8,13 @@ function createApp() {
 
     // 1. Security Middleware (CORS)
     app.use(corsMiddleware);
-    
+
     // 2. Decompression Middleware (Handles 'Content-Encoding: gzip')
     app.use(decompressMiddleware);
 
     // 3. Standard Body Parsers
-    app.use(express.json({ limit: '50mb' })); 
-    app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+    app.use(express.json({ limit: '500mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
     // Global JSON Error Handler (Prevents crashes on bad payloads)
     app.use((err, req, res, next) => {
@@ -29,7 +29,7 @@ function createApp() {
     app.use(express.static(path.join(__dirname, '../public'), { etag: false, maxAge: 0 }));
 
     // Note: Routes are now attached in server.js to allow passing the 'io' instance
-    
+
     return app;
 }
 
