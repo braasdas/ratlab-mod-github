@@ -909,7 +909,14 @@ export class MapRenderer {
                 this.ctx.restore();
             } else {
                 const thingId = thing.thing_id ?? thing.ThingId ?? thing.Id ?? 0;
-                this.ctx.fillStyle = this._fallbackColor(defName, thingId);
+
+                // Use actual thing color if available (e.g. green for grass), otherwise hash color
+                const color = thing.Color || thing.color;
+                if (color && color !== '#FFFFFF' && color !== '#FFFFFFFF') {
+                    this.ctx.fillStyle = color;
+                } else {
+                    this.ctx.fillStyle = this._fallbackColor(defName, thingId);
+                }
 
                 const isBuilding = sizeX > 1 || sizeZ > 1 ||
                     (defName && (defName.includes('Wall') || defName.includes('Door') ||
