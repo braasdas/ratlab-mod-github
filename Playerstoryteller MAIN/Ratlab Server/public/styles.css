@@ -1,0 +1,690 @@
+/* RAT LAB - Bio-Digital CSS System */
+
+/* --- CRT & Scanline Effects --- */
+.scanline {
+    width: 100%;
+    height: 100px;
+    z-index: 999;
+    background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 65, 0.04) 50%, rgba(0,0,0,0) 100%);
+    opacity: 0.1;
+    background-size: 100% 4px;
+    position: fixed;
+    bottom: 100%;
+    left: 0;
+    pointer-events: none;
+    animation: scanline 10s linear infinite;
+}
+
+@keyframes scanline {
+    0% { bottom: 100%; }
+    100% { bottom: -100px; }
+}
+
+.vignette {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    box-shadow: 0 0 150px rgba(0,0,0,0.9) inset;
+    pointer-events: none;
+    z-index: 998;
+}
+
+/* --- Glitch Text Effect --- */
+.glitch-text {
+    position: relative;
+}
+
+.glitch-text::before,
+.glitch-text::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #050505; /* Match background */
+}
+
+.glitch-text::before {
+    left: 2px;
+    text-shadow: -1px 0 #ff3333;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim 5s infinite linear alternate-reverse;
+}
+
+.glitch-text::after {
+    left: -2px;
+    text-shadow: -1px 0 #00ff41;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim2 5s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-anim {
+    0% { clip: rect(31px, 9999px, 94px, 0); }
+    4% { clip: rect(79px, 9999px, 8px, 0); }
+    8% { clip: rect(38px, 9999px, 7px, 0); }
+    12% { clip: rect(8px, 9999px, 97px, 0); }
+    16% { clip: rect(32px, 9999px, 86px, 0); }
+    20% { clip: rect(54px, 9999px, 49px, 0); }
+    100% { clip: rect(0, 0, 0, 0); }
+}
+
+@keyframes glitch-anim2 {
+    0% { clip: rect(66px, 9999px, 11px, 0); }
+    4% { clip: rect(95px, 9999px, 38px, 0); }
+    8% { clip: rect(27px, 9999px, 13px, 0); }
+    12% { clip: rect(11px, 9999px, 80px, 0); }
+    16% { clip: rect(59px, 9999px, 96px, 0); }
+    20% { clip: rect(26px, 9999px, 86px, 0); }
+    100% { clip: rect(0, 0, 0, 0); }
+}
+
+/* --- Layout Transitions --- */
+.screen {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+#session-selection.active {
+    display: block;
+    opacity: 1;
+}
+
+#game-viewer.active {
+    display: flex;
+    opacity: 1;
+}
+
+.tab-pane {
+    display: none;
+    opacity: 0;
+    animation: fadeIn 0.3s forwards;
+}
+
+.tab-pane.active {
+    display: block;
+    opacity: 1;
+}
+
+/* Ensure tabs are hidden when not active, overriding any utility classes */
+.tab-pane:not(.active) {
+    display: none !important;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Custom Scrollbar --- */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #111; 
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #333; 
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #00ff41; 
+}
+
+/* --- Dynamic Components Styling --- */
+
+/* Colonist Card */
+.colonist-card {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.colonist-card:hover {
+    border-color: #00ff41;
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.1);
+}
+
+.colonist-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, #00ff41, transparent);
+    opacity: 0.5;
+}
+
+.colonist-header {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.colonist-portrait {
+    width: 64px;
+    height: 64px;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.colonist-portrait:hover {
+    border-color: #00ff41;
+}
+
+.colonist-portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.colonist-info h4 {
+    color: #fff;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Bars */
+.health-bar, .mood-bar {
+    height: 4px;
+    background: #222;
+    border-radius: 2px;
+    margin: 4px 0 12px 0;
+    overflow: hidden;
+}
+
+.health-bar-fill {
+    background: #ff3333;
+    height: 100%;
+    box-shadow: 0 0 8px rgba(255, 51, 51, 0.5);
+}
+
+.mood-bar-fill {
+    background: #00ff41;
+    height: 100%;
+    box-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+}
+
+.colonist-stat {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #888;
+    font-family: 'Share Tech Mono', monospace;
+    text-transform: uppercase;
+}
+
+/* Equipment */
+.equipment-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    background: #0a0a0a;
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+
+.equip-row {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.equip-slot {
+    width: 40px;
+    height: 40px;
+    background: #151515;
+    border: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.equip-slot.filled {
+    border-color: #555;
+    background: #222;
+}
+
+.equip-icon {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+.equip-placeholder {
+    font-size: 1.2rem;
+    opacity: 0.3;
+}
+
+/* Action Panel */
+.action-category {
+    margin-bottom: 1rem;
+    border: 1px solid #333;
+    border-radius: 0.5rem;
+    background: #0a0a0a;
+    overflow: hidden;
+}
+
+.action-category summary {
+    padding: 1rem;
+    background: #111;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    color: #e0e0e0;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s;
+}
+
+.action-category summary:hover {
+    background: #1a1a1a;
+    color: #00ff41;
+}
+
+.category-badge {
+    font-size: 0.7rem;
+    background: #222;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #888;
+}
+
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.75rem;
+    padding: 1rem;
+    background: #050505;
+}
+
+.action-btn {
+    background: #111;
+    border: 1px solid #333;
+    color: #aaa;
+    border-radius: 4px;
+    padding: 1rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.1s;
+    min-height: 100px;
+}
+
+.action-btn:hover {
+    border-color: #00ff41;
+    color: #fff;
+    background: #151515;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 255, 65, 0.1);
+}
+
+.action-btn:active {
+    transform: translateY(0);
+}
+
+.action-btn.danger:hover {
+    border-color: #ff3333;
+    box-shadow: 0 4px 12px rgba(255, 51, 51, 0.1);
+}
+
+.action-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.action-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.1;
+}
+
+/* Button States */
+.action-btn.sending {
+    opacity: 0.7;
+    cursor: wait;
+    border-color: #ffcc00;
+    animation: pulse 1s infinite;
+}
+
+.action-btn.success-pulse {
+    animation: successFlash 0.5s;
+    border-color: #00ff41 !important;
+}
+
+@keyframes successFlash {
+    0% { background: #00ff41; color: #000; }
+    100% { background: #111; color: #fff; }
+}
+
+/* Feedback Toast */
+.feedback-toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #111;
+    border: 1px solid #333;
+    padding: 1rem 2rem;
+    border-radius: 99px;
+    z-index: 2000;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    font-family: 'Share Tech Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.feedback-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.feedback-toast.success { border-color: #00ff41; color: #00ff41; }
+.feedback-toast.error { border-color: #ff3333; color: #ff3333; }
+.feedback-toast.warning { border-color: #ffcc00; color: #ffcc00; }
+
+/* Ping Ripple */
+.ping-ripple {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid #00ff41;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: ripple 1s ease-out forwards;
+    box-shadow: 0 0 10px #00ff41;
+}
+
+@keyframes ripple {
+    0% { width: 0; height: 0; opacity: 1; border-width: 5px; }
+    100% { width: 100px; height: 100px; opacity: 0; border-width: 1px; }
+}
+
+/* Medical Alerts */
+.medical-alert {
+    background: rgba(255, 51, 51, 0.05);
+    border-left: 3px solid #ff3333;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0 4px 4px 0;
+}
+
+.medical-alert.minor { border-color: #ffcc00; background: rgba(255, 204, 0, 0.05); }
+
+.alert-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+}
+
+.alert-header strong { color: #fff; }
+.alert-severity { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; }
+.alert-severity.critical { color: #ff3333; animation: flashRed 2s infinite; }
+.alert-severity.serious { color: #ff6666; }
+.alert-severity.minor { color: #ffcc00; }
+
+.alert-condition {
+    color: #aaa;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+
+.alert-severity-bar {
+    height: 2px;
+    background: #333;
+    width: 100%;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    border-radius: 2px;
+}
+
+.alert-severity-fill { height: 100%; }
+.alert-severity-fill.critical { background: #ff3333; }
+.alert-severity-fill.serious { background: #ff6666; }
+.alert-severity-fill.minor { background: #ffcc00; }
+
+.btn-follow-alert {
+    width: 100%;
+    background: transparent;
+    border: 1px solid #333;
+    color: #888;
+    font-size: 0.7rem;
+    padding: 0.25rem;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+}
+
+.btn-follow-alert:hover {
+    border-color: #00ff41;
+    color: #00ff41;
+}
+
+@keyframes flashRed {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Inventory */
+.inventory-colonist-row {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.inventory-colonist-header {
+    padding: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Share Tech Mono', monospace;
+    color: #e0e0e0;
+}
+
+.inventory-colonist-header:hover {
+    background: #151515;
+    color: #00ff41;
+}
+
+.inventory-items-list {
+    display: none;
+    padding: 0.5rem;
+    border-top: 1px solid #333;
+    background: #0a0a0a;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.5rem;
+}
+
+.inventory-colonist-row.expanded .inventory-items-list {
+    display: grid;
+}
+
+.inventory-item {
+    display: flex;
+    align-items: center;
+    background: #151515;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: #aaa;
+}
+
+.inventory-item-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 0.5rem;
+    object-fit: contain;
+}
+
+.inventory-item-count {
+    margin-left: auto;
+    color: #00ff41;
+    font-family: 'Share Tech Mono', monospace;
+}
+
+/* Stat Widgets - Custom Overrides for Tailwind */
+.stat-widget-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.75rem;
+}
+
+.stat-widget-header h4 {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 1.2rem;
+    color: #00ff41;
+    text-transform: uppercase;
+}
+
+.widget-icon {
+    font-size: 1.5rem;
+    color: #555;
+}
+
+/* Population Cards */
+.population-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.pop-card {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.pop-card:hover {
+    border-color: #00ff41;
+    transform: translateY(-2px);
+}
+
+.pop-count {
+    display: block;
+    font-size: 2.5rem;
+    font-family: 'Share Tech Mono', monospace;
+    line-height: 1;
+    margin: 0.5rem 0;
+}
+
+.pop-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #666;
+}
+
+.pop-card.colonist .pop-count { color: #00ff41; }
+.pop-card.enemy .pop-count { color: #ff3333; }
+.pop-card.animal .pop-count { color: #ffcc00; }
+.pop-card.prisoner .pop-count { color: #aaa; }
+
+/* Loading Screen */
+#loading-screen.active {
+    display: flex;
+}
+
+.loading-spinner {
+    width: 80px;
+    height: 80px;
+    border: 2px solid rgba(0, 255, 65, 0.1);
+    border-top: 2px solid #00ff41;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    box-shadow: 0 0 30px rgba(0, 255, 65, 0.1);
+    position: relative;
+}
+
+.loading-spinner::before {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    border: 2px solid rgba(0, 255, 65, 0.1);
+    border-top: 2px solid #00ff41;
+    border-radius: 50%;
+    animation: spin 2s linear infinite reverse;
+}
+
+.loading-bar {
+    animation: loadProgress 2s ease-in-out infinite;
+    box-shadow: 0 0 10px #00ff41;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes loadProgress {
+    0% { width: 0%; transform: translateX(0); }
+    50% { width: 100%; transform: translateX(0); }
+    100% { width: 0%; transform: translateX(100%); }
+}
+
+/* --- Video Stream Fixes --- */
+#stream-container {
+    overflow: hidden;
+}
+
+#visual-viewport {
+    width: 100%;
+    background: black;
+    display: block;
+}
+
+#view-camera {
+    width: 100%;
+    display: block;
+}
+
+#screenshot-frame {
+    width: 100%;
+    display: block;
+}
+
+/* The video element dictates the container height */
+#game-screenshot {
+    width: 100%;
+    height: auto;
+    display: block;
+}

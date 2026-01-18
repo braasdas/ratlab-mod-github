@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAT LAB: The Experiment</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+
+    <!-- HLS.js -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="styles.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'rat-black': '#050505',
+                        'rat-dark': '#0a0a0a',
+                        'rat-panel': '#111111',
+                        'rat-border': '#333333',
+                        'rat-green': '#00ff41',
+                        'rat-green-dim': 'rgba(0, 255, 65, 0.1)',
+                        'rat-red': '#ff3333',
+                        'rat-yellow': '#ffcc00',
+                        'rat-text': '#e0e0e0',
+                        'rat-text-dim': '#888888',
+                    },
+                    fontFamily: {
+                        'mono': ['"Share Tech Mono"', 'monospace'],
+                        'sans': ['"Inter"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body
+    class="bg-rat-black text-rat-text font-sans overflow-hidden h-screen selection:bg-rat-green selection:text-rat-black">
+
+    <!-- Scanline Overlay -->
+    <div class="scanline"></div>
+    <div class="vignette"></div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 z-50 bg-rat-black flex flex-col items-center justify-center hidden">
+        <div class="loading-spinner mb-8"></div>
+        <h2 class="font-mono text-2xl text-rat-green animate-pulse tracking-widest">ESTABLISHING UPLINK</h2>
+        <div class="w-64 h-1 bg-rat-border mt-4 rounded-full overflow-hidden">
+            <div class="loading-bar h-full bg-rat-green w-0"></div>
+        </div>
+        <p class="text-rat-text-dim mt-4 font-mono text-xs" id="loading-text">INITIALIZING PROTOCOLS...</p>
+    </div>
+
+    <!-- CONTENT BROWSER MODAL (Dynamic Content) -->
+    <div id="content-browser-modal" class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 hidden">
+        <div
+            class="bg-rat-panel border border-rat-border rounded-lg w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
+            <!-- Header -->
+            <div class="p-6 border-b border-rat-border flex justify-between items-center bg-rat-dark">
+                <div>
+                    <h2 id="browser-title" class="font-mono text-xl text-rat-green uppercase tracking-wider">EVENT
+                        DIRECTOR</h2>
+                    <p class="text-xs text-rat-text-dim mt-1">Purchase dynamic content with credits</p>
+                </div>
+                <button onclick="closeContentBrowser()" class="text-rat-text-dim hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="p-4 border-b border-rat-border flex gap-4 bg-rat-panel">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-search absolute left-3 top-3 text-rat-text-dim text-xs"></i>
+                    <input type="text" id="browser-search" placeholder="Search definitions..."
+                        class="w-full bg-rat-black border border-rat-border rounded pl-10 pr-4 py-2 text-sm text-white focus:border-rat-green outline-none font-mono">
+                </div>
+                <select id="browser-filter"
+                    class="bg-rat-black border border-rat-border rounded px-4 py-2 text-sm text-white outline-none font-mono focus:border-rat-green">
+                    <option value="all">ALL CATEGORIES</option>
+                    <!-- Populated dynamically -->
+                </select>
+            </div>
+
+            <!-- Content Grid -->
+            <div id="browser-grid"
+                class="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 custom-scrollbar bg-rat-black/50">
+                <!-- Items injected here -->
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 border-t border-rat-border bg-rat-dark flex justify-between items-center">
+                <span id="browser-count" class="text-xs font-mono text-rat-text-dim">0 ITEMS FOUND</span>
+                <button
+                    class="bg-rat-border text-rat-text-dim px-4 py-2 rounded text-xs font-mono hover:bg-white hover:text-black transition-colors"
+                    onclick="closeContentBrowser()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="h-full flex flex-col">
+
+        <!-- Header -->
+        <header
+            class="h-16 border-b border-rat-border bg-rat-dark/90 backdrop-blur flex items-center justify-between px-6 z-20 relative">
+            <div class="flex items-center gap-4">
+                <div class="text-rat-green text-2xl">
+                    <i class="fa-solid fa-flask"></i>
+                </div>
+                <div>
+                    <h1 class="font-mono text-xl tracking-wider text-white uppercase">Rat Lab <span id="version-number"
+                            class="text-rat-green text-xs align-top cursor-help transition-all duration-300">v3.1</span>
+                    </h1>
+                    <div id="connection-status" class="status disconnected flex items-center gap-2 text-xs font-mono">
+                        <span class="status-dot w-2 h-2 rounded-full bg-rat-red"></span>
+                        <span class="status-text uppercase tracking-widest">NO SIGNAL</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-6">
+                <div id="current-session-name" class="font-mono text-rat-green hidden md:block"></div>
+
+                <!-- Dev Toggle -->
+                <label
+                    class="flex items-center gap-2 cursor-pointer text-xs font-mono text-rat-text-dim hover:text-rat-green"
+                    title="Force CDN (HLS) Mode">
+                    <input type="checkbox" id="force-cdn-toggle" class="accent-rat-green">
+                    <span>FORCE CDN</span>
+                </label>
+
+                <div class="text-xs font-mono text-rat-text-dim text-right">
+                    <div id="coin-balance" class="text-rat-yellow hidden">💰 0 CREDITS</div>
+                    <div id="viewer-count" class="text-rat-text">0 OBSERVERS</div>
+                    <div id="last-update">WAITING FOR DATA...</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 relative flex">
+
+            <!-- Session Selection Screen -->
+            <div id="session-selection" class="screen active absolute inset-0 z-30 bg-rat-black p-8 overflow-y-auto">
+                <div class="max-w-5xl mx-auto">
+                    <div class="text-center mb-12">
+                        <h2 class="font-mono text-4xl text-rat-green mb-4 glitch-text" data-text="SELECT EXPERIMENT">
+                            SELECT EXPERIMENT</h2>
+                        <p class="text-rat-text-dim max-w-md mx-auto">Initialize connection to an active biological
+                            containment unit. Unauthorized access will be logged.</p>
+                    </div>
+                    <div id="sessions-list" class="sessions-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Sessions injected here -->
+                        <div
+                            class="no-sessions col-span-full text-center py-20 border border-rat-border border-dashed rounded-lg bg-rat-panel">
+                            <i class="fa-solid fa-satellite-dish text-4xl text-rat-text-dim mb-4"></i>
+                            <p class="font-mono text-rat-green">SCANNING FREQUENCIES...</p>
+                            <p class="text-sm text-rat-text-dim mt-2">No active signals detected.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Viewer Screen -->
+            <div id="game-viewer" class="screen w-full h-full flex">
+
+                <!-- Sidebar Navigation -->
+                <aside
+                    class="w-16 md:w-64 bg-rat-panel border-r border-rat-border flex flex-col z-10 transition-all duration-300">
+                    <div class="p-4 border-b border-rat-border">
+                        <button id="back-button"
+                            class="w-full py-2 px-3 bg-rat-dark border border-rat-border rounded hover:border-rat-green hover:text-rat-green transition-colors flex items-center justify-center md:justify-start gap-3 group">
+                            <i class="fa-solid fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+                            <span class="hidden md:inline font-mono text-sm">ABORT</span>
+                        </button>
+                    </div>
+
+                    <nav class="flex-1 py-4 space-y-1 px-2 tab-nav">
+                        <button
+                            class="tab-btn active w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3 group"
+                            data-tab="stream">
+                            <i class="fa-solid fa-eye w-5 text-center group-hover:animate-pulse"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">VISUAL FEED</span>
+                        </button>
+                        <button id="tab-btn-my-pawn"
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-yellow hover:text-white transition-all flex items-center gap-3"
+                            data-tab="my-pawn">
+                            <i class="fa-solid fa-user-astronaut w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">ADOPT</span>
+                        </button>
+                        <button
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3"
+                            data-tab="queue">
+                            <i class="fa-solid fa-list-ol w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">QUEUE</span>
+                        </button>
+                        <button
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3"
+                            data-tab="colonists">
+                            <i class="fa-solid fa-users w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">SUBJECTS</span>
+                        </button>
+                        <button
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3"
+                            data-tab="inventory">
+                            <i class="fa-solid fa-box-open w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">ASSETS</span>
+                        </button>
+                        <button
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3"
+                            data-tab="factions">
+                            <i class="fa-solid fa-flag w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">POLITICS</span>
+                        </button>
+                        <button
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3"
+                            data-tab="mods">
+                            <i class="fa-solid fa-puzzle-piece w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">PROTOCOLS</span>
+                        </button>
+                        <button
+                            class="tab-btn w-full text-left py-3 px-4 rounded border border-transparent hover:bg-rat-dark hover:border-rat-border text-rat-text-dim hover:text-rat-green transition-all flex items-center gap-3"
+                            data-tab="stats">
+                            <i class="fa-solid fa-chart-line w-5 text-center"></i>
+                            <span class="hidden md:inline font-mono text-sm tracking-wide">TELEMETRY</span>
+                        </button>
+                    </nav>
+
+                    <div class="p-4 border-t border-rat-border bg-rat-dark">
+                        <div class="flex justify-between text-xs font-mono text-rat-text-dim mb-2">
+                            <span>WEALTH</span>
+                            <span id="wealth" class="text-rat-yellow">$0</span>
+                        </div>
+                        <div class="flex justify-between text-xs font-mono text-rat-text-dim">
+                            <span>POPULATION</span>
+                            <span id="colonist-count" class="text-rat-green">0</span>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Tab Content Area -->
+                <div class="flex-1 bg-rat-black relative flex flex-col overflow-y-auto">
+
+                    <!-- TAB: STREAM -->
+                    <div id="tab-stream" class="tab-pane active flex flex-col p-6">
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Left Column: Stream & Alerts (2/3 width) -->
+                            <div class="lg:col-span-2 flex flex-col gap-6">
+
+                                <!-- Stream Container - adapts to video size -->
+                                <div id="stream-container"
+                                    class="bg-rat-panel border border-rat-border rounded-lg shadow-lg relative group flex flex-col w-full overflow-hidden">
+
+
+                                    <!-- Technical Header & View Switcher -->
+                                    <div
+                                        class="bg-rat-dark border-b border-rat-border px-3 py-2 flex justify-between items-center text-xs font-mono text-rat-text-dim shrink-0">
+                                        <div class="flex items-center gap-4">
+                                            <div class="flex bg-black rounded border border-rat-border p-0.5">
+                                                <button
+                                                    class="view-mode-btn active px-3 py-1 rounded hover:text-white text-rat-green bg-rat-dark"
+                                                    data-mode="camera">
+                                                    <i class="fa-solid fa-video mr-1"></i> CAM
+                                                </button>
+                                                <button class="view-mode-btn px-3 py-1 rounded hover:text-white"
+                                                    data-mode="map">
+                                                    <i class="fa-solid fa-map mr-1"></i> MAP
+                                                </button>
+                                            </div>
+                                            <div id="live-indicator" class="flex items-center gap-2">
+                                                <span class="animate-pulse text-rat-red">● REC</span>
+                                                <span>CAM-01</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center gap-3">
+                                            <div id="map-controls" class="hidden flex gap-2">
+                                                <button id="map-zoom-in" class="hover:text-white"><i
+                                                        class="fa-solid fa-plus"></i></button>
+                                                <button id="map-zoom-out" class="hover:text-white"><i
+                                                        class="fa-solid fa-minus"></i></button>
+                                                <button id="map-reset"
+                                                    class="hover:text-white text-[10px]">RESET</button>
+                                            </div>
+                                            <button id="toggle-preview"
+                                                class="hover:text-white transition-colors border-l border-rat-border pl-3">
+                                                <span id="toggle-preview-icon">▼</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Viewport Wrapper - height set by JS based on video dimensions -->
+                                    <div id="visual-viewport">
+
+                                        <!-- CAMERA VIEW (Default Visible) -->
+                                        <div class="view-layer" id="view-camera">
+
+                                            <!-- screenshot-frame for JS sizing -->
+                                            <div id="screenshot-frame">
+
+                                                <video id="game-screenshot" autoplay muted playsinline></video>
+
+
+
+
+                                                <div id="stream-disabled"
+                                                    class="stream-disabled-overlay absolute inset-0 bg-rat-black/90 flex flex-col items-center justify-center hidden z-20">
+                                                    <i class="fa-solid fa-video-slash text-5xl text-rat-red mb-4"></i>
+                                                    <h3 class="font-mono text-xl text-white">VIDEO FEED OFFLINE</h3>
+                                                    <p class="text-rat-text-dim text-sm mt-2">Audio-link only. Telemetry
+                                                        active.</p>
+                                                </div>
+                                            </div>
+
+                                            <!-- Sync Tip -->
+                                            <div
+                                                class="absolute bottom-2 right-2 text-[10px] font-mono text-white/30 pointer-events-none select-none z-30 bg-black/50 px-2 rounded">
+                                                Video stuttering? Refresh to sync.
+                                            </div>
+                                        </div>
+
+                                        <!-- MAP VIEW -->
+                                        <div class="view-layer absolute inset-0 hidden bg-rat-dark" id="view-map">
+                                            <div id="map-content"
+                                                class="w-full h-full relative origin-center transform-gpu transition-transform duration-75 ease-linear cursor-move touch-none">
+                                                <img id="tactical-map-image" src="" class="w-full h-full object-contain"
+                                                    alt="Tactical Map">
+                                                <div id="map-overlays" class="absolute inset-0 pointer-events-none">
+                                                    <!-- Icons injected here -->
+                                                </div>
+                                            </div>
+                                            <div id="map-loading"
+                                                class="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+                                                <p class="font-mono text-rat-green animate-pulse">AWAITING SATELLITE
+                                                    IMAGERY...</p>
+                                            </div>
+
+                                            <!-- 4K Badge -->
+                                            <div
+                                                class="absolute bottom-4 right-4 flex items-center gap-2 opacity-70 pointer-events-none z-20 select-none">
+                                                <span
+                                                    class="bg-rat-green text-black text-[10px] font-bold px-1.5 py-0.5 rounded shadow-[0_0_10px_rgba(0,255,65,0.4)]">4K</span>
+                                                <span
+                                                    class="text-rat-green text-[10px] font-mono tracking-widest text-shadow-sm">SATELLITE
+                                                    FEED</span>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                <!-- Frame Controls (Collapsible/Compact) -->
+                                <div
+                                    class="bg-rat-panel border border-rat-border rounded p-3 flex flex-wrap gap-4 items-center text-xs font-mono text-rat-text-dim">
+                                    <label class="flex items-center gap-2 cursor-pointer hover:text-rat-green">
+                                        <input type="checkbox" id="frame-enabled" class="accent-rat-green">
+                                        LIMIT FRAME SIZE
+                                    </label>
+                                    <div class="flex items-center gap-2">
+                                        <span>W:</span>
+                                        <input type="number" id="frame-width" value="1280" min="640" max="2560"
+                                            step="80"
+                                            class="bg-rat-black border border-rat-border px-2 py-1 w-16 text-center focus:border-rat-green outline-none">
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span>H:</span>
+                                        <input type="number" id="frame-height" value="720" min="360" max="1440"
+                                            step="60"
+                                            class="bg-rat-black border border-rat-border px-2 py-1 w-16 text-center focus:border-rat-green outline-none">
+                                    </div>
+                                    <button id="reset-frame" class="ml-auto hover:text-rat-green">RESET DEFAULT</button>
+                                </div>
+
+                                <!-- Medical Alerts -->
+                                <div class="medical-alerts-panel">
+                                    <h3
+                                        class="font-mono text-rat-red text-sm mb-3 border-b border-rat-red/20 pb-2 flex items-center gap-2">
+                                        <i class="fa-solid fa-heart-pulse"></i> CRITICAL VITALS
+                                    </h3>
+                                    <div id="medical-alerts-list" class="medical-alerts-list space-y-2">
+                                        <p class="text-xs text-rat-text-dim font-mono italic py-2">Scanning
+                                            biometrics...</p>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <!-- Right Column: Action Deck (1/3 width) -->
+                            <div
+                                class="lg:col-span-1 h-full flex flex-col overflow-hidden bg-rat-panel border-l border-rat-border -my-6 -mr-6 py-6 px-4 lg:border-l">
+                                <div class="mb-4">
+                                    <h3
+                                        class="font-mono text-rat-green text-sm mb-2 uppercase tracking-wider border-b border-rat-green/30 pb-2">
+                                        <i class="fa-solid fa-gamepad mr-2"></i>Control Deck
+                                    </h3>
+                                    <!-- Dynamic Buttons -->
+                                    <div class="flex gap-2 mb-2">
+                                        <button onclick="openContentBrowser('weather')"
+                                            class="flex-1 py-2 px-2 bg-rat-dark border border-rat-border rounded text-[10px] font-mono text-rat-yellow hover:bg-rat-border hover:text-white transition-colors flex items-center justify-center gap-1"
+                                            title="Weather Machine">
+                                            <i class="fa-solid fa-cloud-bolt"></i> WEATHER
+                                        </button>
+                                        <button onclick="openContentBrowser('events')"
+                                            class="flex-1 py-2 px-2 bg-rat-dark border border-rat-border rounded text-[10px] font-mono text-rat-red hover:bg-rat-border hover:text-white transition-colors flex items-center justify-center gap-1"
+                                            title="Event Director">
+                                            <i class="fa-solid fa-bullhorn"></i> EVENTS
+                                        </button>
+                                        <button onclick="openContentBrowser('animals')"
+                                            class="flex-1 py-2 px-2 bg-rat-dark border border-rat-border rounded text-[10px] font-mono text-rat-green hover:bg-rat-border hover:text-white transition-colors flex items-center justify-center gap-1"
+                                            title="Spawner">
+                                            <i class="fa-solid fa-paw"></i> SPAWN
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="action-panel-container" class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                                    <!-- Action Panel content loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: MY PAWN (Private Dashboard) -->
+                    <div id="tab-my-pawn" class="tab-pane h-full overflow-hidden flex flex-col">
+
+                        <!-- 1. ADOPTION CALL TO ACTION (Default Visible) -->
+                        <div class="h-full flex flex-col items-center justify-center" id="adoption-cta">
+                            <div
+                                class="bg-rat-panel border border-rat-green rounded-lg p-8 text-center max-w-lg w-full shadow-[0_0_30px_rgba(0,255,65,0.1)]">
+                                <i class="fa-solid fa-user-astronaut text-6xl text-rat-green mb-6"></i>
+                                <h2 class="font-mono text-2xl text-white mb-2">ADOPT A COLONIST</h2>
+                                <p class="text-rat-text-dim mb-8">Take direct control of a subject. Monitor their
+                                    vitals, manage their inventory, and guide their actions.</p>
+
+                                <div class="mb-6 w-full max-w-xs mx-auto">
+                                    <label class="block text-rat-text-dim text-xs font-mono mb-2 text-left">SUBJECT
+                                        NICKNAME (OPTIONAL):</label>
+                                    <input type="text" id="adoption-nickname"
+                                        class="w-full bg-black border border-rat-border rounded px-4 py-2 text-rat-green font-mono focus:border-rat-green outline-none uppercase text-center"
+                                        placeholder="ENTER NICKNAME" maxlength="16">
+                                </div>
+
+                                <button id="btn-adopt-request-main"
+                                    class="bg-rat-green text-black font-mono font-bold text-lg py-3 px-8 rounded hover:bg-white transition-all uppercase tracking-widest flex items-center gap-2 mx-auto">
+                                    <span>INITIATE UPLINK</span>
+                                    <span class="bg-black/20 px-2 py-1 rounded text-sm">1000c</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 2. MY PAWN DASHBOARD (Hidden until adopted) -->
+                        <div class="h-full hidden flex flex-col" id="adoption-interface">
+                            <!-- Header / Stats Bar -->
+                            <div
+                                class="flex justify-between items-center p-4 bg-rat-dark border-b border-rat-border sticky top-0 z-10">
+                                <div class="flex items-center gap-4">
+                                    <div id="my-pawn-portrait-container"
+                                        class="w-16 h-16 border border-rat-green rounded overflow-hidden bg-black relative">
+                                        <div
+                                            class="w-full h-full flex items-center justify-center text-xs text-rat-green animate-pulse">
+                                            SCANNING</div>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-3">
+                                            <h2 id="my-pawn-name" class="font-mono text-xl text-rat-green font-bold">
+                                                UNKNOWN SUBJECT</h2>
+                                            <button id="btn-rename-pawn"
+                                                class="text-rat-text-dim hover:text-white transition-colors"
+                                                title="Rename Subject">
+                                                <i class="fa-solid fa-pen-nib"></i>
+                                            </button>
+                                        </div>
+                                        <div class="flex gap-4 text-xs font-mono text-rat-text-dim mt-1">
+                                            <span id="my-pawn-job" class="text-rat-yellow">ACTIVITY: IDLE</span>
+                                            <span id="my-pawn-location">LOC: UNKNOWN</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-4 text-right">
+                                    <div class="flex flex-col items-end">
+                                        <span class="text-xs text-rat-text-dim mb-1">HEALTH</span>
+                                        <div class="w-32 h-2 bg-rat-border rounded-full overflow-hidden">
+                                            <div id="my-pawn-health-bar"
+                                                class="h-full bg-rat-red transition-all duration-500" style="width: 0%">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col items-end">
+                                        <span class="text-xs text-rat-text-dim mb-1">MOOD</span>
+                                        <div class="w-32 h-2 bg-rat-border rounded-full overflow-hidden">
+                                            <div id="my-pawn-mood-bar"
+                                                class="h-full bg-rat-green transition-all duration-500"
+                                                style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Main Content Grid -->
+                            <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
+
+                                <!-- Live Feed Panel (Full Width) -->
+                                <div id="my-pawn-live-view-panel"
+                                    class="bg-rat-panel border border-rat-border rounded p-4 hidden mb-4">
+                                    <h3
+                                        class="font-mono text-rat-green text-sm mb-3 border-b border-rat-green/20 pb-1 flex items-center justify-between">
+                                        <span>LIVE OPTICAL VIEW <span
+                                                class="text-[10px] text-rat-text-dim italic normal-case ml-2">Adopters
+                                                only — drag to pan, scroll to zoom</span></span>
+                                        <div class="flex items-center gap-2">
+                                            <!-- Camera Mode Toggle -->
+                                            <div
+                                                class="flex gap-1 bg-rat-dark border border-rat-border rounded overflow-hidden">
+                                                <button id="btn-camera-follow"
+                                                    class="px-2 py-1 text-[10px] font-mono bg-rat-green text-black transition-colors">
+                                                    <i class="fa-solid fa-crosshairs mr-1"></i>FOLLOW
+                                                </button>
+                                                <button id="btn-camera-free"
+                                                    class="px-2 py-1 text-[10px] font-mono hover:bg-rat-dark/50 transition-colors">
+                                                    <i class="fa-solid fa-hand mr-1"></i>FREE
+                                                </button>
+                                            </div>
+                                            <span class="animate-pulse text-rat-red text-[10px]">● LIVE</span>
+                                        </div>
+                                    </h3>
+                                    <div id="my-pawn-live-view-container"
+                                        class="w-full h-[400px] bg-black border border-rat-dark rounded overflow-hidden relative cursor-crosshair group">
+                                        <div
+                                            class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-10">
+                                            <span
+                                                class="text-rat-green font-mono text-xs border border-rat-green px-2 py-1 rounded bg-black/80 text-center leading-snug">CLICK
+                                                TILE TO ORDER<br>SCROLL TO ZOOM · DRAG TO PAN</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    <!-- COLUMN 1: NEEDS & GEAR -->
+                                    <div class="flex flex-col gap-4">
+
+                                        <!-- Needs Panel -->
+                                        <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                            <h3
+                                                class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">
+                                                PHYSIOLOGICAL NEEDS</h3>
+                                            <div id="my-pawn-needs-list" class="flex flex-col gap-3">
+                                                <!-- Needs injected here -->
+                                            </div>
+                                        </div>
+
+                                        <!-- Gear Panel -->
+                                        <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                            <h3
+                                                class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">
+                                                EQUIPMENT LOADOUT</h3>
+                                            <div id="my-pawn-gear-layout" class="equipment-layout">
+                                                <!-- Gear grid injected here -->
+                                            </div>
+                                            <button id="btn-force-equip"
+                                                class="w-full mt-3 btn-rat text-xs py-2 bg-rat-dark border border-rat-border hover:border-rat-green hover:text-rat-green transition-colors">
+                                                <i class="fa-solid fa-shirt"></i> FORCE EQUIP NEW ITEM
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- COLUMN 2: WORK & SCHEDULE -->
+                                    <div class="flex flex-col gap-4">
+                                        <!-- Current Task -->
+                                        <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                            <h3
+                                                class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">
+                                                CURRENT DIRECTIVE</h3>
+                                            <div
+                                                class="flex items-center gap-3 bg-rat-dark p-3 rounded border border-rat-border">
+                                                <i class="fa-solid fa-person-digging text-rat-green text-xl"></i>
+                                                <div>
+                                                    <div id="my-pawn-current-task-label"
+                                                        class="text-sm font-mono text-white">Unknown</div>
+                                                    <div id="my-pawn-current-target"
+                                                        class="text-xs font-mono text-rat-text-dim">No target</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Work Priorities (Interactive) -->
+                                        <div class="bg-rat-panel border border-rat-border rounded p-4 flex-1">
+                                            <div
+                                                class="flex justify-between items-center mb-3 border-b border-rat-yellow/20 pb-1">
+                                                <h3 class="font-mono text-rat-yellow text-sm">WORK PRIORITIES</h3>
+                                                <span class="text-[10px] text-rat-text-dim uppercase">Drag to
+                                                    reorder</span>
+                                            </div>
+                                            <div id="my-pawn-work-list"
+                                                class="flex flex-col gap-1 text-xs font-mono h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                                                <!-- Work types injected here -->
+                                                <div class="p-2 bg-rat-dark text-rat-text-dim text-center">Fetching work
+                                                    data...</div>
+                                            </div>
+                                            <button id="btn-save-priorities"
+                                                class="w-full mt-3 btn-rat text-xs py-2 bg-rat-green text-black font-bold hover:bg-white transition-colors hidden">
+                                                SAVE PRIORITY CHANGES
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- COLUMN 3: ACTIONS & LOGS -->
+                                    <div class="flex flex-col gap-4">
+                                        <!-- Direct Commands -->
+                                        <div class="bg-rat-panel border border-rat-border rounded p-4">
+                                            <h3
+                                                class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">
+                                                DIRECT COMMAND INTERFACE</h3>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-rat-red hover:text-white p-2 rounded text-xs transition-colors"
+                                                    data-cmd="draft">
+                                                    <i class="fa-solid fa-person-military-rifle mb-1 block text-lg"></i>
+                                                    TOGGLE DRAFT
+                                                </button>
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-rat-green hover:text-black p-2 rounded text-xs transition-colors"
+                                                    data-cmd="goto">
+                                                    <i class="fa-solid fa-location-dot mb-1 block text-lg"></i>
+                                                    MOVE TO...
+                                                </button>
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-rat-yellow hover:text-black p-2 rounded text-xs transition-colors"
+                                                    data-cmd="attack">
+                                                    <i class="fa-solid fa-crosshairs mb-1 block text-lg"></i>
+                                                    ATTACK TARGET
+                                                </button>
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-blue-500 hover:text-white p-2 rounded text-xs transition-colors"
+                                                    data-cmd="medical">
+                                                    <i class="fa-solid fa-user-doctor mb-1 block text-lg"></i>
+                                                    TEND SELF
+                                                </button>
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-orange-500 hover:text-white p-2 rounded text-xs transition-colors"
+                                                    data-cmd="ignite">
+                                                    <i class="fa-solid fa-fire mb-1 block text-lg"></i>
+                                                    IGNITE
+                                                </button>
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-red-700 hover:text-white p-2 rounded text-xs transition-colors"
+                                                    data-cmd="smash">
+                                                    <i class="fa-solid fa-hammer mb-1 block text-lg"></i>
+                                                    SMASH
+                                                </button>
+                                                <button
+                                                    class="btn-cmd btn-rat bg-rat-dark border border-rat-border hover:bg-purple-600 hover:text-white p-2 rounded text-xs transition-colors"
+                                                    data-cmd="fight">
+                                                    <i class="fa-solid fa-hand-fist mb-1 block text-lg"></i>
+                                                    FIGHT
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Personal Log -->
+                                        <div
+                                            class="bg-rat-panel border border-rat-border rounded p-4 flex-1 flex flex-col">
+                                            <h3
+                                                class="font-mono text-rat-yellow text-sm mb-3 border-b border-rat-yellow/20 pb-1">
+                                                PERSONAL LOG</h3>
+                                            <div id="my-pawn-log"
+                                                class="flex-1 bg-black p-2 font-mono text-[10px] text-rat-text-dim overflow-y-auto custom-scrollbar h-[150px] border border-rat-border/50 rounded">
+                                                <div class="text-rat-green">> System linked.</div>
+                                                <div class="text-rat-green">> Awaiting biometric data...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: QUEUE -->
+                    <div id="tab-queue" class="tab-pane h-full p-6 overflow-hidden">
+                        <div class="max-w-7xl mx-auto w-full h-full flex flex-col">
+
+                            <!-- Countdown Timer Header -->
+                            <div class="mb-8 text-center">
+                                <div
+                                    class="inline-block bg-rat-panel border border-rat-red rounded-lg p-4 shadow-[0_0_15px_rgba(255,51,51,0.2)]">
+                                    <p class="text-rat-red text-xs font-mono tracking-[0.2em] mb-1 animate-pulse">
+                                        SELECTION IMMINENT IN</p>
+                                    <div id="queue-timer"
+                                        class="text-5xl font-mono font-bold text-rat-red tabular-nums tracking-wider"
+                                        style="text-shadow: 0 0 10px rgba(255, 51, 51, 0.5);">
+                                        00:00
+                                    </div>
+                                    <p class="text-rat-text-dim text-[10px] font-mono mt-2">TOP RATED PROTOCOL WILL BE
+                                        EXECUTED</p>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-end mb-6 border-b border-rat-border pb-2">
+                                <h3 class="font-mono text-rat-green text-xl">ACTION QUEUE</h3>
+                                <button id="btn-submit-request"
+                                    class="bg-rat-green text-black font-mono font-bold px-4 py-2 rounded text-sm hover:bg-white transition-colors flex items-center gap-2">
+                                    <i class="fa-solid fa-plus"></i> NEW REQUEST
+                                </button>
+                            </div>
+
+                            <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                                <div id="queue-list" class="space-y-4">
+                                    <p class="loading font-mono text-rat-text-dim text-center py-10">Loading queue
+                                        data...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: COLONISTS -->
+                    <div id="tab-colonists" class="tab-pane h-full p-6 overflow-y-auto">
+                        <div class="max-w-7xl mx-auto">
+                            <h3 class="font-mono text-rat-green text-xl mb-6 border-b border-rat-border pb-2">ACTIVE
+                                SUBJECTS</h3>
+                            <div id="colonists-list"
+                                class="colonists-list grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                <p class="loading font-mono text-rat-text-dim">Retrieving personnel files...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: INVENTORY -->
+                    <div id="tab-inventory" class="tab-pane h-full p-6 overflow-y-auto">
+                        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <!-- Storage -->
+                            <div class="bg-rat-panel border border-rat-border rounded-lg p-6">
+                                <h3 class="font-mono text-rat-yellow text-lg mb-4 flex items-center gap-2">
+                                    <i class="fa-solid fa-warehouse"></i> COLONY STOCKPILE
+                                </h3>
+                                <div id="stored-resources-container"
+                                    class="resources-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                                    <p class="loading col-span-full text-center text-sm text-rat-text-dim">Scanning
+                                        storage zones...</p>
+                                </div>
+                            </div>
+
+                            <!-- Personal Inventories -->
+                            <div class="bg-rat-panel border border-rat-border rounded-lg p-6 flex flex-col">
+                                <h3 class="font-mono text-rat-yellow text-lg mb-4 flex items-center gap-2">
+                                    <i class="fa-solid fa-person-rifle"></i> PERSONAL LOADOUTS
+                                </h3>
+                                <div id="inventory-container"
+                                    class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                                    <p class="loading text-center text-sm text-rat-text-dim">Scanning subjects...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: FACTIONS -->
+                    <div id="tab-factions" class="tab-pane h-full p-6 overflow-y-auto">
+                        <div class="max-w-4xl mx-auto bg-rat-panel border border-rat-border rounded-lg p-6">
+                            <h3 class="font-mono text-rat-green text-xl mb-6 border-b border-rat-border pb-2">
+                                GEOPOLITICAL LANDSCAPE</h3>
+                            <div id="faction-relations-full" class="faction-relations space-y-3">
+                                <p class="loading font-mono text-rat-text-dim">Intercepting diplomatic comms...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: MODS -->
+                    <div id="tab-mods" class="tab-pane h-full p-6 overflow-y-auto">
+                        <div class="max-w-5xl mx-auto">
+                            <h3 class="font-mono text-rat-green text-xl mb-6 border-b border-rat-border pb-2">ACTIVE
+                                PROTOCOLS (MODS)</h3>
+                            <div id="mods-list" class="mods-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <p class="loading font-mono text-rat-text-dim">Analyzing code integrity...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: STATS -->
+                    <div id="tab-stats" class="tab-pane h-full p-6 overflow-y-auto">
+                        <div class="max-w-7xl mx-auto">
+                            <h3 class="font-mono text-rat-green text-xl mb-6 border-b border-rat-border pb-2">COLONY
+                                TELEMETRY</h3>
+                            <div class="stats-widgets-container grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                <div id="power-stats" class="h-full"></div>
+                                <div id="creature-stats" class="h-full"></div>
+                                <div id="research-stats" class="h-full"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+
+        <!-- Password Modal -->
+        <div id="password-modal"
+            class="modal-backdrop fixed inset-0 bg-black/90 backdrop-blur-sm z-50 hidden items-center justify-center">
+            <div
+                class="modal-content bg-rat-panel border border-rat-green rounded-lg w-full max-w-md p-0 shadow-2xl shadow-rat-green/20 transform transition-all scale-100 opacity-100">
+                <div class="modal-header border-b border-rat-border p-4 flex justify-between items-center bg-rat-dark">
+                    <h3 class="font-mono text-rat-green text-lg uppercase tracking-wider">🔒 Security Clearance</h3>
+                    <button class="modal-close-btn text-rat-text-dim hover:text-white text-2xl leading-none"
+                        id="close-password-modal">&times;</button>
+                </div>
+                <div class="modal-body p-6">
+                    <p class="text-rat-text mb-4 text-sm font-mono">This protocol requires a security code. Enter
+                        authorization key:</p>
+                    <div class="form-group relative">
+                        <input type="password" id="interaction-password-input" placeholder="ACCESS CODE"
+                            class="full-width-input w-full bg-black border border-rat-border text-rat-green font-mono p-3 rounded focus:border-rat-green focus:ring-1 focus:ring-rat-green outline-none tracking-widest text-center">
+                    </div>
+                    <div id="password-error"
+                        class="error-text hidden mt-3 text-rat-red text-xs font-mono text-center uppercase border border-rat-red/30 bg-rat-red/10 p-2 rounded">
+                        Access Denied: Invalid Key</div>
+                </div>
+                <div class="modal-footer p-4 border-t border-rat-border bg-rat-dark">
+                    <button id="submit-password-btn"
+                        class="btn-primary full-width w-full bg-rat-green text-black font-bold font-mono py-3 rounded hover:bg-white hover:scale-[1.02] transition-all uppercase tracking-wider">Authorize</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="username-modal"
+            class="modal-backdrop fixed inset-0 bg-black/90 backdrop-blur-sm z-50 hidden items-center justify-center">
+            <div
+                class="modal-content bg-rat-panel border border-rat-green rounded-lg w-full max-w-md p-0 shadow-2xl shadow-rat-green/20">
+                <div class="modal-header border-b border-rat-border p-4 flex justify-between items-center bg-rat-dark">
+                    <h3 class="font-mono text-rat-green text-lg uppercase tracking-wider">👤 Identity Registration</h3>
+                </div>
+                <div class="modal-body p-6">
+                    <p class="text-rat-text mb-4 text-sm font-mono">Enter your callsign to access the Rat Lab network:
+                    </p>
+                    <div class="form-group relative">
+                        <input type="text" id="username-input" placeholder="CALLSIGN"
+                            class="full-width-input w-full bg-black border border-rat-border text-rat-green font-mono p-3 rounded focus:border-rat-green focus:ring-1 focus:ring-rat-green outline-none tracking-widest text-center uppercase"
+                            maxlength="15">
+                    </div>
+                    <div id="username-error"
+                        class="error-text hidden mt-3 text-rat-red text-xs font-mono text-center uppercase border border-rat-red/30 bg-rat-red/10 p-2 rounded">
+                        Invalid Callsign</div>
+                </div>
+                <div class="modal-footer p-4 border-t border-rat-border bg-rat-dark">
+                    <button id="submit-username-btn"
+                        class="btn-primary full-width w-full bg-rat-green text-black font-bold font-mono py-3 rounded hover:bg-white hover:scale-[1.02] transition-all uppercase tracking-wider">Connect</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue Input Modal -->
+        <div id="queue-modal"
+            class="modal-backdrop fixed inset-0 bg-black/90 backdrop-blur-sm z-50 hidden items-center justify-center">
+            <div
+                class="modal-content bg-rat-panel border border-rat-green rounded-lg w-full max-w-md p-0 shadow-2xl shadow-rat-green/20 transform transition-all scale-100 opacity-100">
+                <div class="modal-header border-b border-rat-border p-4 flex justify-between items-center bg-rat-dark">
+                    <h3 class="font-mono text-rat-green text-lg uppercase tracking-wider">💡 Submit Idea</h3>
+                    <button class="modal-close-btn text-rat-text-dim hover:text-white text-2xl leading-none"
+                        id="close-queue-modal">&times;</button>
+                </div>
+
+                <!-- Internal Tabs -->
+                <div class="flex border-b border-rat-border bg-rat-black/50">
+                    <button id="qtab-suggestion"
+                        class="flex-1 py-3 text-xs font-mono text-rat-green border-b-2 border-rat-green transition-colors">SUGGESTION</button>
+                    <button id="qtab-monument"
+                        class="flex-1 py-3 text-xs font-mono text-rat-text-dim border-b-2 border-transparent hover:text-white transition-colors">MONUMENT</button>
+                </div>
+
+                <div class="modal-body p-6">
+                    <!-- Suggestion View -->
+                    <div id="qview-suggestion">
+                        <p class="text-rat-text mb-4 text-sm font-mono">Suggest a new course of action for the colony:
+                        </p>
+                        <div class="form-group relative">
+                            <textarea id="queue-input" placeholder="Enter suggestion..." rows="3"
+                                class="full-width-input w-full bg-black border border-rat-border text-rat-green font-mono p-3 rounded focus:border-rat-green focus:ring-1 focus:ring-rat-green outline-none resize-none"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Monument View (WIP) -->
+                    <div id="qview-monument" class="hidden">
+                        <div class="border border-rat-yellow/30 bg-rat-yellow/10 rounded p-4 text-center">
+                            <i class="fa-solid fa-person-digging text-3xl text-rat-yellow mb-2"></i>
+                            <h4 class="font-mono text-rat-yellow text-sm font-bold">UNDER CONSTRUCTION</h4>
+                            <p class="text-rat-text-dim text-xs mt-2">Blueprint uplink offline.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer p-4 border-t border-rat-border bg-rat-dark">
+                    <button id="submit-queue-btn"
+                        class="btn-primary full-width w-full bg-rat-green text-black font-bold font-mono py-3 rounded hover:bg-white hover:scale-[1.02] transition-all uppercase tracking-wider">Submit
+                        to Vote</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Main Application Logic (Modular) -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="js/viewer/main.js"></script>
+
+    <!-- Pi Easter Egg -->
+    <script>
+            (function () {
+                const versionEl = document.getElementById('version-number');
+                if (!versionEl) return;
+
+                // Digits of pi (100 digits should be enough for anyone)
+                const piDigits = '3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679';
+                let currentLength = 3; // Start at "v3.1"
+                let interval = null;
+                let isExpanding = false;
+
+                versionEl.addEventListener('mouseenter', () => {
+                    if (isExpanding) return;
+                    isExpanding = true;
+                    currentLength = 3; // Reset to "3.1"
+
+                    interval = setInterval(() => {
+                        if (currentLength < piDigits.length) {
+                            currentLength++;
+                            versionEl.textContent = 'v' + piDigits.substring(0, currentLength);
+                        } else {
+                            clearInterval(interval);
+                            isExpanding = false;
+                        }
+                    }, 100); // Reveal one digit every 100ms
+                });
+
+                versionEl.addEventListener('mouseleave', () => {
+                    if (interval) {
+                        clearInterval(interval);
+                        interval = null;
+                    }
+                    isExpanding = false;
+                    versionEl.textContent = 'v3.1';
+                    currentLength = 3;
+                });
+            })();
+    </script>
+</body>
+
+</html>

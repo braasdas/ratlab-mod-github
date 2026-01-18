@@ -1,0 +1,77 @@
+# =============================================
+# GITIGNORE - Source Code Only
+# =============================================
+
+# Ignore everything by default
+*
+
+# Allow specific source directories
+!Ratlab Server/
+!Ratlab Server/**
+!Ratlab Mod/
+!Ratlab Mod/**
+!rust-sidecar/
+!rust-sidecar/src/
+!rust-sidecar/src/**
+!rust-sidecar/Cargo.toml
+!rust-sidecar/Cargo.lock
+!rust-sidecar/README.md
+
+# But ignore these within allowed directories
+Ratlab Server/node_modules/
+Ratlab Server/cache/
+Ratlab Mod/obj/
+Ratlab Mod/bin/
+Ratlab Mod/.vs/
+rust-sidecar/target/
+
+# Allow root config files
+!.gitignore
+!README.md
+!*.md
+
+# Ignore build outputs
+*.exe
+*.dll
+*.pdb
+*.rlib
+*.rmeta
+*.so
+*.dylib
+
+# Ignore IDE/editor files
+.vs/
+.vscode/
+*.user
+*.suo
+.idea/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ignore logs and caches
+*.log
+cache/
+temp/
+tmp/
+
+# Ignore backup and deprecated folders
+backup/
+BUILDS/
+RIMAPI-latest/
+RIMAPI SOURCE/
+deprecated*/
+POSSIBLE INTEGRATIONS*/
+temp_defs/
+.claude/
+.gemini/
+go-sidecar/
+time-waster-extension/
+
+# Ignore misc
+nul
+fun.py
+*.bat
+!start.bat

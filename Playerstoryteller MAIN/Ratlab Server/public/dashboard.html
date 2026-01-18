@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAT LAB: Command Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'rat-black': '#050505',
+                        'rat-dark': '#0a0a0a',
+                        'rat-panel': '#111111',
+                        'rat-border': '#333333',
+                        'rat-green': '#00ff41',
+                        'rat-red': '#ff3333',
+                        'rat-yellow': '#ffcc00',
+                        'rat-text': '#e0e0e0',
+                        'rat-text-dim': '#888888',
+                    },
+                    fontFamily: {
+                        'mono': ['"Share Tech Mono"', 'monospace'],
+                        'sans': ['"Inter"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #050505; color: #e0e0e0; }
+        .scanline {
+            position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 255, 65, 0.02) 51%);
+            background-size: 100% 4px; pointer-events: none; z-index: 50;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0a0a0a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #00ff41; }
+        
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #00ff41;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #00ff41;
+        }
+    </style>
+</head>
+<body class="font-sans h-screen flex flex-col overflow-hidden">
+
+    <div class="scanline"></div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 z-50 bg-rat-black flex items-center justify-center p-4">
+        <div class="bg-rat-panel border border-rat-border rounded-lg p-8 w-full max-w-md shadow-2xl">
+            <div class="text-center mb-8">
+                <i class="fa-solid fa-flask text-4xl text-rat-green mb-4"></i>
+                <h1 class="font-mono text-2xl text-white tracking-widest uppercase">Command Center</h1>
+                <p class="text-rat-text-dim text-sm mt-2">Authenticate to access controller settings</p>
+            </div>
+
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <label class="block text-xs font-mono text-rat-text-dim mb-2 uppercase">Session ID</label>
+                    <input type="text" id="session-id-input" class="w-full bg-rat-black border border-rat-border rounded p-3 text-white focus:border-rat-green outline-none font-mono" placeholder="e.g. default-session or GUID">
+                </div>
+                <div>
+                    <label class="block text-xs font-mono text-rat-text-dim mb-2 uppercase">Stream Key</label>
+                    <input type="password" id="stream-key-input" class="w-full bg-rat-black border border-rat-border rounded p-3 text-white focus:border-rat-green outline-none font-mono" placeholder="••••••••••••">
+                </div>
+                <div id="login-error" class="hidden text-rat-red text-xs font-mono text-center bg-rat-red/10 p-2 rounded border border-rat-red/20">
+                    Authentication Failed
+                </div>
+                <button type="submit" class="w-full bg-rat-green text-black font-bold font-mono py-3 rounded hover:bg-white transition-colors uppercase tracking-widest">
+                    Initialize Uplink
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- CONTENT BROWSER MODAL (Dynamic Content) -->
+    <div id="content-browser-modal" class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 hidden">
+        <div class="bg-rat-panel border border-rat-border rounded-lg w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
+            <!-- Header -->
+            <div class="p-6 border-b border-rat-border flex justify-between items-center bg-rat-dark">
+                <div>
+                    <h2 id="browser-title" class="font-mono text-xl text-rat-green uppercase tracking-wider">EVENT DIRECTOR</h2>
+                    <p class="text-xs text-rat-text-dim mt-1">Select a definition from the active mod list</p>
+                </div>
+                <button onclick="closeContentBrowser()" class="text-rat-text-dim hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Toolbar -->
+            <div class="p-4 border-b border-rat-border flex gap-4 bg-rat-panel">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-search absolute left-3 top-3 text-rat-text-dim text-xs"></i>
+                    <input type="text" id="browser-search" placeholder="Search definitions..." class="w-full bg-rat-black border border-rat-border rounded pl-10 pr-4 py-2 text-sm text-white focus:border-rat-green outline-none font-mono">
+                </div>
+                <select id="browser-filter" class="bg-rat-black border border-rat-border rounded px-4 py-2 text-sm text-white outline-none font-mono focus:border-rat-green">
+                    <option value="all">ALL CATEGORIES</option>
+                    <!-- Populated dynamically -->
+                </select>
+            </div>
+
+            <!-- Content Grid -->
+            <div id="browser-grid" class="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 custom-scrollbar bg-rat-black/50">
+                <!-- Items injected here -->
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 border-t border-rat-border bg-rat-dark flex justify-between items-center">
+                <span id="browser-count" class="text-xs font-mono text-rat-text-dim">0 ITEMS FOUND</span>
+                <button class="bg-rat-border text-rat-text-dim px-4 py-2 rounded text-xs font-mono hover:bg-white hover:text-black transition-colors" onclick="closeContentBrowser()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD UI (Hidden by default) -->
+    <div id="dashboard-ui" class="flex flex-col h-full hidden">
+        
+        <!-- Header -->
+        <header class="h-16 border-b border-rat-border bg-rat-dark flex items-center justify-between px-6 z-20">
+            <div class="flex items-center gap-4">
+                <i class="fa-solid fa-sliders text-rat-green text-xl"></i>
+                <h1 class="font-mono text-lg text-white uppercase tracking-wider">Rat Lab <span class="text-rat-text-dim text-xs">Controller</span></h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="text-xs font-mono text-rat-green" id="dash-session-id">SESSION: UNKNOWN</span>
+                <button onclick="window.showPrivateSessionModal(localStorage.getItem('dash_session'))" class="text-rat-text-dim hover:text-rat-yellow transition-colors" title="Show Private Link">
+                    <i class="fa-solid fa-share-nodes"></i>
+                </button>
+                <button id="logout-btn" class="text-xs text-rat-text-dim hover:text-white font-mono border border-rat-border px-3 py-1 rounded hover:bg-rat-border">LOGOUT</button>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden">
+            
+            <!-- Sidebar -->
+            <aside class="w-64 bg-rat-panel border-r border-rat-border flex flex-col">
+                <nav class="flex-1 p-4 space-y-1">
+                    <button class="nav-btn w-full text-left py-3 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-rat-green flex items-center gap-3 font-mono text-sm active bg-rat-dark text-rat-green border-l-2 border-rat-green" data-view="general">
+                        <i class="fa-solid fa-globe w-5 text-center"></i> General
+                    </button>
+                    <button class="nav-btn w-full text-left py-3 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-rat-green flex items-center gap-3 font-mono text-sm border-l-2 border-transparent" data-view="actions">
+                        <i class="fa-solid fa-gamepad w-5 text-center"></i> Actions
+                    </button>
+                    <button class="nav-btn w-full text-left py-3 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-rat-green flex items-center gap-3 font-mono text-sm border-l-2 border-transparent" data-view="economy">
+                        <i class="fa-solid fa-coins w-5 text-center"></i> Economy
+                    </button>
+                    <button class="nav-btn w-full text-left py-3 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-rat-green flex items-center gap-3 font-mono text-sm border-l-2 border-transparent" data-view="queue">
+                        <i class="fa-solid fa-list-check w-5 text-center"></i> Queue
+                    </button>
+                    
+                    <div class="pt-4 mt-4 border-t border-rat-border">
+                        <p class="px-4 text-[10px] font-mono text-rat-text-dim uppercase mb-2">Content Config</p>
+                        <button onclick="openContentSettings('weather')" class="w-full text-left py-2 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-white flex items-center gap-3 font-mono text-xs transition-colors">
+                            <i class="fa-solid fa-cloud-bolt w-5 text-center text-rat-yellow"></i> Weather Machine
+                        </button>
+                        <button onclick="openContentSettings('events')" class="w-full text-left py-2 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-white flex items-center gap-3 font-mono text-xs transition-colors">
+                            <i class="fa-solid fa-bullhorn w-5 text-center text-rat-red"></i> Event Director
+                        </button>
+                        <button onclick="openContentSettings('animals')" class="w-full text-left py-2 px-4 rounded hover:bg-rat-dark text-rat-text-dim hover:text-white flex items-center gap-3 font-mono text-xs transition-colors">
+                            <i class="fa-solid fa-paw w-5 text-center text-rat-green"></i> Spawner
+                        </button>
+                    </div>
+                </nav>
+                <div class="p-4 border-t border-rat-border">
+                     <button id="save-changes-btn" class="w-full bg-rat-green text-black font-bold font-mono py-2 rounded hover:bg-white transition-colors uppercase text-sm">
+                        Save Changes
+                    </button>
+                    <div id="save-status" class="text-center text-xs font-mono mt-2 text-rat-text-dim min-h-[1.5em]"></div>
+                </div>
+            </aside>
+
+            <!-- Content Area -->
+            <main class="flex-1 bg-rat-black overflow-y-auto custom-scrollbar p-8">
+                
+                <!-- GENERAL VIEW -->
+                <div id="view-general" class="view-pane space-y-8">
+                    <section class="bg-rat-panel border border-rat-border rounded-lg p-6">
+                        <h2 class="font-mono text-xl text-rat-yellow mb-4 border-b border-rat-border pb-2 uppercase">Session Privacy</h2>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <label class="block text-sm text-white font-bold mb-1">Public Listing</label>
+                                    <p class="text-xs text-rat-text-dim">Show this session in the public browser list</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="setting-isPublic" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-rat-dark peer-focus:outline-none border border-rat-border rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rat-green"></div>
+                                </label>
+                            </div>
+
+                            <!-- Private Link Panel -->
+                            <div id="private-link-panel" class="hidden mt-4 bg-rat-dark border border-rat-yellow/30 rounded p-4">
+                                <p class="text-xs text-rat-yellow font-mono mb-2 uppercase flex items-center gap-2">
+                                    <i class="fa-solid fa-lock"></i> Private Access Link
+                                </p>
+                                <div class="flex gap-2">
+                                    <input type="text" id="private-url-input" readonly class="flex-1 bg-black border border-rat-border rounded p-2 text-rat-text font-mono text-xs outline-none select-all">
+                                    <button onclick="copyPrivateLink()" class="bg-rat-yellow text-black px-3 rounded font-bold text-xs hover:bg-white transition-colors">COPY</button>
+                                </div>
+                                <p class="text-[10px] text-rat-text-dim mt-2">
+                                    Give this URL to your viewers. They will not see the session in the public list.
+                                </p>
+                            </div>
+                            
+                            <div>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <label class="block text-sm text-white font-bold">Interaction Password</label>
+                                    <span id="password-status-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-rat-dark border border-rat-border text-rat-text-dim">NONE</span>
+                                    <button id="btn-remove-password" class="ml-auto text-[10px] text-rat-red border border-rat-red/50 hover:bg-rat-red hover:text-black px-2 py-0.5 rounded transition-colors hidden font-mono uppercase">
+                                        <i class="fa-solid fa-trash mr-1"></i> Remove
+                                    </button>
+                                </div>
+                                <input type="text" id="setting-interactionPassword" class="w-full max-w-xs bg-rat-black border border-rat-border rounded p-2 text-rat-green font-mono text-sm" placeholder="(Optional) Set a password">
+                                <p class="text-xs text-rat-text-dim mt-1">Viewers must enter this to send commands</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="bg-rat-panel border border-rat-border rounded-lg p-6">
+                        <h2 class="font-mono text-xl text-rat-yellow mb-4 border-b border-rat-border pb-2 uppercase">Stream Settings</h2>
+                        <div class="space-y-4">
+                             <div class="flex items-center justify-between">
+                                <div>
+                                    <label class="block text-sm text-white font-bold mb-1">Live Screen Feed</label>
+                                    <p class="text-xs text-rat-text-dim">Transmit visual data to clients</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="setting-enableLiveScreen" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-rat-dark peer-focus:outline-none border border-rat-border rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rat-green"></div>
+                                </label>
+                            </div>
+
+                             <div>
+                                <label class="block text-sm text-white font-bold mb-2">Action Rate Limit (Global)</label>
+                                <div class="flex items-center gap-4">
+                                    <input type="range" id="setting-maxActionsPerMinute" min="1" max="120" class="w-full max-w-xs accent-rat-green">
+                                    <span class="font-mono text-rat-green text-lg w-12" id="display-maxActionsPerMinute">30</span>
+                                    <span class="text-xs text-rat-text-dim">per minute</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- ACTIONS VIEW -->
+                <div id="view-actions" class="view-pane hidden space-y-8">
+                    <!-- Injected via JS based on categories -->
+                </div>
+
+                <!-- ECONOMY VIEW -->
+                <div id="view-economy" class="view-pane hidden space-y-8">
+                     <section class="bg-rat-panel border border-rat-border rounded-lg p-6">
+                        <h2 class="font-mono text-xl text-rat-yellow mb-4 border-b border-rat-border pb-2 uppercase">Global Economy</h2>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div>
+                                <label class="block text-sm text-white font-bold mb-2">Passive Income Rate</label>
+                                <div class="flex items-center gap-3">
+                                    <input type="number" id="setting-coinRate" class="bg-rat-black border border-rat-border rounded p-2 text-white font-mono w-24 text-center focus:border-rat-green outline-none" min="0">
+                                    <span class="text-sm text-rat-text-dim">Credits / Minute</span>
+                                </div>
+                                <p class="text-xs text-rat-text-dim mt-2">Amount earned by every active viewer each minute.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="bg-rat-panel border border-rat-border rounded-lg p-6">
+                        <h2 class="font-mono text-xl text-rat-yellow mb-4 border-b border-rat-border pb-2 uppercase">Action Pricing</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="economy-prices-grid">
+                            <!-- Injected Prices -->
+                        </div>
+                    </section>
+                </div>
+
+                <!-- QUEUE VIEW -->
+                <div id="view-queue" class="view-pane hidden h-full flex flex-col">
+                    <div class="mb-6 flex justify-between items-end border-b border-rat-border pb-4">
+                        <div>
+                            <h2 class="font-mono text-2xl text-white mb-1">QUEUE MANAGEMENT</h2>
+                            <p class="text-xs text-rat-text-dim font-mono">APPROVE OR REJECT VIEWER IDEAS</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2 border-r border-rat-border pr-4">
+                                <span class="text-xs font-mono text-rat-text-dim">TIMER (MIN)</span>
+                                <input type="number" id="setting-voteDuration" class="bg-rat-dark border border-rat-border rounded px-2 py-1 w-16 text-center text-white font-mono focus:border-rat-green outline-none" min="1" value="10">
+                            </div>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <span class="text-xs font-mono text-rat-text-dim">AUTO-SEND</span>
+                                <input type="checkbox" id="setting-autoExecute" class="accent-rat-green">
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                        <div id="dash-queue-list" class="space-y-4">
+                            <p class="text-center text-rat-text-dim font-mono py-10">Loading queue...</p>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

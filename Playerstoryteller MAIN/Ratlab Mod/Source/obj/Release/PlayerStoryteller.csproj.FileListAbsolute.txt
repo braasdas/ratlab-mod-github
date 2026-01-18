@@ -1,0 +1,21 @@
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.csproj.AssemblyReference.cache
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.AssemblyInfoInputs.cache
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.AssemblyInfo.cs
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.csproj.CoreCompileInputs.cache
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Assemblies\PlayerStoryteller.dll
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Assemblies\PlayerStoryteller.pdb
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.dll
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerStoryteller.pdb
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\PlayerStoryteller\Source\obj\Release\PlayerSt.7A8215F2.Up2Date
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Assemblies\PlayerStoryteller.dll
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Assemblies\PlayerStoryteller.pdb
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.csproj.AssemblyReference.cache
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.AssemblyInfoInputs.cache
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.AssemblyInfo.cs
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.csproj.CoreCompileInputs.cache
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerSt.7A8215F2.Up2Date
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.dll
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.pdb
+C:\Users\benja\OneDrive\Documents\Portfolio\Playerstoryteller MAIN\Ratlab Mod\Source\obj\Release\PlayerStoryteller.sourcelink.json
