@@ -899,73 +899,57 @@ namespace PlayerStoryteller
                 // DELTA OPTIMIZATION REMOVED: Always send update to ensure frontend sync
                 lastLiveViewThingIds = currentThingIds;
                 
-                // Ensure we know what the server has
-                await EnsureManifestSynced();
+                // 2. Fetch Textures (Optimized: Local extraction, MAIN THREAD)
+                const int MAX_TEXTURES_PER_TICK = 2; // Limit to avoid lag
 
-                // 2. Fetch Textures (Optimized: Only new DefNames, smaller batches to prevent spikes)
-                var textures = new JObject();
-                // 50 textures/tick max; caps RimAPI calls per frame to prevent game stutter
-                const int MAX_TEXTURES_PER_TICK = 50;
-
-                // PERFORMANCE FIX: Check BOTH local cache (sentTextures) AND server cache (knownRemoteTextures)
-                // This prevents re-fetching if server manifest is empty/failed
-                var texturesToFetch = uniqueDefNames
+                // Identify candidates using CURRENT knowledge (safe on Main Thread)
+                var candidates = uniqueDefNames
                     .Where(defName => !sentTextures.Contains(defName) && !knownRemoteTextures.Contains(defName))
                     .Take(MAX_TEXTURES_PER_TICK)
                     .ToList();
-
-                // Batch texture fetching to spread load over time
-                if (texturesToFetch.Count > 0)
+                
+                var preparedTextures = new Dictionary<string, string>();
+                
+                foreach (var defName in candidates)
                 {
-                    var newTexturesForServer = new JObject();
+                     // Extract locally on MAIN THREAD before awaiting anything
+                     string b64 = GetLocalThingTexture(defName);
+                     if (!string.IsNullOrEmpty(b64))
+                     {
+                         preparedTextures[defName] = b64;
+                     }
+                     else
+                     {
+                         // Mark as failed/sent to avoid infinite retries
+                         sentTextures.Add(defName); 
+                     }
+                }
 
-                    // 5 concurrent RimAPI calls per batch; small enough to not block main thread
-                    const int BATCH_SIZE = 5;
-                    for (int i = 0; i < texturesToFetch.Count; i += BATCH_SIZE)
+                // Ensure we know what the server has
+                // WARNING: This await yields execution, so subsequent code might run on ThreadPool
+                await EnsureManifestSynced();
+
+                var textures = new JObject();
+                var newTexturesForServer = new JObject();
+
+                if (preparedTextures.Count > 0)
+                {
+                    foreach (var kvp in preparedTextures)
                     {
-                        var batch = texturesToFetch.Skip(i).Take(BATCH_SIZE).ToList();
-
-                        var textureTasks = batch.Select(async defName =>
-                        {
-                            try
-                            {
-                                var base64String = await apiClient.GetItemIcon(defName);
-                                if (!string.IsNullOrEmpty(base64String))
-                                {
-                                    return new { defName, base64String };
-                                }
-                            }
-                            catch (Exception) { /* Ignore */ }
-                            return null;
-                        }).ToList();
-
-                        var results = await Task.WhenAll(textureTasks);
-
-                        foreach (var result in results)
-                        {
-                            if (result != null)
-                            {
-                                textures[result.defName] = result.base64String;
-                                newTexturesForServer[result.defName] = result.base64String;
-                                sentTextures.Add(result.defName);
-                            }
-                        }
-
-                        // 10ms yield between batches; lets Unity process other work without noticeable delay
-                        if (i + BATCH_SIZE < texturesToFetch.Count)
-                        {
-                            await Task.Delay(10);
-                        }
+                         // Re-check against Synced Manifest
+                         if (!knownRemoteTextures.Contains(kvp.Key))
+                         {
+                             textures[kvp.Key] = kvp.Value;
+                             newTexturesForServer[kvp.Key] = kvp.Value;
+                             sentTextures.Add(kvp.Key);
+                         }
                     }
 
-                    // Upload new textures to server cache (Wait for success before caching locally)
+                    // Upload new textures to server cache
                     if (newTexturesForServer.Count > 0)
                     {
-                        Log.Message($"[Player Storyteller] Uploading {newTexturesForServer.Count} textures to server cache...");
-                        // Wrap in "textures" key as server expects { textures: { DefName: base64, ... } }
                         var payload = new JObject { ["textures"] = newTexturesForServer };
                         bool success = await PlayerStorytellerMod.SendTexturesBatchAsync(payload.ToString(Newtonsoft.Json.Formatting.None));
-                        Log.Message($"[Player Storyteller] Texture upload {(success ? "succeeded" : "FAILED")}");
                         if (success)
                         {
                             lock(knownRemoteTextures)
@@ -1045,6 +1029,68 @@ namespace PlayerStoryteller
                 Log.Warning($"[Player Storyteller] Error pushing definitions: {ex.Message}");
                 hasPushedDefinitions = false; // Retry later
             }
+        }
+
+        // === LOCAL TEXTURE EXTRACTION TOOLS ===
+
+        /// <summary>
+        /// Extracts texture from ThingDef on Main Thread.
+        /// Handles UI Icons and fallback to Main Graphic (for plants/buildings).
+        /// </summary>
+        private string GetLocalThingTexture(string defName)
+        {
+            try
+            {
+                var def = DefDatabase<ThingDef>.GetNamedSilentFail(defName);
+                if (def == null) return null;
+
+                // Priority 1: UI Icon (Standard items, Buildings with icons)
+                Texture2D tex = def.uiIcon;
+
+                // Priority 2: Main Graphic (Plants, generic things)
+                // specific check: if uiIcon is the default "BadTex" or null, try graphic
+                if (tex == null || tex == BaseContent.BadTex)
+                {
+                    if (def.graphic != null && def.graphic.MatSingle != null)
+                    {
+                        tex = def.graphic.MatSingle.mainTexture as Texture2D;
+                    }
+                }
+
+                if (tex == null) return null;
+
+                return TextureToBase64(tex);
+            }
+            catch (Exception ex)
+            {
+                // Usage of Unity APIs off-thread will catch here if we mess up
+                Log.Warning($"[Player Storyteller] Failed to extract local texture for {defName}: {ex.Message}");
+                return null;
+            }
+        }
+
+        private string TextureToBase64(Texture2D tex)
+        {
+            if (tex == null) return null;
+
+            // GPU to CPU readback
+            RenderTexture tmp = RenderTexture.GetTemporary(tex.width, tex.height, 0, RenderTextureFormat.Default, RenderTextureReadWrite.Default);
+            Graphics.Blit(tex, tmp);
+            
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture.active = tmp;
+            
+            Texture2D myTex = new Texture2D(tex.width, tex.height);
+            myTex.ReadPixels(new Rect(0, 0, tmp.width, tmp.height), 0, 0);
+            myTex.Apply();
+            
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(tmp);
+
+            byte[] bytes = myTex.EncodeToPNG();
+            UnityEngine.Object.Destroy(myTex); 
+
+            return Convert.ToBase64String(bytes);
         }
     }
 }
