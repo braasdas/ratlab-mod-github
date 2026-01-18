@@ -18,7 +18,7 @@ import { initializeQueue } from './queue.js';
 window.addEventListener('load', () => {
     // Initialize My Pawn module (button listeners)
     initializeMyPawn();
-    
+
     // Initialize Queue module
     initializeQueue();
 
@@ -46,11 +46,33 @@ window.addEventListener('load', () => {
         switchTab('stream');
     }
 
+    // Abort Button - Return to session selection
+    const backButton = document.getElementById('back-button');
+    if (backButton) {
+        backButton.addEventListener('click', () => {
+            // Stop current stream
+            import('./stream.js').then(({ stopStream }) => stopStream());
+
+            // Clear current session
+            STATE.currentSession = null;
+            STATE.sessionPassword = null;
+
+            // Switch views
+            document.getElementById('game-viewer').classList.remove('active');
+            document.getElementById('session-selection').classList.add('active');
+
+            // Clear URL session param
+            const url = new URL(window.location);
+            url.searchParams.delete('session');
+            window.history.replaceState({}, '', url);
+        });
+    }
+
     // View Mode Switcher (Camera/Map)
     document.querySelectorAll('.view-mode-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const mode = btn.dataset.mode;
-            
+
             document.querySelectorAll('.view-mode-btn').forEach(b => {
                 if (b.dataset.mode === mode) {
                     b.classList.add('active', 'text-rat-green', 'bg-rat-dark');
@@ -116,8 +138,8 @@ socket.on('sessions-list', (data) => {
         if (existingSession) {
             selectSession(directSessionId);
         } else {
-             // Private session fetch attempt
-             fetch(`/api/session/${encodeURIComponent(directSessionId)}`)
+            // Private session fetch attempt
+            fetch(`/api/session/${encodeURIComponent(directSessionId)}`)
                 .then(r => r.ok ? r.json() : null)
                 .then(data => {
                     if (data && data.session) {
@@ -127,7 +149,7 @@ socket.on('sessions-list', (data) => {
                         selectSession(directSessionId);
                     } else {
                         // Invalid
-                         const url = new URL(window.location);
+                        const url = new URL(window.location);
                         url.searchParams.delete('session');
                         window.history.replaceState({}, '', url);
                     }
@@ -150,17 +172,17 @@ socket.on('screenshot-update', (data) => {
         const video = document.getElementById('game-screenshot');
         if (data.screenshot) {
             video.style.display = 'block';
-             if (video.src.startsWith('blob:')) {
+            if (video.src.startsWith('blob:')) {
                 URL.revokeObjectURL(video.src);
             }
             if (typeof data.screenshot === 'string') {
-                 video.src = `data:image/jpeg;base64,${data.screenshot}`;
+                video.src = `data:image/jpeg;base64,${data.screenshot}`;
             } else {
                 const blob = new Blob([data.screenshot], { type: 'image/jpeg' });
                 video.src = URL.createObjectURL(blob);
             }
-             const lastUpdate = document.getElementById('last-update');
-             if(lastUpdate) lastUpdate.textContent = `LAST UPDATE: ${new Date(data.timestamp).toLocaleTimeString()}`;
+            const lastUpdate = document.getElementById('last-update');
+            if (lastUpdate) lastUpdate.textContent = `LAST UPDATE: ${new Date(data.timestamp).toLocaleTimeString()}`;
         }
     }
 });
@@ -178,7 +200,7 @@ socket.on('coin-update', (data) => {
 socket.on('economy-config-update', (data) => {
     if (data.actionCosts) {
         STATE.actionCosts = data.actionCosts;
-        updateActionButtonsCosts(); 
+        updateActionButtonsCosts();
     }
 });
 

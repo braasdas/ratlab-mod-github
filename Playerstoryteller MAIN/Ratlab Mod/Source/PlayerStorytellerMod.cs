@@ -127,6 +127,15 @@ namespace PlayerStoryteller
 
             listingStandard.Gap(12f);
 
+            // Colony Display Name
+            listingStandard.Label("Colony Display Name:");
+            settings.colonyName = listingStandard.TextEntry(settings.colonyName);
+            Text.Font = GameFont.Tiny;
+            listingStandard.Label("Shown in Rat Lab discovery. Leave empty to use default map name.");
+            Text.Font = GameFont.Small;
+
+            listingStandard.Gap(12f);
+
             // Queue Control
             if (listingStandard.ButtonText("Trigger Queue Now"))
             {
@@ -1060,7 +1069,10 @@ namespace PlayerStoryteller
 
         // Privacy consent
         public bool hasAcceptedPrivacyNotice = false;
-        public bool hasCompletedSetupWizard = false;  
+        public bool hasCompletedSetupWizard = false;
+
+        // Custom Colony Name for Rat Lab discovery
+        public string colonyName = "";  
 
         // Action Controls
         public int maxActionsPerMinute = 30;       

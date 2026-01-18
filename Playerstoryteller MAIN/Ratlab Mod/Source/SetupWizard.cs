@@ -350,23 +350,24 @@ namespace PlayerStoryteller
 
             string serverUrl = PlayerStorytellerMod.GetServerUrl();
             string sessionId = PlayerStorytellerMod.GetSessionId();
-            string dashboardUrl = $"{serverUrl}/dashboard.html?session={Uri.EscapeDataString(sessionId)}";
+            // Viewer link - just the base URL, they'll see the session in the discovery list
+            string viewerUrl = serverUrl;
 
             // URL display box
             Widgets.DrawBoxSolid(new Rect(rect.x, y, rect.width, 35f), new Color(0.1f, 0.1f, 0.1f));
 
             Text.Font = GameFont.Tiny;
             // Truncate URL if too long for display
-            string displayUrl = dashboardUrl.Length > 70 ? dashboardUrl.Substring(0, 67) + "..." : dashboardUrl;
+            string displayUrl = viewerUrl.Length > 70 ? viewerUrl.Substring(0, 67) + "..." : viewerUrl;
             Widgets.Label(new Rect(rect.x + 10f, y + 8f, rect.width - 20f, 25f), displayUrl);
             Text.Font = GameFont.Small;
             y += 45f;
 
             // Copy button
-            if (Widgets.ButtonText(new Rect(rect.x, y, 200f, 35f), "Copy Dashboard Link"))
+            if (Widgets.ButtonText(new Rect(rect.x, y, 200f, 35f), "Copy Viewer Link"))
             {
-                GUIUtility.systemCopyBuffer = dashboardUrl;
-                Messages.Message("Dashboard link copied to clipboard!", MessageTypeDefOf.PositiveEvent);
+                GUIUtility.systemCopyBuffer = viewerUrl;
+                Messages.Message("Viewer link copied to clipboard!", MessageTypeDefOf.PositiveEvent);
             }
 
             // Copy stream key button

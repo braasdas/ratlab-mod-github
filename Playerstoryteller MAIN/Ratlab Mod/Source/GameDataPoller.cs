@@ -720,8 +720,10 @@ namespace PlayerStoryteller
                 if (hasContent) sb.Append(',');
                 sb.Append("\"networkQuality\":\"high\"");
 
-                // Add Map Name
-                string mapName = map.Parent.Label;
+                // Add Map Name - use custom colonyName from settings if set
+                string mapName = !string.IsNullOrEmpty(PlayerStorytellerMod.settings.colonyName)
+                    ? PlayerStorytellerMod.settings.colonyName
+                    : map.Parent.Label;
                 if (!string.IsNullOrEmpty(mapName))
                 {
                     sb.Append($",\"mapName\":\"{mapName.Replace("\"", "\\\"")}\"");

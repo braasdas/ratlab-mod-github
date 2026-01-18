@@ -9,22 +9,22 @@ import { escapeHtml, escapeAttr, escapeJs, sanitizeSessionId } from './sanitize.
 export function renderSessionsList() {
     const sessionsList = document.getElementById('sessions-list');
     const noSessions = document.getElementById('no-sessions');
-    
+
     if (!sessionsList) return;
-    
+
     sessionsList.innerHTML = '';
-    
+
     if (STATE.sessions.length === 0) {
-        if(noSessions) noSessions.classList.remove('hidden');
+        if (noSessions) noSessions.classList.remove('hidden');
         return;
     }
-    
-    if(noSessions) noSessions.classList.add('hidden');
+
+    if (noSessions) noSessions.classList.add('hidden');
 
     STATE.sessions.forEach(session => {
         const div = document.createElement('div');
         const playerCount = session.playerCount !== undefined ? session.playerCount : '?';
-        const wealth = session.wealth ? `${(session.wealth/1000).toFixed(1)}k` : '?';
+        const wealth = session.wealth ? `${(session.wealth / 1000).toFixed(1)}k` : '?';
         const isLocked = session.requiresPassword;
         const region = escapeHtml(session.region || 'US-EAST');
 
@@ -83,14 +83,14 @@ export function selectSession(sessionId) {
         // Since we are refactoring, let's assume openUsernameModal handles the global state or we pass it
         // Re-implement username check if needed or just alert
         const modal = document.getElementById('username-modal');
-        if(modal) {
-             modal.classList.remove('hidden');
-             modal.dataset.pendingSessionId = sessionId;
-             return;
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.dataset.pendingSessionId = sessionId;
+            return;
         }
         // Fallback
         const user = prompt("ENTER ALIAS:");
-        if(!user) return;
+        if (!user) return;
         localStorage.setItem('username', user);
         STATE.username = user;
     }
@@ -104,25 +104,24 @@ function startSessionConnection(sessionId) {
 
     document.getElementById('session-selection').classList.remove('active');
     document.getElementById('game-viewer').classList.add('active');
-    
+
     showLoading("ESTABLISHING SECURE CONNECTION...");
 
     // Stop existing streams if any
     stopStream();
 
     socket.emit('select-session', { sessionId, username: STATE.username });
-    
+
     // Load Action Panel
     loadActionPanel();
-    
+
     // Check viewer count to decide protocol
     const session = STATE.sessions.find(s => s.sessionId === sessionId);
     const viewerCount = session ? session.playerCount : 0;
-    const forceCDN = document.getElementById('force-cdn-toggle')?.checked;
-    
+
     // Threshold: > 50 viewers -> HLS (Bunny CDN)
-    if (viewerCount > 50 || forceCDN) {
-        console.log(`[Protocol] Switching to HLS (Bunny CDN). Force: ${forceCDN}, Viewers: ${viewerCount}`);
+    if (viewerCount > 50) {
+        console.log(`[Protocol] Switching to HLS (Bunny CDN). Viewers: ${viewerCount}`);
         STATE.useHLS = true;
         initializeStream(sessionId);
     } else {
@@ -138,7 +137,7 @@ function startSessionConnection(sessionId) {
             if (data.session) {
                 STATE.sessionRequiresPassword = data.session.requiresPassword;
                 const nameEl = document.getElementById('current-session-name');
-                if(nameEl) {
+                if (nameEl) {
                     const safeMapName = escapeHtml(data.session.mapName || 'Unknown Colony');
                     if (STATE.sessionRequiresPassword) {
                         nameEl.innerHTML = `${safeMapName} <i class="fa-solid fa-lock text-rat-red text-xs ml-2"></i>`;
@@ -147,10 +146,10 @@ function startSessionConnection(sessionId) {
                     }
                 }
                 const colCount = document.getElementById('colonist-count');
-                if(colCount) colCount.textContent = data.session.colonistCount;
-                
+                if (colCount) colCount.textContent = data.session.colonistCount;
+
                 const wealth = document.getElementById('wealth');
-                if(wealth) wealth.textContent = `${(data.session.wealth / 1000).toFixed(1)}k`;
+                if (wealth) wealth.textContent = `${(data.session.wealth / 1000).toFixed(1)}k`;
             }
         })
         .catch(err => console.error("Error:", err));
@@ -165,7 +164,7 @@ function fetchEconomyData(sessionId) {
         .then(data => {
             if (data.prices) {
                 STATE.actionCosts = data.prices;
-                updateActionButtonsCosts(); 
+                updateActionButtonsCosts();
             }
         })
         .catch(e => console.error('Error fetching prices:', e));
