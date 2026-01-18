@@ -87,7 +87,8 @@
             <div class="p-4 border-b border-rat-border flex gap-4 bg-rat-panel">
                 <div class="relative flex-1">
                     <i class="fa-solid fa-search absolute left-3 top-3 text-rat-text-dim text-xs"></i>
-                    <input type="text" id="browser-search" placeholder="Search definitions..." autocomplete="off"
+                    <input type="text" id="browser-search" placeholder="Search definitions..."
+                        autocomplete="new-password" data-form-type="other"
                         class="w-full bg-rat-black border border-rat-border rounded pl-10 pr-4 py-2 text-sm text-white focus:border-rat-green outline-none font-mono">
                 </div>
                 <select id="browser-filter"
@@ -450,7 +451,8 @@
                                 <div class="mb-6 w-full max-w-xs mx-auto">
                                     <label class="block text-rat-text-dim text-xs font-mono mb-2 text-left">SUBJECT
                                         NICKNAME (OPTIONAL):</label>
-                                    <input type="text" id="adoption-nickname" autocomplete="off"
+                                    <input type="text" id="adoption-nickname" autocomplete="new-password"
+                                        data-form-type="other"
                                         class="w-full bg-black border border-rat-border rounded px-4 py-2 text-rat-green font-mono focus:border-rat-green outline-none uppercase text-center"
                                         placeholder="ENTER NICKNAME" maxlength="16">
                                 </div>
@@ -821,7 +823,7 @@
                         authorization key:</p>
                     <div class="form-group relative">
                         <input type="password" id="interaction-password-input" placeholder="ACCESS CODE"
-                            autocomplete="off"
+                            autocomplete="new-password" data-form-type="other"
                             class="full-width-input w-full bg-black border border-rat-border text-rat-green font-mono p-3 rounded focus:border-rat-green focus:ring-1 focus:ring-rat-green outline-none tracking-widest text-center">
                     </div>
                     <div id="password-error"
@@ -846,7 +848,8 @@
                     <p class="text-rat-text mb-4 text-sm font-mono">Enter your callsign to access the Rat Lab network:
                     </p>
                     <div class="form-group relative">
-                        <input type="text" id="username-input" placeholder="CALLSIGN" autocomplete="off"
+                        <input type="text" id="username-input" placeholder="CALLSIGN" autocomplete="new-password"
+                            data-form-type="other"
                             class="full-width-input w-full bg-black border border-rat-border text-rat-green font-mono p-3 rounded focus:border-rat-green focus:ring-1 focus:ring-rat-green outline-none tracking-widest text-center uppercase"
                             maxlength="15">
                     </div>
