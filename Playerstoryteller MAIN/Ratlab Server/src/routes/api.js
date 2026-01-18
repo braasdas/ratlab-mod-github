@@ -148,7 +148,7 @@ module.exports = (io, definitionManager) => {
         if (!definitionManager) {
             return res.status(503).json({ error: 'Definition service unavailable' });
         }
-        
+
         const defs = definitionManager.getDefinitions(sessionId);
         if (!defs) {
             // Fallback: Return empty structure or error.
@@ -291,7 +291,7 @@ module.exports = (io, definitionManager) => {
         // Textures are accumulated server-side for new client initialization
         session.mapThings.things = things;
         session.mapThings.textures = { ...session.mapThings.textures, ...textureBuffers };
-        
+
         sessionStore.updateSession(sessionId, { mapThings: session.mapThings });
         // console.log(`[Things] Stored ${Array.isArray(things) ? things.length : 'N/A'} things, merged ${Object.keys(textureBuffers).length} new textures for ${sessionId}`);
 
@@ -324,46 +324,55 @@ module.exports = (io, definitionManager) => {
         res.json(things);
     });
 
-    // Map thing texture fetch (viewer) - serves cached textures
+    // Map thing texture fetch (viewer) - serves cached textures (Memory -> Disk Fallback)
     router.get('/api/v1/map/thing/image', (req, res) => {
         const { sessionId, name } = req.query;
         if (!name) {
             return res.status(400).json({ error: 'Missing name parameter' });
         }
 
+        // 1. Try Session Memory
         const session = sessionStore.getSession(sessionId);
-        if (!session || !session.mapThings || !session.mapThings.textures) {
-            return res.status(404).json({ error: 'Thing textures not available' });
+        if (session && session.mapThings && session.mapThings.textures) {
+            const texture = session.mapThings.textures[name];
+            if (texture) {
+                res.setHeader('Content-Type', 'image/png');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return res.send(texture);
+            }
         }
 
-        const texture = session.mapThings.textures[name];
-        if (!texture) {
-            return res.status(404).json({ error: 'Texture not found' });
+        // 2. Try Disk Cache (Fallback)
+        const safeName = name.replace(/[^a-zA-Z0-9_\-]/g, '');
+        const filePath = path.join(CACHE_DIR, `${safeName}.png`);
+
+        if (fs.existsSync(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.sendFile(filePath);
         }
 
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
-        res.send(texture);
+        // 3. Not Found
+        res.status(404).json({ error: 'Texture not found' });
     });
 
     // Upload Definitions (From Mod)
     router.post('/api/definitions/:sessionId', (req, res) => {
         const { sessionId } = req.params;
         const streamKey = req.headers['x-stream-key'];
-        
+
         // Basic auth check (Session must exist and key must match if set)
         // We allow creating a session implicitly here if it's the startup sequence?
         // Better to require session existence or just stream key validation.
-        
+
         let session = sessionStore.getSession(sessionId);
         if (session && session.streamKey && session.streamKey !== streamKey) {
             return res.status(403).json({ error: 'Invalid stream key' });
         }
-        
+
         // If session doesn't exist, we might be too early. Mod should ensure session creation first?
         // Actually, Mod calls /api/update usually first. 
         // But let's be permissive: if key is valid (or new session), accept it.
-        
+
         if (!definitionManager) return res.status(503).json({ error: 'Service unavailable' });
 
         try {
@@ -405,7 +414,7 @@ module.exports = (io, definitionManager) => {
 
             // Create or Update Session
             let session = sessionStore.getSession(sessionId);
-            
+
             if (!session) {
                 log('info', `New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
                 session = sessionStore.createSession(sessionId, {
@@ -433,15 +442,15 @@ module.exports = (io, definitionManager) => {
             // But if the client sends a nested JSON object, express.json() handles it.
             // Let's be robust:
             if (typeof gameState === 'string') {
-                 try {
+                try {
                     session.gameState = JSON.parse(gameState);
-                 } catch (e) {
+                } catch (e) {
                     console.error("Error parsing inner gameState JSON string:", e);
                     // Fallback: treat as empty or error
-                    session.gameState = {}; 
-                 }
+                    session.gameState = {};
+                }
             } else {
-                 session.gameState = gameState;
+                session.gameState = gameState;
             }
 
             // Logging (throttled)
@@ -529,8 +538,8 @@ module.exports = (io, definitionManager) => {
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
 
-        res.json({ 
-            settings: session.settings, 
+        res.json({
+            settings: session.settings,
             economy: session.economy,
             queueSettings: session.queue ? session.queue.settings : {},
             meta: {
@@ -567,7 +576,7 @@ module.exports = (io, definitionManager) => {
         if (economy) {
             if (economy.coinRate) session.economy.coinRate = economy.coinRate;
             if (economy.actionCosts) session.economy.actionCosts = { ...session.economy.actionCosts, ...economy.actionCosts };
-            
+
             // Notify viewers of price changes
             io.to(sessionId).emit('economy-config-update', { actionCosts: session.economy.actionCosts });
         }
@@ -592,7 +601,7 @@ module.exports = (io, definitionManager) => {
         const session = sessionStore.getSession(sessionId);
 
         if (!session) return res.status(404).json({ error: 'Session not found' });
-        
+
         const isValid = session.streamKey === streamKey;
         res.json({ valid: isValid });
     });
@@ -664,7 +673,7 @@ module.exports = (io, definitionManager) => {
 
                 if (session.settings && session.settings.actions) {
                     if (session.settings.actions[settingKey] === false || session.settings.actions[action] === false) {
-                         return res.status(403).json({ success: false, message: 'Action disabled by streamer.' });
+                        return res.status(403).json({ success: false, message: 'Action disabled by streamer.' });
                     }
                 }
 
@@ -686,7 +695,7 @@ module.exports = (io, definitionManager) => {
                                     // If we allow free, it defeats the purpose.
                                     // Let's log warning and deny if strict, or fallback to base price?
                                     // Fallback base price to prevent free spam:
-                                    cost = 100; 
+                                    cost = 100;
                                 }
                             } else if (action === 'trigger_incident_dynamic') {
                                 cost = 1000;
@@ -722,7 +731,7 @@ module.exports = (io, definitionManager) => {
                     data: typeof data === 'string' ? data : JSON.stringify(data),
                     timestamp: new Date()
                 });
-                
+
                 console.log(`Action queued for session ${sessionId}: ${action} (User: ${username || 'Anon'})`);
                 res.json({ success: true, message: 'Action queued.' });
             } else {
@@ -775,13 +784,13 @@ module.exports = (io, definitionManager) => {
     router.get('/api/economy/:sessionId/balance/:username', (req, res) => {
         const { sessionId, username } = req.params;
         const session = sessionStore.getSession(sessionId);
-        
+
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (!session.economy) return res.status(400).json({ error: 'Economy not initialized' });
-        
+
         const profile = session.economy.viewers.get(username);
         const balance = profile ? profile.coins : 0;
-        
+
         res.json({ username, coins: balance });
     });
 
@@ -789,10 +798,10 @@ module.exports = (io, definitionManager) => {
     router.get('/api/economy/:sessionId/prices', (req, res) => {
         const { sessionId } = req.params;
         const session = sessionStore.getSession(sessionId);
-        
+
         if (!session) return res.status(404).json({ error: 'Session not found' });
-        
-        res.json({ 
+
+        res.json({
             prices: session.economy ? session.economy.actionCosts : {},
             coinRate: session.economy ? session.economy.coinRate : 0
         });
@@ -802,36 +811,36 @@ module.exports = (io, definitionManager) => {
     router.post('/api/economy/:sessionId/purchase', (req, res) => {
         const { sessionId } = req.params;
         const { username, action, cost } = req.body;
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
-        
+
         if (!session.economy || !session.economy.viewers.has(username)) {
             return res.status(400).json({ error: 'User has no wallet' });
         }
-        
+
         const profile = session.economy.viewers.get(username);
-        
+
         let finalCost = cost;
         // Verify cost if action is known
         if (action && session.economy.actionCosts[action] !== undefined) {
             finalCost = session.economy.actionCosts[action];
         }
-        
+
         // Security: Prevent negative/zero cost exploits
         if (!finalCost || isNaN(finalCost) || finalCost <= 0) {
             return res.status(400).json({ error: 'Invalid cost' });
         }
-        
+
         if (profile.coins < finalCost) {
             return res.status(402).json({ error: 'Insufficient funds', current: profile.coins, required: finalCost });
         }
-        
+
         profile.coins -= finalCost;
-        
+
         // Emit update
         io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
-        
+
         res.json({ success: true, newBalance: profile.coins });
     });
 
@@ -849,10 +858,10 @@ module.exports = (io, definitionManager) => {
         const { sessionId } = req.params;
         const { username, type, data } = req.body;
         let { action } = req.body;
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
-        
+
         // For suggestions, action is optional (defaults to 'suggestion')
         if (type === 'suggestion') {
             if (!action) action = 'suggestion';
@@ -884,7 +893,7 @@ module.exports = (io, definitionManager) => {
                 io.to(sessionId).emit('coin-update', { username, coins: profile.coins });
             }
         }
-        
+
         // SECURITY: Sanitize user-controlled fields before storing
         const safeUsername = sanitizeUsername(username);
         const safeData = (type === 'suggestion' && data) ? sanitizeHtml(data) : data;
@@ -900,10 +909,10 @@ module.exports = (io, definitionManager) => {
             status: 'pending',
             data: safeData
         };
-        
+
         session.queue.requests.push(request);
         io.to(sessionId).emit('queue-update', { queue: session.queue });
-        
+
         res.json({ success: true, request });
     });
 
@@ -911,13 +920,13 @@ module.exports = (io, definitionManager) => {
     router.post('/api/queue/:sessionId/vote', (req, res) => {
         const { sessionId } = req.params;
         const { requestId, username, voteType } = req.body; // voteType: 'upvote' or 'downvote'
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
-        
+
         const reqItem = session.queue.requests.find(r => r.id === requestId);
         if (!reqItem) return res.status(404).json({ error: 'Request not found' });
-        
+
         // Ensure votes array stores objects
         if (!Array.isArray(reqItem.votes) || !reqItem.votes.every(v => typeof v === 'object' && v.username && v.type)) {
             // Migrate old votes (which were just usernames) to upvotes, or initialize
@@ -939,9 +948,9 @@ module.exports = (io, definitionManager) => {
             // New vote
             reqItem.votes.push({ username, type: voteType });
         }
-        
+
         io.to(sessionId).emit('queue-update', { queue: session.queue });
-        
+
         res.json({ success: true });
     });
 
@@ -949,25 +958,25 @@ module.exports = (io, definitionManager) => {
     router.post('/api/queue/:sessionId/force-trigger', (req, res) => {
         const { sessionId } = req.params;
         const streamKey = req.headers['x-stream-key'];
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (session.streamKey && session.streamKey !== streamKey) return res.status(403).json({ error: 'Unauthorized' });
-        
+
         // Find top voted request
         const pending = session.queue.requests.filter(r => r.status === 'pending');
         if (pending.length === 0) return res.json({ success: true, message: 'Queue empty' });
-        
+
         // Sort by votes (descending)
         pending.sort((a, b) => {
             const votesA = a.votes ? a.votes.filter(v => v.type === 'upvote').length - a.votes.filter(v => v.type === 'downvote').length : 0;
             const votesB = b.votes ? b.votes.filter(v => v.type === 'upvote').length - b.votes.filter(v => v.type === 'downvote').length : 0;
             return votesB - votesA;
         });
-        
+
         const winner = pending[0];
         const index = session.queue.requests.indexOf(winner);
-        
+
         if (index !== -1) {
             // Validate Action (Suggestion type is special case)
             if (winner.type === 'suggestion') {
@@ -989,14 +998,14 @@ module.exports = (io, definitionManager) => {
                 });
                 log('info', `Queue forced: Executed ${winner.action} for session ${sessionId}`);
             }
-            
+
             // Remove from queue
             session.queue.requests.splice(index, 1);
-            
+
             // Broadcast update
             io.to(sessionId).emit('queue-update', { queue: session.queue, triggered: true });
         }
-        
+
         res.json({ success: true });
     });
 
@@ -1004,27 +1013,27 @@ module.exports = (io, definitionManager) => {
     router.post('/api/queue/:sessionId/approve/:requestId', (req, res) => {
         const { sessionId, requestId } = req.params;
         const streamKey = req.headers['x-stream-key'];
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (session.streamKey && session.streamKey !== streamKey) return res.status(403).json({ error: 'Unauthorized' });
-        
+
         const index = session.queue.requests.findIndex(r => r.id === requestId);
         if (index === -1) return res.status(404).json({ error: 'Request not found' });
-        
+
         const reqItem = session.queue.requests[index];
-        
+
         // Execute Action
         session.actions.push({
             action: reqItem.action,
             data: reqItem.data,
             timestamp: new Date()
         });
-        
+
         // Remove from queue
         session.queue.requests.splice(index, 1);
         io.to(sessionId).emit('queue-update', { queue: session.queue });
-        
+
         res.json({ success: true });
     });
 
@@ -1032,14 +1041,14 @@ module.exports = (io, definitionManager) => {
     router.post('/api/queue/:sessionId/reject/:requestId', (req, res) => {
         const { sessionId, requestId } = req.params;
         const streamKey = req.headers['x-stream-key'];
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (session.streamKey && session.streamKey !== streamKey) return res.status(403).json({ error: 'Unauthorized' });
-        
+
         const index = session.queue.requests.findIndex(r => r.id === requestId);
         if (index === -1) return res.status(404).json({ error: 'Request not found' });
-        
+
         const reqItem = session.queue.requests[index];
 
         // Refund (only if economy is initialized)
@@ -1050,11 +1059,11 @@ module.exports = (io, definitionManager) => {
                 io.to(sessionId).emit('coin-update', { username: reqItem.submittedBy, coins: profile.coins });
             }
         }
-        
+
         // Remove from queue
         session.queue.requests.splice(index, 1);
         io.to(sessionId).emit('queue-update', { queue: session.queue });
-        
+
         res.json({ success: true });
     });
 
@@ -1064,18 +1073,18 @@ module.exports = (io, definitionManager) => {
         if (!streamKey) return res.status(400).json({ error: 'Missing stream key' });
 
         const sessionId = sessionStore.streamKeyToSessionId.get(streamKey);
-        
+
         if (sessionId) {
             const session = sessionStore.getSession(sessionId);
             // Security check: verify mapping is still valid
             if (session && session.streamKey === streamKey) {
-                return res.json({ 
+                return res.json({
                     sessionId: sessionId,
                     isPublic: session.isPublic
                 });
             }
         }
-        
+
         return res.status(404).json({ error: 'No active session found for this key' });
     });
 
@@ -1107,7 +1116,7 @@ module.exports = (io, definitionManager) => {
             // find current stats from gameState
             let pawnData = null;
             if (session.gameState && session.gameState.colonists) {
-                pawnData = session.gameState.colonists.find(c => 
+                pawnData = session.gameState.colonists.find(c =>
                     (c.colonist && (c.colonist.id == adoption.pawnId || c.colonist.pawn_id == adoption.pawnId)) ||
                     (c.id == adoption.pawnId || c.pawn_id == adoption.pawnId)
                 );
@@ -1122,7 +1131,7 @@ module.exports = (io, definitionManager) => {
     router.post('/api/adoptions/:sessionId/request', (req, res) => {
         const { sessionId } = req.params;
         const { username, nickname } = req.body;
-        
+
         const session = sessionStore.getSession(sessionId);
         if (!session) return res.status(404).json({ error: 'Session not found' });
 
@@ -1134,7 +1143,7 @@ module.exports = (io, definitionManager) => {
         // 2. Check funds
         const profile = session.economy.viewers.get(username);
         const cost = session.adoptions.settings.cost;
-        
+
         if (!profile || profile.coins < cost) {
             return res.status(402).json({ error: `Insufficient funds. Cost: ${cost}` });
         }
@@ -1145,9 +1154,9 @@ module.exports = (io, definitionManager) => {
 
         // 4. Send Action to Game (Spawn new pawn)
         // Payload: username and optional nickname
-        const payload = { 
-            username: username, 
-            nickname: nickname || null 
+        const payload = {
+            username: username,
+            nickname: nickname || null
         };
 
         session.actions.push({
@@ -1224,13 +1233,13 @@ module.exports = (io, definitionManager) => {
         let saved = 0;
         Object.entries(textures).forEach(([defName, base64]) => {
             if (!defName || !base64) return;
-            
+
             // Validate filename (basic sanitization)
             const safeName = defName.replace(/[^a-zA-Z0-9_\-]/g, '');
             if (!safeName) return;
 
             const filePath = path.join(CACHE_DIR, `${safeName}.png`);
-            
+
             // Don't overwrite if exists (Global Cache - First Come First Serve)
             if (!fs.existsSync(filePath)) {
                 try {
@@ -1242,7 +1251,7 @@ module.exports = (io, definitionManager) => {
                 }
             }
         });
-        
+
         if (saved > 0) log('info', `[TextureCache] Cached ${saved} new textures.`);
         res.json({ success: true, saved });
     });
@@ -1251,7 +1260,7 @@ module.exports = (io, definitionManager) => {
     router.get('/texture/:name', (req, res) => {
         const name = req.params.name.replace(/[^a-zA-Z0-9_\-]/g, '');
         const filePath = path.join(CACHE_DIR, `${name}.png`);
-        
+
         if (fs.existsSync(filePath)) {
             res.sendFile(filePath, { maxAge: '7d' }); // Cache for 7 days
         } else {
