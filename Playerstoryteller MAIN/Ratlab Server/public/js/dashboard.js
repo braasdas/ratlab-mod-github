@@ -432,18 +432,22 @@ async function openContentSettings(category) {
 
     modal.classList.remove('hidden');
 
-    if (!definitions) {
-        try {
-            const res = await fetch(`/api/definitions/${sessionId}`);
-            if (res.ok) {
-                definitions = await res.json();
-            } else {
-                throw new Error('API Error');
+    // Always fetch fresh definitions (don't cache between sessions)
+    try {
+        const res = await fetch(`/api/definitions/${sessionId}`);
+        if (res.ok) {
+            const freshDefs = await res.json();
+            if (!freshDefs || (!freshDefs.weather && !freshDefs.incidents && !freshDefs.animals)) {
+                grid.innerHTML = '<p class="text-rat-yellow font-mono col-span-full text-center py-10"><i class="fa-solid fa-exclamation-triangle mb-4 block text-4xl"></i>Game data not available.<br><br>Start RimWorld with the mod loaded to configure dynamic content.</p>';
+                return;
             }
-        } catch (e) {
-            grid.innerHTML = '<p class="text-rat-red font-mono col-span-full text-center py-10">Failed to load game data.</p>';
-            return;
+            definitions = freshDefs;
+        } else {
+            throw new Error('API Error');
         }
+    } catch (e) {
+        grid.innerHTML = '<p class="text-rat-red font-mono col-span-full text-center py-10"><i class="fa-solid fa-exclamation-circle mb-4 block text-4xl"></i>Failed to load game data.<br><br>Ensure the game is running and connected.</p>';
+        return;
     }
 
     let items = [];
