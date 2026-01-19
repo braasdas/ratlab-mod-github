@@ -5,6 +5,7 @@ export const STATE = {
     sessionPassword: null,
     username: localStorage.getItem('username'),
     actionCosts: {},
+    disabledActions: new Set(),
     queueTimerInterval: null,
     
     // Stream State

@@ -8,8 +8,8 @@ export async function sendAction(action, data, buttonElement) {
     }
 
     if (STATE.sessionRequiresPassword && !STATE.sessionPassword) {
-        // TODO: Implement password modal trigger
-        showFeedback('error', 'SESSION PASSWORD REQUIRED');
+        // Show password modal and wait for user input
+        showPasswordModal(action, data, buttonElement);
         return;
     }
 
@@ -63,4 +63,75 @@ export async function sendAction(action, data, buttonElement) {
             buttonElement.classList.remove('sending');
         }
     }
+}
+
+function showPasswordModal(action, data, buttonElement) {
+    const modal = document.getElementById('password-modal');
+    const input = document.getElementById('interaction-password-input');
+    const submitBtn = document.getElementById('submit-password-btn');
+    const closeBtn = document.getElementById('close-password-modal');
+    const errorDiv = document.getElementById('password-error');
+
+    if (!modal || !input || !submitBtn) {
+        console.error('[Password Modal] Elements not found');
+        showFeedback('error', 'PASSWORD MODAL ERROR');
+        return;
+    }
+
+    // Reset modal state
+    input.value = '';
+    if (errorDiv) errorDiv.classList.add('hidden');
+
+    // Show modal
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    // Focus input
+    setTimeout(() => input.focus(), 100);
+
+    // Handle password submission
+    const handleSubmit = async () => {
+        const password = input.value.trim();
+
+        if (!password) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Password Required';
+                errorDiv.classList.remove('hidden');
+            }
+            return;
+        }
+
+        // Store password in STATE
+        STATE.sessionPassword = password;
+
+        // Hide modal
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+
+        // Retry the action with the password
+        await sendAction(action, data, buttonElement);
+    };
+
+    // Submit button click handler
+    const submitHandler = () => handleSubmit();
+    submitBtn.onclick = submitHandler;
+
+    // Enter key handler
+    const enterHandler = (e) => {
+        if (e.key === 'Enter') {
+            handleSubmit();
+        }
+    };
+    input.onkeypress = enterHandler;
+
+    // Close button handler
+    const closeHandler = () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        if (buttonElement) {
+            buttonElement.disabled = false;
+            buttonElement.classList.remove('sending');
+        }
+    };
+    if (closeBtn) closeBtn.onclick = closeHandler;
 }

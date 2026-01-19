@@ -86,15 +86,32 @@ window.addEventListener('load', () => {
             const viewCamera = document.getElementById('view-camera');
             const viewMap = document.getElementById('view-map');
             const mapControls = document.getElementById('map-controls');
+            const video = document.getElementById('game-screenshot');
 
             if (mode === 'camera') {
                 viewCamera.classList.remove('hidden');
                 viewMap.classList.add('hidden');
                 if (mapControls) mapControls.classList.add('hidden');
+
+                // Ensure video is playing when switching back to camera view
+                if (video && video.paused && STATE.streamConnected) {
+                    video.play().catch(e => {
+                        console.log('[View Switch] Video play prevented:', e);
+                        // If autoplay is blocked, ensure video is at least ready to play
+                        if (e.name === 'NotAllowedError' && video.muted === false) {
+                            video.muted = true;
+                            video.play().catch(() => {});
+                        }
+                    });
+                }
             } else {
+                // Switching to map view - keep video playing in background
                 viewCamera.classList.add('hidden');
                 viewMap.classList.remove('hidden');
                 if (mapControls) mapControls.classList.remove('hidden');
+
+                // Don't pause the video, just hide it so it continues buffering
+                // This prevents glitches when switching back
             }
         });
     });
@@ -241,8 +258,11 @@ socket.on('coin-update', (data) => {
 socket.on('economy-config-update', (data) => {
     if (data.actionCosts) {
         STATE.actionCosts = data.actionCosts;
-        updateActionButtonsCosts();
     }
+    if (data.disabledActions) {
+        STATE.disabledActions = new Set(data.disabledActions);
+    }
+    updateActionButtonsCosts();
 });
 
 socket.on('viewer-count-update', (data) => {

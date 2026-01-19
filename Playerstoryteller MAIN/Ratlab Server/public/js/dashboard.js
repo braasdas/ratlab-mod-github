@@ -411,12 +411,25 @@ async function openContentSettings(category) {
     const grid = document.getElementById('browser-grid');
     const filterSelect = document.getElementById('browser-filter');
     const searchInput = document.getElementById('browser-search');
-    
+
+    // IMPORTANT: Read current UI state before rendering to preserve unsaved changes
+    // Only read action toggles and prices to avoid overwriting other settings
+    if (!currentSettings.actions) currentSettings.actions = {};
+    if (!currentEconomy.actionCosts) currentEconomy.actionCosts = {};
+
+    document.querySelectorAll('.action-toggle').forEach(toggle => {
+        currentSettings.actions[toggle.dataset.action] = toggle.checked;
+    });
+
+    document.querySelectorAll('.price-input').forEach(input => {
+        currentEconomy.actionCosts[input.dataset.action] = parseInt(input.value) || 0;
+    });
+
     // Reset
     grid.innerHTML = '<p class="text-rat-text-dim font-mono col-span-full text-center py-10">Fetching configuration data...</p>';
     filterSelect.innerHTML = '<option value="all">ALL CATEGORIES</option>';
     searchInput.value = '';
-    
+
     modal.classList.remove('hidden');
 
     if (!definitions) {
@@ -661,6 +674,18 @@ function renderBrowserItems(items, container) {
 }
 
 function closeContentBrowser() {
+    // Save any unsaved changes from the modal before closing
+    if (!currentSettings.actions) currentSettings.actions = {};
+    if (!currentEconomy.actionCosts) currentEconomy.actionCosts = {};
+
+    document.querySelectorAll('.action-toggle').forEach(toggle => {
+        currentSettings.actions[toggle.dataset.action] = toggle.checked;
+    });
+
+    document.querySelectorAll('.price-input').forEach(input => {
+        currentEconomy.actionCosts[input.dataset.action] = parseInt(input.value) || 0;
+    });
+
     document.getElementById('content-browser-modal').classList.add('hidden');
 }
 

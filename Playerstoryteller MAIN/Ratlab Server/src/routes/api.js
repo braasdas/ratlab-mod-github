@@ -159,14 +159,14 @@ module.exports = (io, definitionManager) => {
     });
 
     // Map terrain ingest (from Mod)
-    router.post('/api/v1/map/terrain/:sessionId', (req, res) => {
+    router.post('/api/v1/map/terrain/:sessionId', async (req, res) => {
         const { sessionId } = req.params;
         const streamKey = req.headers['x-stream-key'];
 
         let session = sessionStore.getSession(sessionId);
         if (!session) {
             // Create a session placeholder so terrain can arrive before first heartbeat
-            session = sessionStore.createSession(sessionId, { streamKey, isPublic: true });
+            session = await sessionStore.createSession(sessionId, { streamKey, isPublic: true });
         }
 
         if (session.streamKey && session.streamKey !== streamKey) {
@@ -234,13 +234,13 @@ module.exports = (io, definitionManager) => {
     });
 
     // Map things ingest (from Mod) - plants, trees, buildings, objects with textures
-    router.post('/api/v1/map/things/:sessionId', (req, res) => {
+    router.post('/api/v1/map/things/:sessionId', async (req, res) => {
         const { sessionId } = req.params;
         const streamKey = req.headers['x-stream-key'];
 
         let session = sessionStore.getSession(sessionId);
         if (!session) {
-            session = sessionStore.createSession(sessionId, { streamKey, isPublic: true });
+            session = await sessionStore.createSession(sessionId, { streamKey, isPublic: true });
         }
 
         if (session.streamKey && session.streamKey !== streamKey) {
@@ -377,7 +377,7 @@ module.exports = (io, definitionManager) => {
     });
 
     // Receive combined update from RimWorld mod (HTTP POST fallback)
-    router.post('/api/update', (req, res) => {
+    router.post('/api/update', async (req, res) => {
         try {
             const sessionId = req.headers['session-id'] || 'default-session';
             const streamKey = req.headers['x-stream-key'];
@@ -405,10 +405,10 @@ module.exports = (io, definitionManager) => {
 
             // Create or Update Session
             let session = sessionStore.getSession(sessionId);
-            
+
             if (!session) {
                 log('info', `New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
-                session = sessionStore.createSession(sessionId, {
+                session = await sessionStore.createSession(sessionId, {
                     streamKey, interactionPassword, isPublic
                 });
             } else {

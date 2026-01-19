@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const sessionStore = require('../store/sessionStore');
+const settingsPersistence = require('../services/settingsPersistence');
 const log = require('../utils/logger');
 
 module.exports = (io) => {
@@ -86,12 +87,29 @@ router.post('/api/settings/:sessionId', requireStreamAuth, (req, res) => {
     }
 
     log('info', `Settings updated for session ${req.params.sessionId}`);
-    
+
+    // Persist settings to disk
+    if (session.streamKey) {
+        await settingsPersistence.saveSettings(session.streamKey, {
+            settings: session.settings,
+            economy: {
+                coinRate: session.economy.coinRate,
+                actionCosts: session.economy.actionCosts
+            },
+            meta: {
+                isPublic: session.isPublic,
+                interactionPassword: session.interactionPassword
+            },
+            queueSettings: session.queueSettings || {}
+        });
+    }
+
     // Broadcast updates to viewers
-    if (economy) {
+    if (economy || settings) {
         io.to(req.params.sessionId).emit('economy-config-update', {
             actionCosts: session.economy.actionCosts,
-            coinRate: session.economy.coinRate
+            coinRate: session.economy.coinRate,
+            disabledActions: settings?.actions ? Object.keys(settings.actions).filter(key => settings.actions[key] === false) : []
         });
     }
 

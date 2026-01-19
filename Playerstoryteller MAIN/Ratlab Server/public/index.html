@@ -287,7 +287,7 @@
 
                                     <!-- Technical Header & View Switcher -->
                                     <div
-                                        class="bg-rat-dark border-b border-rat-border px-3 py-2 flex justify-between items-center text-xs font-mono text-rat-text-dim shrink-0">
+                                        class="bg-rat-dark border-b border-rat-border px-3 py-2 flex justify-between items-center text-xs font-mono text-rat-text-dim shrink-0 relative z-10">
                                         <div class="flex items-center gap-4">
                                             <div class="flex bg-black rounded border border-rat-border p-0.5">
                                                 <button
@@ -323,7 +323,7 @@
                                     </div>
 
                                     <!-- Viewport Wrapper - height set by JS based on video dimensions -->
-                                    <div id="visual-viewport">
+                                    <div id="visual-viewport" class="relative">
 
                                         <!-- CAMERA VIEW (Default Visible) -->
                                         <div class="view-layer" id="view-camera">

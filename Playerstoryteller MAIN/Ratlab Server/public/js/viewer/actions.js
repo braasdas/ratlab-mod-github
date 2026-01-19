@@ -76,17 +76,45 @@ export function updateActionButtonsCosts() {
     document.querySelectorAll('.action-btn').forEach(btn => {
         const action = btn.dataset.action;
         let cost = STATE.actionCosts[action];
-        
+
         // Fallback to snake_case if not found (e.g. healColonist -> heal_colonist)
-        if (cost === undefined) {
-            const snakeKey = action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        const snakeKey = action ? action.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`) : '';
+        if (cost === undefined && snakeKey) {
             cost = STATE.actionCosts[snakeKey];
         }
-        
+
+        // Check if action is disabled
+        const isDisabled = STATE.disabledActions.has(action) || STATE.disabledActions.has(snakeKey);
+
+        // Update button visual state for disabled actions
+        if (isDisabled) {
+            btn.classList.add('opacity-50', 'cursor-not-allowed', 'grayscale');
+            btn.disabled = true;
+            btn.title = 'This action has been disabled by the streamer';
+
+            // Add disabled badge
+            let disabledBadge = btn.querySelector('.disabled-badge');
+            if (!disabledBadge) {
+                disabledBadge = document.createElement('span');
+                disabledBadge.className = 'disabled-badge text-[9px] bg-rat-red/20 border border-rat-red text-rat-red px-1 rounded absolute top-1 left-1 uppercase font-bold';
+                btn.style.position = 'relative';
+                btn.appendChild(disabledBadge);
+            }
+            disabledBadge.textContent = 'DISABLED';
+        } else {
+            btn.classList.remove('opacity-50', 'cursor-not-allowed', 'grayscale');
+            btn.disabled = false;
+            btn.title = '';
+
+            // Remove disabled badge if it exists
+            const disabledBadge = btn.querySelector('.disabled-badge');
+            if (disabledBadge) disabledBadge.remove();
+        }
+
         // Check if badge already exists
         let badge = btn.querySelector('.cost-badge');
-        
-        if (cost > 0) {
+
+        if (cost > 0 && !isDisabled) {
             if (!badge) {
                 badge = document.createElement('span');
                 badge.className = 'cost-badge text-[10px] bg-rat-black border border-rat-yellow text-rat-yellow px-1 rounded absolute top-1 right-1';

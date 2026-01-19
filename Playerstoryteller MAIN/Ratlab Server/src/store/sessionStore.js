@@ -1,4 +1,5 @@
 const { EventEmitter } = require('events');
+const settingsPersistence = require('../services/settingsPersistence');
 
 class SessionStore extends EventEmitter {
     constructor() {
@@ -31,7 +32,7 @@ class SessionStore extends EventEmitter {
     }
 
     // Create or update basic session info
-    createSession(sessionId, data) {
+    async createSession(sessionId, data) {
         const now = new Date();
         // Check if it already exists to preserve state if called redundantly
         if (this.gameSessions.has(sessionId)) {
@@ -41,6 +42,12 @@ class SessionStore extends EventEmitter {
         // Track Stream Key Mapping
         if (data.streamKey) {
             this.streamKeyToSessionId.set(data.streamKey, sessionId);
+        }
+
+        // Try to load persisted settings
+        let persistedSettings = null;
+        if (data.streamKey) {
+            persistedSettings = await settingsPersistence.loadSettings(data.streamKey);
         }
 
         const session = {
@@ -306,6 +313,58 @@ class SessionStore extends EventEmitter {
                 }
             }
         };
+
+        // Merge persisted settings if they exist
+        if (persistedSettings) {
+            // Merge settings
+            if (persistedSettings.settings) {
+                session.settings = {
+                    ...session.settings,
+                    ...persistedSettings.settings
+                };
+                // Deep merge actions
+                if (persistedSettings.settings.actions) {
+                    session.settings.actions = {
+                        ...session.settings.actions,
+                        ...persistedSettings.settings.actions
+                    };
+                }
+            }
+
+            // Merge economy
+            if (persistedSettings.economy) {
+                if (persistedSettings.economy.coinRate !== undefined) {
+                    session.economy.coinRate = persistedSettings.economy.coinRate;
+                }
+                if (persistedSettings.economy.actionCosts) {
+                    session.economy.actionCosts = {
+                        ...session.economy.actionCosts,
+                        ...persistedSettings.economy.actionCosts
+                    };
+                }
+            }
+
+            // Merge meta
+            if (persistedSettings.meta) {
+                if (persistedSettings.meta.isPublic !== undefined) {
+                    session.isPublic = persistedSettings.meta.isPublic;
+                }
+                if (persistedSettings.meta.interactionPassword !== undefined) {
+                    session.interactionPassword = persistedSettings.meta.interactionPassword;
+                }
+            }
+
+            // Queue settings
+            if (persistedSettings.queueSettings) {
+                session.queueSettings = {
+                    ...session.queueSettings,
+                    ...persistedSettings.queueSettings
+                };
+            }
+
+            console.log(`[SessionStore] Loaded persisted settings for session ${sessionId}`);
+        }
+
         this.gameSessions.set(sessionId, session);
         return session;
     }

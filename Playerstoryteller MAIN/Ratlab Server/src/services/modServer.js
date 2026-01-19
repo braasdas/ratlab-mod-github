@@ -33,46 +33,51 @@ function startModServer(io) {
             return;
         }
 
-        // Initialize or Update Session in Store
-        let session = sessionStore.getSession(sessionId);
+        // Initialize or Update Session in Store (async)
+        (async () => {
+            let session = sessionStore.getSession(sessionId);
 
-        if (!session) {
-            log('info', `[WS Mod] New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
-            session = sessionStore.createSession(sessionId, {
-                streamKey, interactionPassword, isPublic
-            });
-            // Broadcast new session list
-            broadcastSessionList(io);
-        } else {
+            if (!session) {
+                log('info', `[WS Mod] New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
+                session = await sessionStore.createSession(sessionId, {
+                    streamKey, interactionPassword, isPublic
+                });
+                // Broadcast new session list
+                broadcastSessionList(io);
+            } else {
             // SECURITY CHECK
             if (session.streamKey && session.streamKey !== streamKey) {
                 log('warn', `[WS Mod] Hijack attempt on session ${sessionId}`);
                 ws.close();
                 return;
             }
-            // Update session details
-            log('info', `[WS Mod] Updating session: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
-            sessionStore.updateSession(sessionId, {
-                interactionPassword,
-                isPublic,
-                streamKey // Ensure map is updated
+                // Update session details
+                log('info', `[WS Mod] Updating session: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
+                sessionStore.updateSession(sessionId, {
+                    interactionPassword,
+                    isPublic,
+                    streamKey // Ensure map is updated
+                });
+                // Broadcast updated session list (e.g. status change)
+                broadcastSessionList(io);
+            }
+
+            log('info', `[WS Mod] Connected for session: ${sessionId}`);
+
+            ws.on('message', (message) => {
+                processModMessage(message, sessionId, io);
             });
-            // Broadcast updated session list (e.g. status change)
-            broadcastSessionList(io);
-        }
 
-        log('info', `[WS Mod] Connected for session: ${sessionId}`);
+            ws.on('close', () => {
+                log('info', `[WS Mod] Disconnected: ${sessionId}`);
+            });
 
-        ws.on('message', (message) => {
-            processModMessage(message, sessionId, io);
-        });
-
-        ws.on('close', () => {
-            log('info', `[WS Mod] Disconnected: ${sessionId}`);
-        });
-
-        ws.on('error', (err) => {
-            log('error', `[WS Mod] Socket error for ${sessionId}:`, err);
+            ws.on('error', (err) => {
+                log('error', `[WS Mod] Socket error for ${sessionId}:`, err);
+            });
+        })().catch(err => {
+            log('error', '[WS Mod] Error initializing session:', err);
+            ws.close();
         });
     });
 
