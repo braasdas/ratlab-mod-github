@@ -175,7 +175,7 @@ export function updateGameState(gameState) {
 
     // 6. Stats & Info
     if (effectiveState.power) updatePowerStats(effectiveState.power);
-    if (effectiveState.creatures) updateCreatureStats(effectiveState.creatures);
+    if (effectiveState.creatures) updateCreatureStats(effectiveState.creatures, state);
     if (effectiveState.research) updateResearchStats(effectiveState.research);
     if (factions.length > 0) updateFactionsList(factions);
     if (mods.length > 0) updateModsList(mods);
@@ -369,15 +369,19 @@ function updatePowerStats(power) {
     `;
 }
 
-function updateCreatureStats(creatures) {
+function updateCreatureStats(creatures, state) {
     const creatureStats = document.getElementById('creature-stats');
     if (!creatures || !creatureStats) return;
 
-    // Map keys from potential different sources
-    const tame = creatures.colony_animals || creatures.animals_count || 0;
-    const wild = creatures.wild_animals || 0;
+    // Count tamed animals from actual animals_light data (SpawnedColonyAnimals from mod)
+    const tame = (state && state.animals) ? state.animals.length : 0;
+
+    // Calculate wild animals: total - tamed (if we have the data)
+    const totalAnimals = creatures.animals_count || 0;
+    const wild = totalAnimals > tame ? totalAnimals - tame : 0;
+
     const hostile = creatures.hostile_creatures || creatures.enemies_count || 0;
-    const insects = creatures.insects || 0;
+    const insects = creatures.insectoids_count || creatures.insects || 0;
 
     creatureStats.innerHTML = `
         <div class="grid grid-cols-2 gap-2 text-xs">
