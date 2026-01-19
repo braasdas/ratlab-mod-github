@@ -190,11 +190,19 @@ namespace PlayerStoryteller
         }
 
         /// <summary>
-        /// Fetches portrait for a specific colonist from RimAPI.
+        /// Fetches portrait for a specific colonist/pawn from RimAPI.
+        /// </summary>
+        public async Task<string> GetPawnPortrait(string pawnId, int width = 128, int height = 128, int direction = 1)
+        {
+            return await SafeFetchAsync($"{RimApiBaseUrl}/pawn/portrait/image?pawn_id={pawnId}&width={width}&height={height}&direction={direction}", $"portrait_{pawnId}");
+        }
+
+        /// <summary>
+        /// Legacy method for backward compatibility.
         /// </summary>
         public async Task<string> GetColonistPortrait(string colonistId)
         {
-            return await SafeFetchAsync($"{RimApiBaseUrl}/pawn/portrait/image?id={colonistId}", $"portrait_{colonistId}");
+            return await GetPawnPortrait(colonistId);
         }
 
         /// <summary>

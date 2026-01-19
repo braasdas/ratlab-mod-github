@@ -10,10 +10,10 @@ function startModServer(io) {
     modWss.on('connection', (ws, req) => {
         // Parse query params for fallback auth
         const params = url.parse(req.url, true).query;
-        
+
         let sessionId = req.headers['session-id'] || params.sessionId;
         let streamKey = params.streamKey;
-        
+
         // Extract Bearer token if available
         const authHeader = req.headers['authorization'];
         if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -21,7 +21,7 @@ function startModServer(io) {
         }
 
         const interactionPassword = req.headers['x-interaction-password'] || params.interactionPassword;
-        
+
         // Logic: Default to PUBLIC unless explicitly set to 'false'
         const headerPublic = req.headers['is-public'];
         const paramPublic = params.isPublic;
@@ -35,7 +35,7 @@ function startModServer(io) {
 
         // Initialize or Update Session in Store
         let session = sessionStore.getSession(sessionId);
-        
+
         if (!session) {
             log('info', `[WS Mod] New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
             session = sessionStore.createSession(sessionId, {
@@ -52,8 +52,8 @@ function startModServer(io) {
             }
             // Update session details
             log('info', `[WS Mod] Updating session: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
-            sessionStore.updateSession(sessionId, { 
-                interactionPassword, 
+            sessionStore.updateSession(sessionId, {
+                interactionPassword,
                 isPublic,
                 streamKey // Ensure map is updated
             });
@@ -70,9 +70,9 @@ function startModServer(io) {
         ws.on('close', () => {
             log('info', `[WS Mod] Disconnected: ${sessionId}`);
         });
-        
+
         ws.on('error', (err) => {
-             log('error', `[WS Mod] Socket error for ${sessionId}:`, err);
+            log('error', `[WS Mod] Socket error for ${sessionId}:`, err);
         });
     });
 
@@ -92,10 +92,10 @@ function processModMessage(message, sessionId, io) {
 
         const msgType = message[0];
         const idLength = message[1];
-        
+
         // Offset where payload begins
         const payloadStart = 2 + idLength;
-        
+
         if (message.length < payloadStart) return;
 
         const session = sessionStore.getSession(sessionId);
@@ -110,7 +110,7 @@ function processModMessage(message, sessionId, io) {
         if (msgType === 1) {
             // OPTIMIZATION: Keep as Buffer, don't convert to Base64 string
             const imageBuffer = message.slice(payloadStart);
-            
+
             // Store the raw buffer
             session.screenshot = imageBuffer;
 
@@ -126,7 +126,7 @@ function processModMessage(message, sessionId, io) {
             const jsonString = jsonBuffer.toString('utf8');
             try {
                 session.gameState = JSON.parse(jsonString);
-                
+
                 // 1. SYNC: Process explicit adoptions from Mod (Manual & Auto)
                 if (session.gameState.adoptions && Array.isArray(session.gameState.adoptions)) {
                     session.gameState.adoptions.forEach(adopt => {
@@ -153,10 +153,10 @@ function processModMessage(message, sessionId, io) {
                         if (nickname && pawnId) {
                             // Check if this pawn is named after a viewer who isn't registered as adopting yet
                             // (e.g. they bought the pawn, action sent, pawn spawned, now we link them)
-                            
+
                             // We check if the nickname matches a known viewer profile
                             // AND if that viewer doesn't already have an active adoption record linked
-                            
+
                             if (session.economy.viewers.has(nickname) && !session.adoptions.active.has(nickname)) {
                                 console.log(`[WS Mod] Auto-linking viewer ${nickname} to pawn ${pawnId}`);
                                 session.adoptions.active.set(nickname, {
@@ -165,7 +165,7 @@ function processModMessage(message, sessionId, io) {
                                     adoptedAt: new Date()
                                 });
                             }
-                            
+
                             // Self-healing: Update ID if name matches but ID changed (e.g. save reload?)
                             if (session.adoptions.active.has(nickname)) {
                                 const record = session.adoptions.active.get(nickname);
@@ -192,7 +192,7 @@ function processModMessage(message, sessionId, io) {
         else if (msgType === 3) {
             const imageBuffer = message.slice(payloadStart);
             session.mapImage = imageBuffer;
-            
+
             io.emit('map-image-update', {
                 sessionId,
                 image: session.mapImage,

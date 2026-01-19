@@ -870,9 +870,9 @@ namespace PlayerStoryteller
                     foreach (var thing in thingsInRadius)
                     {
                         if (thing == null || thing.def == null) continue;
-                        
-                        // EXCLUDE PAWNS: They are handled by UpdatePawnPositionsAsync and UpdateFastData
-                        // Sending them here causes double-rendering and ID conflicts ("Human123" vs 123)
+
+                        // EXCLUDE ALL PAWNS: They are handled by UpdatePawnPositionsAsync, UpdateFastData, and UpdateAnimalData
+                        // Sending them here causes double-rendering and ID conflicts
                         if (thing is Pawn) continue;
 
                         string thingId = thing.ThingID;
@@ -898,12 +898,82 @@ namespace PlayerStoryteller
 
                 // DELTA OPTIMIZATION REMOVED: Always send update to ensure frontend sync
                 lastLiveViewThingIds = currentThingIds;
-                
+
                 // Ensure we know what the server has
                 await EnsureManifestSynced();
 
                 // 2. Fetch Textures (Optimized: Only new DefNames, smaller batches to prevent spikes)
                 var textures = new JObject();
+
+                // 1.5. Fetch animal portraits via RimAPI and upload to server cache
+                var animals = map.mapPawns.SpawnedColonyAnimals;
+                if (animals != null && animals.Count > 0)
+                {
+                    var animalTexturesToUpload = new JObject();
+
+                    foreach (var animal in animals)
+                    {
+                        if (animal != null && animal.def != null)
+                        {
+                            string animalDefName = animal.def.defName;
+
+                            // Skip if already fetched
+                            if (sentTextures.Contains(animalDefName)) continue;
+                            if (knownRemoteTextures.Contains(animalDefName)) continue;
+
+                            try
+                            {
+                                // Fetch animal portrait using RimAPI pawn portrait endpoint
+                                string portraitJson = await apiClient.GetPawnPortrait(animal.thingIDNumber.ToString(), 128, 128, 1);
+
+                                if (!string.IsNullOrEmpty(portraitJson))
+                                {
+                                    // Extract image_base64 from JSON response
+                                    var jToken = Newtonsoft.Json.Linq.JToken.Parse(portraitJson);
+                                    var imageData = jToken["image_base64"];
+
+                                    if (imageData != null)
+                                    {
+                                        string base64 = imageData.ToString();
+                                        textures[animalDefName] = base64;
+                                        animalTexturesToUpload[animalDefName] = base64;
+                                        sentTextures.Add(animalDefName);
+
+                                        Log.Message($"[Player Storyteller] Fetched animal portrait: {animal.LabelShort} ({animalDefName})");
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Warning($"[Player Storyteller] Failed to fetch animal portrait for {animalDefName}: {ex.Message}");
+                            }
+                        }
+                    }
+
+                    // Upload animal textures to server cache
+                    if (animalTexturesToUpload.Count > 0)
+                    {
+                        Log.Message($"[Player Storyteller] Uploading {animalTexturesToUpload.Count} animal textures to server cache...");
+                        var payload = new JObject { ["textures"] = animalTexturesToUpload };
+                        bool success = await PlayerStorytellerMod.SendTexturesBatchAsync(payload.ToString(Newtonsoft.Json.Formatting.None));
+
+                        if (success)
+                        {
+                            Log.Message($"[Player Storyteller] Animal texture upload succeeded");
+                            lock(knownRemoteTextures)
+                            {
+                                foreach (var prop in animalTexturesToUpload.Properties())
+                                {
+                                    knownRemoteTextures.Add(prop.Name);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Log.Warning($"[Player Storyteller] Animal texture upload FAILED");
+                        }
+                    }
+                }
                 // 50 textures/tick max; caps RimAPI calls per frame to prevent game stutter
                 const int MAX_TEXTURES_PER_TICK = 50;
 

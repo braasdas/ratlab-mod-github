@@ -437,9 +437,8 @@ export class MapRenderer {
 
                 const batch = toLoad.slice(i, i + BATCH_SIZE).map(async (defName) => {
                     try {
-                        // Determine type: animals use session-specific endpoint, things use global cache
-                        const type = (this._animalTextures && this._animalTextures.has(defName)) ? 'animal' : 'thing';
-                        const img = await this.textureManager.getTexture(defName, type);
+                        // All textures (things and animals) use global cache
+                        const img = await this.textureManager.getTexture(defName, 'thing');
                         if (img) {
                             this.thingImages.set(defName, img);
                             this.missingTextures.delete(defName);
@@ -1137,7 +1136,7 @@ export class MapRenderer {
                 }
             }
 
-            // 2. Try Animal Texture
+            // 2. Try Animal Texture (from global cache, same as things)
             if (dot.type === 'animal' && dot.defName) {
                 const img = this.thingImages.get(dot.defName);
                 if (img && img.complete && img.naturalWidth > 0) {
@@ -1145,12 +1144,9 @@ export class MapRenderer {
                     this.ctx.drawImage(img, centerX - size / 2, centerY - size / 2, size, size);
                     return; // Done
                 } else {
-                    // Queue load if missing - use session-specific 'animal' type instead of 'thing'
+                    // Queue load if missing - animals use global cache (same as things)
                     if (!this.thingImages.has(dot.defName) && !this.loadingTextures.has(dot.defName)) {
                         this.missingTextures.add(dot.defName);
-                        // Mark as animal type for correct endpoint
-                        if (!this._animalTextures) this._animalTextures = new Set();
-                        this._animalTextures.add(dot.defName);
 
                         // Log first time we encounter a missing animal texture
                         if (!this._loggedAnimalTextures) this._loggedAnimalTextures = new Set();
