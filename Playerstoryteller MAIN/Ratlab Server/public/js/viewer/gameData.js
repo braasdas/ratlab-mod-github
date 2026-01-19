@@ -150,21 +150,21 @@ export function updateGameState(gameState) {
     // 2. UI Updates
     const colonistCount = document.getElementById('colonist-count');
     const wealthDisplay = document.getElementById('wealth');
-    
+
     if (colonistCount) colonistCount.textContent = colonists.length;
-    if (wealthDisplay) wealthDisplay.textContent = `$${((resources.total_market_value || 0)/1000).toFixed(1)}k`;
+    if (wealthDisplay) wealthDisplay.textContent = `$${((resources.total_market_value || 0) / 1000).toFixed(1)}k`;
 
     // 3. Module Updates
     updateMyPawnUI(effectiveState);
-    
+
     if (colonists.length > 0) {
         updateColonistsList(colonists, effectiveState);
         updateMapOverlays(effectiveState);
         // Also update Personal Inventory in Inventory Tab
         updateInventoryList(colonists, effectiveState);
     } else {
-         const list = document.getElementById('colonists-list');
-         if(list) list.innerHTML = '<p class="loading col-span-full text-center">No active subjects found</p>';
+        const list = document.getElementById('colonists-list');
+        if (list) list.innerHTML = '<p class="loading col-span-full text-center">No active subjects found</p>';
     }
 
     // 4. DLC Visibility
@@ -295,12 +295,12 @@ function updateMedicalAlerts(colonists) {
 
     medicalAlertsList.appendChild(fragment);
     existingAlerts.forEach(el => el.remove());
-    
+
     // Attach listeners
     document.querySelectorAll('.btn-follow-alert').forEach(btn => {
         // Simple overwrite is fine here since we rebuild/diff efficiently
         btn.onclick = async () => {
-             const pawnId = btn.dataset.pawnId;
+            const pawnId = btn.dataset.pawnId;
             btn.disabled = true;
             btn.textContent = '⏳ LOCATING...';
 
@@ -309,13 +309,13 @@ function updateMedicalAlerts(colonists) {
                     type: 'select',
                     pawnId: pawnId
                 }));
-                 setTimeout(() => {
+                setTimeout(() => {
                     btn.disabled = false;
                     btn.textContent = '📍 LOCATE SUBJECT';
                     showFeedback('success', 'Subject located');
                 }, 1000);
-            } catch(e) {
-                 btn.disabled = false;
+            } catch (e) {
+                btn.disabled = false;
             }
         };
     });
@@ -342,9 +342,6 @@ function createMedicalAlertHtml(alert) {
             <div class="alert-severity-bar">
                 <div class="alert-severity-fill ${alert.severityClass}" style="width: ${severityPercent}%"></div>
             </div>
-            <button class="btn-follow-alert" data-pawn-id="${alert.pawnId}" title="Go to colonist">
-                LOCATE SUBJECT
-            </button>
         </div>
     `;
 }
@@ -375,7 +372,7 @@ function updatePowerStats(power) {
 function updateCreatureStats(creatures) {
     const creatureStats = document.getElementById('creature-stats');
     if (!creatures || !creatureStats) return;
-    
+
     // Map keys from potential different sources
     const tame = creatures.colony_animals || creatures.animals_count || 0;
     const wild = creatures.wild_animals || 0;
@@ -410,7 +407,7 @@ function updateResearchStats(research) {
 
     // Normalize keys
     const currentProject = research.current_project || research.label || research.name;
-    
+
     if (currentProject) {
         const progress = research.progress || 0;
         const total = research.cost || 1;
@@ -434,27 +431,27 @@ function updateFactionsList(factions) {
 
     // Clear loading text if present
     Array.from(container.children).forEach(el => {
-         if (!el.dataset.factionName) el.remove();
+        if (!el.dataset.factionName) el.remove();
     });
 
     const existingMap = new Map();
     Array.from(container.children).forEach(el => {
         if (el.dataset.factionName) existingMap.set(el.dataset.factionName, el);
     });
-    
+
     const processed = new Set();
     const uniqueFactions = factions.filter(f => {
-         const slug = f.name.replace(/\s+/g, '-').toLowerCase();
-         if (processed.has(slug)) return false;
-         processed.add(slug);
-         return true;
+        const slug = f.name.replace(/\s+/g, '-').toLowerCase();
+        if (processed.has(slug)) return false;
+        processed.add(slug);
+        return true;
     });
 
     uniqueFactions.forEach(faction => {
         const slug = faction.name.replace(/\s+/g, '-').toLowerCase();
         const relationColor = faction.relation === 'Hostile' ? 'text-rat-red' :
-                              faction.relation === 'Neutral' ? 'text-rat-yellow' : 'text-rat-green';
-        
+            faction.relation === 'Neutral' ? 'text-rat-yellow' : 'text-rat-green';
+
         // Add interaction buttons with costs (sabotage is VERY expensive to discourage griefing)
         const sabotageCost = 500;
         const improveCost = 150;
@@ -479,17 +476,17 @@ function updateFactionsList(factions) {
         `;
 
         if (existingMap.has(slug)) {
-             const el = existingMap.get(slug);
-             // Check content roughly to avoid full re-render if static
-             // But for now, just replace to ensure buttons work
-             el.innerHTML = content;
-             existingMap.delete(slug);
+            const el = existingMap.get(slug);
+            // Check content roughly to avoid full re-render if static
+            // But for now, just replace to ensure buttons work
+            el.innerHTML = content;
+            existingMap.delete(slug);
         } else {
-             const el = document.createElement('div');
-             el.className = "bg-rat-dark border border-rat-border p-2 rounded hover:border-rat-green/30 transition-colors flex justify-between items-center";
-             el.dataset.factionName = slug;
-             el.innerHTML = content;
-             container.appendChild(el);
+            const el = document.createElement('div');
+            el.className = "bg-rat-dark border border-rat-border p-2 rounded hover:border-rat-green/30 transition-colors flex justify-between items-center";
+            el.dataset.factionName = slug;
+            el.innerHTML = content;
+            container.appendChild(el);
         }
     });
 
@@ -535,7 +532,7 @@ function updateFactionsList(factions) {
 
 function updateModsList(mods) {
     const modsList = document.getElementById('mods-list');
-    if(!modsList) return;
+    if (!modsList) return;
 
     Array.from(modsList.children).forEach(el => {
         if (!el.dataset.packageId) el.remove();
@@ -549,12 +546,12 @@ function updateModsList(mods) {
 
     sortedMods.forEach(mod => {
         const pkg = (mod.package_id || mod.packageId || 'unknown').toLowerCase();
-        
+
         const createContent = () => {
             let typeColor = 'text-rat-text-dim';
             if (pkg === 'ludeon.rimworld') typeColor = 'text-rat-green';
             else if (pkg.startsWith('ludeon.rimworld')) typeColor = 'text-rat-yellow';
-            
+
             return `
                 <div class="flex justify-between items-start">
                     <h3 class="font-bold text-sm text-white truncate pr-2" title="${mod.name}">${mod.name}</h3>
@@ -584,7 +581,7 @@ function updateModsList(mods) {
 
 function updateStoredResources(resources) {
     const container = document.getElementById('stored-resources-container');
-    if(!container) return;
+    if (!container) return;
 
     // Categories to EXCLUDE (plants, natural features, etc.)
     const excludedCategories = new Set([
@@ -785,7 +782,7 @@ function updateInventoryList(colonists, gameState) {
 
         // Skip colonists without names (position-only entries from ultrafast tier)
         if (!name) return;
-        
+
         let isExpanded = false;
         if (existingRows.has(pawnId)) {
             isExpanded = existingRows.get(pawnId).classList.contains('expanded');
@@ -807,7 +804,7 @@ function updateInventoryList(colonists, gameState) {
         items.forEach(item => {
             const defName = item.defName || item.def_name || item.label;
             const stackCount = item.stackCount || item.stack_count || 1;
-            
+
             if (groupedItems.has(defName)) {
                 const existing = groupedItems.get(defName);
                 existing.stackCount += stackCount;
@@ -817,8 +814,8 @@ function updateInventoryList(colonists, gameState) {
         });
         const groupedItemsArray = Array.from(groupedItems.values());
 
-        const itemsHtml = groupedItemsArray.length === 0 ? 
-            '<div class="p-3 text-xs text-rat-text-dim italic">No equipment carried</div>' : 
+        const itemsHtml = groupedItemsArray.length === 0 ?
+            '<div class="p-3 text-xs text-rat-text-dim italic">No equipment carried</div>' :
             groupedItemsArray.map(item => {
                 const defName = item.defName || item.def_name || item.label;
                 const iconData = STATE.itemIcons[defName];
@@ -833,8 +830,8 @@ function updateInventoryList(colonists, gameState) {
             }).join('');
 
         const portraitData = getColonistPortrait(pawnId);
-        const portraitHtml = portraitData ? 
-            `<img src="data:image/png;base64,${portraitData}" class="w-8 h-8 rounded object-cover mr-3 border border-rat-border" />` : 
+        const portraitHtml = portraitData ?
+            `<img src="data:image/png;base64,${portraitData}" class="w-8 h-8 rounded object-cover mr-3 border border-rat-border" />` :
             `<div class="w-8 h-8 rounded bg-rat-dark mr-3 border border-rat-border flex items-center justify-center text-xs">?</div>`;
 
         const createRowContent = () => `
@@ -853,16 +850,16 @@ function updateInventoryList(colonists, gameState) {
             const row = existingRows.get(pawnId);
             const listDiv = row.querySelector('.inventory-items-list');
             const header = row.querySelector('.inventory-colonist-header');
-            
+
             // Check if content needs update (simplified)
             // Ideally we compare data, but re-injecting innerHTML of the list is cheap enough here
             if (listDiv.innerHTML !== itemsHtml) {
                 listDiv.innerHTML = itemsHtml;
             }
-            
+
             // Update Header counts
             const countBadge = header.querySelector('.text-xs.bg-rat-dark');
-            if(countBadge) countBadge.textContent = `${groupedItemsArray.length} items`;
+            if (countBadge) countBadge.textContent = `${groupedItemsArray.length} items`;
 
             existingRows.delete(pawnId);
         } else {
@@ -871,13 +868,13 @@ function updateInventoryList(colonists, gameState) {
             row.dataset.pawnId = pawnId;
             row.innerHTML = createRowContent();
             inventoryContainer.appendChild(row);
-            
+
             // Toggle Logic
             row.querySelector('.inventory-colonist-header').addEventListener('click', (e) => {
                 e.stopPropagation();
                 const list = row.querySelector('.inventory-items-list');
                 const chevron = row.querySelector('.fa-chevron-down');
-                
+
                 if (list.classList.contains('hidden')) {
                     list.classList.remove('hidden');
                     list.classList.add('block');

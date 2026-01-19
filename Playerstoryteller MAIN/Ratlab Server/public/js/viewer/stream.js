@@ -53,6 +53,7 @@ function initializeWebSocket(sessionId) {
         console.log('[Stream] WebSocket Connected');
         STATE.streamConnected = true;
         STATE.useWebSocket = true;
+        STATE.videoDisabledDueToCapacity = false;
         updateStreamStatus(true);
         hideLoading();
         showFeedback('success', 'Live Stream Connected');
@@ -76,6 +77,16 @@ function initializeWebSocket(sessionId) {
             streamMonitorInterval = null;
         }
 
+        // Handle capacity limit rejection
+        if (event.code === 4503) {
+            console.log('[Stream] Server at video capacity - video disabled');
+            STATE.videoDisabledDueToCapacity = true;
+            showVideoCapacityMessage();
+            hideLoading();
+            // Don't auto-reconnect for capacity issues
+            return;
+        }
+
         if (STATE.currentSession && !STATE.useHLS) {
             setTimeout(() => {
                 console.log('[Stream] Attempting to reconnect...');
@@ -88,6 +99,22 @@ function initializeWebSocket(sessionId) {
         console.error('[Stream] WebSocket Error:', error);
         showFeedback('error', 'Stream Connection Error');
     };
+}
+
+// Show friendly message when video is disabled due to capacity
+function showVideoCapacityMessage() {
+    const streamDisabledOverlay = document.getElementById('stream-disabled');
+    if (streamDisabledOverlay) {
+        // Update the message for capacity
+        streamDisabledOverlay.innerHTML = `
+            <i class="fa-solid fa-users text-5xl text-rat-yellow mb-4"></i>
+            <h3 class="font-mono text-xl text-white">HIGH DEMAND</h3>
+            <p class="text-rat-text-dim text-sm mt-2">Video paused due to server capacity.</p>
+            <p class="text-rat-text-dim text-xs mt-1">Game data still active. Try again later.</p>
+        `;
+        streamDisabledOverlay.classList.remove('hidden');
+        streamDisabledOverlay.classList.add('flex');
+    }
 }
 
 // ============================================================================

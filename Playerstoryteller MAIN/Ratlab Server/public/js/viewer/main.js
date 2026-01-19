@@ -119,6 +119,47 @@ window.addEventListener('load', () => {
             createClickRipple(gameScreenshot.parentElement, clickX, clickY);
         });
     }
+
+    // Username Modal Handler
+    const usernameModal = document.getElementById('username-modal');
+    const usernameInput = document.getElementById('username-input');
+    const submitUsernameBtn = document.getElementById('submit-username-btn');
+    const usernameError = document.getElementById('username-error');
+
+    if (submitUsernameBtn && usernameInput && usernameModal) {
+        const submitUsername = () => {
+            const username = usernameInput.value.trim().toUpperCase();
+
+            // Validate: alphanumeric, 2-15 chars
+            if (!username || username.length < 2 || !/^[A-Z0-9_-]+$/i.test(username)) {
+                if (usernameError) {
+                    usernameError.textContent = 'Invalid Callsign (2-15 alphanumeric chars)';
+                    usernameError.classList.remove('hidden');
+                }
+                return;
+            }
+
+            // Save username
+            localStorage.setItem('username', username);
+            STATE.username = username;
+
+            // Hide modal
+            usernameModal.classList.add('hidden');
+            if (usernameError) usernameError.classList.add('hidden');
+
+            // Continue with pending session if any
+            const pendingSessionId = usernameModal.dataset.pendingSessionId;
+            if (pendingSessionId) {
+                delete usernameModal.dataset.pendingSessionId;
+                selectSession(pendingSessionId);
+            }
+        };
+
+        submitUsernameBtn.addEventListener('click', submitUsername);
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitUsername();
+        });
+    }
 });
 
 

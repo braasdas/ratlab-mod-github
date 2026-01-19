@@ -51,7 +51,7 @@
 </head>
 
 <body
-    class="bg-rat-black text-rat-text font-sans overflow-hidden h-screen selection:bg-rat-green selection:text-rat-black">
+    class="bg-rat-black text-rat-text font-sans overflow-x-hidden min-h-screen selection:bg-rat-green selection:text-rat-black">
 
     <!-- Scanline Overlay -->
     <div class="scanline"></div>
@@ -137,6 +137,28 @@
             <div class="flex items-center gap-6">
                 <div id="current-session-name" class="font-mono text-rat-green hidden md:block"></div>
 
+                <!-- Quick Links -->
+                <div class="flex items-center gap-2">
+                    <a href="https://discord.com/invite/yWC3Arr7pA" target="_blank" rel="noopener"
+                        class="group flex items-center gap-2 px-3 py-1.5 bg-[#5865F2]/10 border border-[#5865F2]/30 rounded-full hover:bg-[#5865F2]/20 hover:border-[#5865F2] transition-all">
+                        <i class="fa-brands fa-discord text-[#5865F2] group-hover:scale-110 transition-transform"></i>
+                        <span
+                            class="hidden md:inline text-xs font-mono text-[#5865F2] group-hover:text-white transition-colors">DISCORD</span>
+                    </a>
+                    <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3614801487" target="_blank"
+                        rel="noopener"
+                        class="group flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/20 rounded-full hover:bg-white/10 hover:border-white/50 transition-all">
+                        <i class="fa-brands fa-steam text-white group-hover:scale-110 transition-transform"></i>
+                        <span
+                            class="hidden md:inline text-xs font-mono text-white/70 group-hover:text-white transition-colors">MOD</span>
+                    </a>
+                    <a href="https://github.com/braasdas/ratlab-mod-github" target="_blank" rel="noopener"
+                        class="group flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/20 rounded-full hover:bg-white/10 hover:border-white/50 transition-all">
+                        <i class="fa-brands fa-github text-white group-hover:scale-110 transition-transform"></i>
+                        <span
+                            class="hidden md:inline text-xs font-mono text-white/70 group-hover:text-white transition-colors">SOURCE</span>
+                    </a>
+                </div>
 
                 <div class="text-xs font-mono text-rat-text-dim text-right">
                     <div id="coin-balance" class="text-rat-yellow hidden">💰 0 CREDITS</div>
@@ -171,11 +193,11 @@
             </div>
 
             <!-- Game Viewer Screen -->
-            <div id="game-viewer" class="screen w-full h-full flex">
+            <div id="game-viewer" class="screen w-full h-screen flex overflow-hidden">
 
                 <!-- Sidebar Navigation -->
                 <aside
-                    class="w-16 md:w-64 bg-rat-panel border-r border-rat-border flex flex-col z-10 transition-all duration-300">
+                    class="w-16 md:w-64 bg-rat-panel border-r border-rat-border flex flex-col z-10 transition-all duration-300 shrink-0">
                     <div class="p-4 border-b border-rat-border">
                         <button id="back-button"
                             class="w-full py-2 px-3 bg-rat-dark border border-rat-border rounded hover:border-rat-green hover:text-rat-green transition-colors flex items-center justify-center md:justify-start gap-3 group">
@@ -251,7 +273,8 @@
                 <div class="flex-1 bg-rat-black relative flex flex-col overflow-y-auto">
 
                     <!-- TAB: STREAM -->
-                    <div id="tab-stream" class="tab-pane active flex flex-col p-6">
+                    <div id="tab-stream"
+                        class="tab-pane active flex flex-col p-6 h-full overflow-y-auto custom-scrollbar">
 
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <!-- Left Column: Stream & Alerts (2/3 width) -->
@@ -430,7 +453,7 @@
                     </div>
 
                     <!-- TAB: MY PAWN (Private Dashboard) -->
-                    <div id="tab-my-pawn" class="tab-pane h-full overflow-hidden flex flex-col">
+                    <div id="tab-my-pawn" class="tab-pane h-full overflow-y-auto custom-scrollbar flex flex-col">
 
                         <!-- 1. ADOPTION CALL TO ACTION (Default Visible) -->
                         <div class="h-full flex flex-col items-center justify-center" id="adoption-cta">
@@ -686,7 +709,7 @@
                     </div>
 
                     <!-- TAB: QUEUE -->
-                    <div id="tab-queue" class="tab-pane h-full p-6 overflow-hidden">
+                    <div id="tab-queue" class="tab-pane h-full p-6 overflow-y-auto custom-scrollbar">
                         <div class="max-w-7xl mx-auto w-full h-full flex flex-col">
 
                             <!-- Countdown Timer Header -->

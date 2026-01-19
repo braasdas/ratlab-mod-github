@@ -17,6 +17,18 @@ const log = require('../utils/logger');
  * 4. Handles backpressure for slow viewers
  */
 
+// Global viewer capacity limit
+const MAX_GLOBAL_VIEWERS = 150;
+
+// Track total video viewers across all sessions
+function getTotalVideoViewers() {
+    let total = 0;
+    for (const [sessionId, session] of sessionStore.streamSessions) {
+        total += session.viewers.size;
+    }
+    return total;
+}
+
 function setupStreamService() {
     const streamWss = new WebSocket.Server({ noServer: true });
 
@@ -48,12 +60,26 @@ function setupStreamService() {
         if (isStreamer) {
             handleStreamer(ws, streamSession, sessionId);
         } else {
+            // Check global viewer capacity BEFORE adding
+            const currentViewers = getTotalVideoViewers();
+            if (currentViewers >= MAX_GLOBAL_VIEWERS) {
+                log('warn', `[Stream] Viewer rejected - at capacity (${currentViewers}/${MAX_GLOBAL_VIEWERS})`);
+                ws.close(4503, 'Server at video capacity');
+                return;
+            }
             handleViewer(ws, streamSession, sessionId);
         }
 
         ws.on('error', (error) => {
             log('error', `[Stream] WebSocket error: ${error.message}`);
         });
+    });
+
+    // Expose capacity check for Socket.IO
+    streamWss.getCapacityStatus = () => ({
+        currentViewers: getTotalVideoViewers(),
+        maxViewers: MAX_GLOBAL_VIEWERS,
+        atCapacity: getTotalVideoViewers() >= MAX_GLOBAL_VIEWERS
     });
 
     return streamWss;
@@ -85,7 +111,7 @@ function handleStreamer(ws, streamSession, sessionId) {
         log('warn', `[Stream] Replacing existing streamer for session: ${sessionId}`);
         try {
             streamSession.streamer.close();
-        } catch (e) {}
+        } catch (e) { }
     }
     streamSession.streamer = ws;
 
