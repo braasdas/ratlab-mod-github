@@ -47,8 +47,13 @@ export class TextureManager {
         const dbImg = await this.getFromDB(cacheKey);
         if (dbImg) {
             const img = await this.createImageFromBlob(dbImg.blob);
-            this.cache.set(cacheKey, img);
-            return img;
+            if (img) {
+                this.cache.set(cacheKey, img);
+                return img;
+            }
+            // Corrupted blob in IndexedDB - delete it and fall through to network fetch
+            console.warn(`[TextureManager] Corrupted blob in IndexedDB for ${cacheKey}, refetching...`);
+            this.deleteFromDB(cacheKey);
         }
 
         // 3. Fetch from Network
@@ -58,6 +63,12 @@ export class TextureManager {
             if (type === 'item' || type === 'building' || type === 'thing') {
                 // Global Texture Cache - route is /texture/:name (NOT /api/texture)
                 endpoint = `/texture/${encodeURIComponent(textureName)}`;
+            } else if (type === 'animal' || type === 'pawn') {
+                // Session-specific animal/pawn textures (from mapThings)
+                const qs = new URLSearchParams();
+                if (this.sessionId) qs.set('sessionId', this.sessionId);
+                qs.set('name', textureName);
+                endpoint = `/api/v1/map/thing/image?${qs.toString()}`;
             } else {
                 // Legacy Terrain Logic
                 const qs = new URLSearchParams();
@@ -68,7 +79,11 @@ export class TextureManager {
 
             const response = await fetch(endpoint);
             if (!response.ok) {
-                console.warn(`Texture fetch ${type}:${textureName} -> ${response.status}`);
+                if (type === 'animal' || type === 'pawn') {
+                    console.warn(`[TextureManager] Animal texture not found: ${textureName} (${response.status}) - Mod needs to send animal textures via map-things-update`);
+                } else {
+                    console.warn(`[TextureManager] Texture fetch ${type}:${textureName} -> ${response.status}`);
+                }
                 return null;
             }
 
@@ -106,6 +121,18 @@ export class TextureManager {
         store.put({ name, blob, timestamp: Date.now() });
     }
 
+    // Helper: Delete from IndexedDB (for corrupted entries)
+    deleteFromDB(key) {
+        if (!this.db) return;
+        try {
+            const transaction = this.db.transaction([this.storeName], 'readwrite');
+            const store = transaction.objectStore(this.storeName);
+            store.delete(key);
+        } catch (e) {
+            console.warn('[TextureManager] Failed to delete from IndexedDB:', e);
+        }
+    }
+
     // Helper: Blob to HTMLImageElement (non-throwing)
     createImageFromBlob(blob) {
         return new Promise((resolve) => {
@@ -121,5 +148,37 @@ export class TextureManager {
             };
             img.src = url;
         });
+    }
+
+    // Clear all caches (memory and IndexedDB) - useful for fixing corrupted cache
+    async clearAllCaches() {
+        console.log('[TextureManager] Clearing all texture caches...');
+
+        // Clear memory cache
+        this.cache.clear();
+
+        // Clear IndexedDB
+        if (this.db) {
+            try {
+                const transaction = this.db.transaction([this.storeName], 'readwrite');
+                const store = transaction.objectStore(this.storeName);
+                const request = store.clear();
+
+                await new Promise((resolve, reject) => {
+                    request.onsuccess = () => {
+                        console.log('[TextureManager] IndexedDB cache cleared successfully');
+                        resolve();
+                    };
+                    request.onerror = () => {
+                        console.warn('[TextureManager] Failed to clear IndexedDB cache');
+                        reject();
+                    };
+                });
+            } catch (e) {
+                console.warn('[TextureManager] Error clearing IndexedDB:', e);
+            }
+        }
+
+        return true;
     }
 }

@@ -18,8 +18,11 @@ export class MapRenderer {
         this.pawnPortraits = new Map(); // Cache for pawn portrait images
         this.thingImages = new Map(); // Cache for thing/item/building images
         this.missingTextures = new Set();
-        this.failedTextures = new Set(); // Textures that failed to load (404, etc.) - never retry
-        this.loadingTextures = new Set(); // Textures currently being fetched - prevent duplicates
+        this.failedTextures = new Map(); // Textures that failed to load - Map of defName -> { failCount, lastAttempt }
+        this.loadingTextures = new Map(); // Textures currently being fetched - Map of defName -> startTime
+        this.MAX_TEXTURE_RETRIES = 3; // Maximum retry attempts before giving up
+        this.TEXTURE_RETRY_DELAY = 5000; // 5 seconds between retries
+        this.TEXTURE_LOAD_TIMEOUT = 15000; // 15 seconds timeout for stuck loads
         this.sessionId = null;
         this.things = []; // Array of things on the map (Render List)
         this.thingsMap = new Map(); // Persistent storage (ID -> Thing)
@@ -243,12 +246,21 @@ export class MapRenderer {
         // 1. Merge Textures (if provided via Socket)
         if (data.textures) {
             Object.entries(data.textures).forEach(([defName, b64]) => {
-                if (b64 && !this.thingImages.has(defName)) {
+                if (b64 && !this.thingImages.has(defName) && !this.loadingTextures.has(defName)) {
+                    this.loadingTextures.add(defName); // Prevent duplicate loads
                     const img = new Image();
-                    img.onload = () => this.requestRender(); // Lazy render on load
+                    img.onload = () => {
+                        this.thingImages.set(defName, img);
+                        this.missingTextures.delete(defName);
+                        this.loadingTextures.delete(defName);
+                        this.requestRender();
+                    };
+                    img.onerror = () => {
+                        console.warn(`[MapRenderer] Failed to decode inline texture: ${defName}`);
+                        this.loadingTextures.delete(defName);
+                        // Don't add to failedTextures - let network fetch retry
+                    };
                     img.src = `data:image/png;base64,${b64}`;
-                    this.thingImages.set(defName, img);
-                    this.missingTextures.delete(defName);
                 }
             });
         }
@@ -309,39 +321,39 @@ export class MapRenderer {
                 const def = thing.def_name || thing.DefName || thing.Def || 'Unknown';
                 let id = thing.thing_id || thing.ThingId || thing.Id || null;
 
-                // Check for duplicates at same position before adding
-                const gridKey = `${Math.floor(pos.x / 2)}_${Math.floor(pos.z / 2)}`;
-                const nearbyThings = this.thingsSpatialHash.get(gridKey) || [];
+                // FIX: Only reuse existing ID if the thing has an explicit ID that matches
+                // Otherwise, create a unique ID based on def + position + optional stack index
+                let finalId;
 
-                // Look for existing thing at same position (within 1 tile)
-                let existingId = null;
-                for (const nearbyId of nearbyThings) {
-                    const existing = this.thingsMap.get(nearbyId);
-                    if (!existing) continue;
+                if (id) {
+                    // Thing has an explicit ID - use it
+                    finalId = String(id);
+                } else {
+                    // No explicit ID - check if we need a unique ID for stacked items
+                    const baseId = `${def}_${pos.x}_${pos.z}`;
 
-                    const existingPos = existing.position || existing.Position || { x: 0, z: 0 };
-                    const dx = Math.abs(existingPos.x - pos.x);
-                    const dz = Math.abs(existingPos.z - pos.z);
-
-                    if (dx === 0 && dz === 0) {
-                        // Same exact position, reuse existing ID to prevent duplicates (only if ID missing)
-                        // If both have explicit IDs and they differ, this might be incorrect, but for 'Things' it's safer.
-                        existingId = nearbyId;
-                        break;
+                    // Check if this base ID already exists
+                    if (this.thingsMap.has(baseId)) {
+                        // Base ID exists - this might be a stack, add a unique suffix
+                        let stackIndex = 1;
+                        while (this.thingsMap.has(`${baseId}_${stackIndex}`)) {
+                            stackIndex++;
+                        }
+                        finalId = `${baseId}_${stackIndex}`;
+                    } else {
+                        finalId = baseId;
                     }
                 }
 
-                // Use existing ID or create new one
-                const finalId = existingId || id || `${def}_${pos.x}_${pos.z}`;
+                this.thingsMap.set(finalId, thing);
 
-                this.thingsMap.set(String(finalId), thing);
-
-                // Update spatial hash
-                if (!existingId) {
-                    if (!this.thingsSpatialHash.has(gridKey)) {
-                        this.thingsSpatialHash.set(gridKey, []);
-                    }
-                    this.thingsSpatialHash.get(gridKey).push(String(finalId));
+                // Update spatial hash for efficient lookups
+                const gridKey = `${Math.floor(pos.x / 2)}_${Math.floor(pos.z / 2)}`;
+                if (!this.thingsSpatialHash.has(gridKey)) {
+                    this.thingsSpatialHash.set(gridKey, []);
+                }
+                if (!this.thingsSpatialHash.get(gridKey).includes(finalId)) {
+                    this.thingsSpatialHash.get(gridKey).push(finalId);
                 }
             });
 
@@ -351,7 +363,11 @@ export class MapRenderer {
             const uniqueDefNames = new Set();
             thingsList.forEach(thing => {
                 const defName = thing.def_name || thing.DefName || thing.Def;
-                if (defName && !this.thingImages.has(defName)) uniqueDefNames.add(defName);
+                if (defName && !this.thingImages.has(defName)) {
+                    uniqueDefNames.add(defName);
+                    // Also add to missingTextures so periodic retry can pick them up
+                    this.missingTextures.add(defName);
+                }
             });
 
             if (uniqueDefNames.size > 0) {
@@ -363,17 +379,55 @@ export class MapRenderer {
     }
 
     _loadTexturesBackground(defs) {
-        // Filter out textures we've already tried and failed, and ones currently loading
-        const toLoad = defs.filter(d =>
-            !this.failedTextures.has(d) &&
-            !this.loadingTextures.has(d) &&
-            !this.thingImages.has(d)
-        );
+        const now = Date.now();
+
+        // Clean up stuck loads (textures that have been loading for too long)
+        for (const [defName, startTime] of this.loadingTextures.entries()) {
+            if (now - startTime > this.TEXTURE_LOAD_TIMEOUT) {
+                console.warn(`[MapRenderer] Texture ${defName} stuck in loading state for ${Math.round((now - startTime) / 1000)}s, clearing`);
+                this.loadingTextures.delete(defName);
+                // Mark as failed so it gets retried
+                const failRecord = this.failedTextures.get(defName) || { failCount: 0, lastAttempt: 0 };
+                failRecord.failCount++;
+                failRecord.lastAttempt = now;
+                this.failedTextures.set(defName, failRecord);
+            }
+        }
+
+        // Filter out textures we've already tried and failed (with retry logic), and ones currently loading
+        const toLoad = defs.filter(d => {
+            // Skip if already loaded
+            if (this.thingImages.has(d)) return false;
+
+            // Skip if currently loading (and not stuck)
+            if (this.loadingTextures.has(d)) {
+                const startTime = this.loadingTextures.get(d);
+                if (now - startTime < this.TEXTURE_LOAD_TIMEOUT) {
+                    return false; // Still loading, not stuck yet
+                }
+            }
+
+            // Check if previously failed
+            const failRecord = this.failedTextures.get(d);
+            if (failRecord) {
+                // If we've exceeded max retries, skip permanently
+                if (failRecord.failCount >= this.MAX_TEXTURE_RETRIES) {
+                    return false;
+                }
+
+                // If not enough time has passed since last attempt, skip for now
+                if (now - failRecord.lastAttempt < this.TEXTURE_RETRY_DELAY) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
 
         if (toLoad.length === 0) return;
 
-        // Mark all as loading to prevent duplicate requests
-        toLoad.forEach(d => this.loadingTextures.add(d));
+        // Mark all as loading with timestamp to prevent duplicate requests
+        toLoad.forEach(d => this.loadingTextures.set(d, now));
 
         const BATCH_SIZE = 8; // Reduced batch size to prevent overwhelming the server
         const loadBatch = async () => {
@@ -383,21 +437,47 @@ export class MapRenderer {
 
                 const batch = toLoad.slice(i, i + BATCH_SIZE).map(async (defName) => {
                     try {
-                        const img = await this.textureManager.getTexture(defName, 'thing');
+                        // Determine type: animals use session-specific endpoint, things use global cache
+                        const type = (this._animalTextures && this._animalTextures.has(defName)) ? 'animal' : 'thing';
+                        const img = await this.textureManager.getTexture(defName, type);
                         if (img) {
                             this.thingImages.set(defName, img);
                             this.missingTextures.delete(defName);
+                            // Clear failure record on success
+                            this.failedTextures.delete(defName);
+                            this.loadingTextures.delete(defName);
+                            console.log(`[MapRenderer] ✓ Loaded texture: ${defName}`);
                         } else {
-                            // Texture returned null (404) - mark as permanently failed
-                            this.failedTextures.add(defName);
-                            this.missingTextures.delete(defName);
+                            // Texture returned null (404) - record failure with retry
+                            const failRecord = this.failedTextures.get(defName) || { failCount: 0, lastAttempt: 0 };
+                            failRecord.failCount++;
+                            failRecord.lastAttempt = Date.now();
+                            this.failedTextures.set(defName, failRecord);
+                            this.loadingTextures.delete(defName);
+
+                            // Keep in missingTextures so it gets retried
+                            if (failRecord.failCount >= this.MAX_TEXTURE_RETRIES) {
+                                this.missingTextures.delete(defName);
+                                console.warn(`[MapRenderer] ✗ Texture ${defName} failed ${this.MAX_TEXTURE_RETRIES} times, giving up`);
+                            } else {
+                                console.warn(`[MapRenderer] ⚠ Texture ${defName} not found (attempt ${failRecord.failCount}/${this.MAX_TEXTURE_RETRIES})`);
+                            }
                         }
                     } catch (e) {
-                        // Network error - mark as failed to prevent retry loop
-                        this.failedTextures.add(defName);
-                        this.missingTextures.delete(defName);
-                    } finally {
+                        // Network error - record failure with retry
+                        const failRecord = this.failedTextures.get(defName) || { failCount: 0, lastAttempt: 0 };
+                        failRecord.failCount++;
+                        failRecord.lastAttempt = Date.now();
+                        this.failedTextures.set(defName, failRecord);
                         this.loadingTextures.delete(defName);
+
+                        // Keep in missingTextures so it gets retried
+                        if (failRecord.failCount >= this.MAX_TEXTURE_RETRIES) {
+                            this.missingTextures.delete(defName);
+                            console.warn(`[MapRenderer] ✗ Texture ${defName} failed ${this.MAX_TEXTURE_RETRIES} times (network error), giving up`);
+                        } else {
+                            console.warn(`[MapRenderer] ⚠ Texture ${defName} network error (attempt ${failRecord.failCount}/${this.MAX_TEXTURE_RETRIES}):`, e.message);
+                        }
                     }
                 });
                 await Promise.all(batch);
@@ -526,6 +606,9 @@ export class MapRenderer {
                         this.pawnIdToDotId.delete(nearbyDot.pawnId); // Clean up old mapping
                         this.pawnIdToDotId.set(id, dotId);
                         nearbyDot.pawnId = id;
+                        nearbyDot.type = type; // Update type (animal/colonist)
+                        nearbyDot.name = pawn.name || pawn.label || 'Unknown';
+                        nearbyDot.defName = pawn.def_name || null; // Update defName for animals
                         nearbyDot.lastUpdate = now;
                         nearbyDot.positionTimestamp = pawn.positionTimestamp || pawn.timestamp || 0;
                     }
@@ -707,6 +790,9 @@ export class MapRenderer {
             // Skip dots that already have portraits (stable assignment)
             if (dot.portraitData) continue;
 
+            // CRITICAL FIX: Skip animal dots - they should NEVER get colonist portraits
+            if (dot.type === 'animal') continue;
+
             for (const colonist of colonistsWithPortraits) {
                 const dx = dot.x - colonist.pos.x;
                 const dz = dot.z - colonist.pos.z;
@@ -846,11 +932,50 @@ export class MapRenderer {
         }
 
         // Things layer (items, buildings, stones)
-        // Debug: Log things count periodically
+        // Debug: Log things count and texture status periodically
         if (!this._lastThingsLog || Date.now() - this._lastThingsLog > 5000) {
-            console.log('[MapRenderer] Rendering things:', this.things.length, 'thingsMap size:', this.thingsMap.size);
+            const loadedTextures = this.thingImages.size;
+            const missingTextures = this.missingTextures.size;
+            const failedTextures = this.failedTextures.size;
+            const loadingTextures = this.loadingTextures.size;
+
+            // Count colonist vs animal dots
+            let colonistDots = 0, animalDots = 0;
+            for (const dot of this.trackedDots.values()) {
+                if (dot.type === 'animal') animalDots++;
+                else colonistDots++;
+            }
+
+            console.log('[MapRenderer] Rendering things:', this.things.length, 'thingsMap:', this.thingsMap.size);
+            console.log('[MapRenderer] Dots - Colonists:', colonistDots, 'Animals:', animalDots, 'Total:', this.trackedDots.size);
+            console.log('[MapRenderer] Camera:', `(${this.camera.x.toFixed(1)}, ${this.camera.z.toFixed(1)})`, 'Viewport:', `${this.tilesX}x${this.tilesY}`);
+            console.log('[MapRenderer] Textures - Loaded:', loadedTextures, 'Missing:', missingTextures, 'Failed:', failedTextures, 'Loading:', loadingTextures);
+
+            // Log which textures are currently loading
+            if (loadingTextures > 0) {
+                const loadingList = [];
+                for (const [defName, startTime] of this.loadingTextures.entries()) {
+                    const elapsed = Math.round((Date.now() - startTime) / 1000);
+                    loadingList.push(`${defName}(${elapsed}s)`);
+                }
+                console.log('[MapRenderer] Loading textures:', loadingList.slice(0, 10).join(', '), loadingList.length > 10 ? `...and ${loadingList.length - 10} more` : '');
+            }
+
+            // Log which textures have failed and their retry counts
+            if (failedTextures > 0) {
+                const failedList = [];
+                for (const [defName, record] of this.failedTextures.entries()) {
+                    failedList.push(`${defName}(${record.failCount}/${this.MAX_TEXTURE_RETRIES})`);
+                }
+                console.log('[MapRenderer] Failed textures:', failedList.slice(0, 10).join(', '), failedList.length > 10 ? `...and ${failedList.length - 10} more` : '');
+            }
+
             this._lastThingsLog = Date.now();
+            this._logThingsInViewport = true; // Trigger viewport count log
         }
+
+        // Count things actually rendered in this frame
+        let thingsRendered = 0;
         for (const thing of this.things) {
             const pos = thing.position || thing.Position;
             if (!pos) continue;
@@ -863,6 +988,8 @@ export class MapRenderer {
                 posZ > startZ + 1 || posZ < startZ - this.tilesY - 1) {
                 continue;
             }
+
+            thingsRendered++; // Count this thing as rendered (in viewport)
 
             // Calculate screen pos using float math for smooth movement relative to map
             const screenX = (posX - viewLeft) * this.tileSizePx;
@@ -944,6 +1071,12 @@ export class MapRenderer {
             }
         }
 
+        // Log viewport rendering stats
+        if (this._logThingsInViewport) {
+            console.log('[MapRenderer] Things in viewport:', thingsRendered, '/', this.things.length);
+            this._logThingsInViewport = false;
+        }
+
         // Grid
         this.ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         this.ctx.lineWidth = 1;
@@ -1012,9 +1145,19 @@ export class MapRenderer {
                     this.ctx.drawImage(img, centerX - size / 2, centerY - size / 2, size, size);
                     return; // Done
                 } else {
-                    // Queue load if missing
-                    if (!this.thingImages.has(dot.defName)) {
+                    // Queue load if missing - use session-specific 'animal' type instead of 'thing'
+                    if (!this.thingImages.has(dot.defName) && !this.loadingTextures.has(dot.defName)) {
                         this.missingTextures.add(dot.defName);
+                        // Mark as animal type for correct endpoint
+                        if (!this._animalTextures) this._animalTextures = new Set();
+                        this._animalTextures.add(dot.defName);
+
+                        // Log first time we encounter a missing animal texture
+                        if (!this._loggedAnimalTextures) this._loggedAnimalTextures = new Set();
+                        if (!this._loggedAnimalTextures.has(dot.defName)) {
+                            console.log(`[MapRenderer] Queueing animal texture: ${dot.defName} for ${dot.name}`);
+                            this._loggedAnimalTextures.add(dot.defName);
+                        }
                     }
                 }
             }
@@ -1028,6 +1171,25 @@ export class MapRenderer {
         if (this.missingTextures.size > 0 && this.loadingTextures.size < 16) {
             const missing = Array.from(this.missingTextures);
             this._loadTexturesBackground(missing);
+        }
+
+        // PERIODIC RETRY: Every 10 seconds, retry all failed textures (respecting retry limits)
+        const now = Date.now();
+        if (!this._lastTextureRetry || now - this._lastTextureRetry > 10000) {
+            this._lastTextureRetry = now;
+
+            // Collect all failed textures that are eligible for retry
+            const failedToRetry = [];
+            for (const [defName, failRecord] of this.failedTextures.entries()) {
+                // Only retry if we haven't exceeded max attempts
+                if (failRecord.failCount < this.MAX_TEXTURE_RETRIES) {
+                    failedToRetry.push(defName);
+                }
+            }
+
+            if (failedToRetry.length > 0 && this.loadingTextures.size < 16) {
+                this._loadTexturesBackground(failedToRetry);
+            }
         }
 
         if (this.hoverTile) {
@@ -1280,7 +1442,7 @@ export class MapRenderer {
         this.tintCache.clear();
         this.thingsMap.clear();
         this.missingTextures.clear();
-        this.failedTextures.clear();
+        this.failedTextures.clear(); // Now a Map, but still has .clear()
         this.loadingTextures.clear();
 
         // 4. Clear spatial hashes
