@@ -56,7 +56,7 @@ router.get('/api/settings/:sessionId', (req, res) => {
 });
 
 // POST Settings (Streamer Access - Protected)
-router.post('/api/settings/:sessionId', requireStreamAuth, (req, res) => {
+router.post('/api/settings/:sessionId', requireStreamAuth, async (req, res) => {
     const { settings, economy, meta } = req.body;
     const session = req.session; // from middleware
 
