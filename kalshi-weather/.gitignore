@@ -1,0 +1,8 @@
+data/
+pavlov.db
+*.pem
+pavlov.log
+__pycache__/
+*.pyc
+.env
+venv/

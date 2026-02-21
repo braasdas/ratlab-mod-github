@@ -1,0 +1,124 @@
+# Kalshi API
+kalshi:
+  api_base: "https://api.elections.kalshi.com/trade-api/v2"
+  key_id: "${KALSHI_KEY_ID}"
+  private_key_path: "kalshi_private.pem"
+  paper_mode: true
+
+# Cities to trade
+cities:
+  - id: "NYC"
+    name: "New York City"
+    metar_station: "KJFK"
+    nws_office: "OKX"
+    latitude: 40.7128
+    longitude: -74.0060
+    timezone: "America/New_York"
+    kalshi_series: "KXHIGHNY"
+    historical_avg_high:
+      jan: 39
+      feb: 42
+      mar: 50
+      apr: 61
+      may: 72
+      jun: 80
+      jul: 85
+      aug: 84
+      sep: 76
+      oct: 65
+      nov: 54
+      dec: 43
+
+  - id: "Miami"
+    name: "Miami"
+    metar_station: "KMIA"
+    nws_office: "MFL"
+    latitude: 25.7617
+    longitude: -80.1918
+    timezone: "America/New_York"
+    kalshi_series: "KXHIGHMI"
+    historical_avg_high:
+      jan: 76
+      feb: 78
+      mar: 80
+      apr: 83
+      may: 87
+      jun: 90
+      jul: 91
+      aug: 91
+      sep: 89
+      oct: 86
+      nov: 81
+      dec: 77
+
+  - id: "Chicago"
+    name: "Chicago"
+    metar_station: "KORD"
+    nws_office: "LOT"
+    latitude: 41.8781
+    longitude: -87.6298
+    timezone: "America/Chicago"
+    kalshi_series: "KXHIGHCHI"
+    historical_avg_high:
+      jan: 31
+      feb: 36
+      mar: 47
+      apr: 59
+      may: 70
+      jun: 80
+      jul: 84
+      aug: 82
+      sep: 75
+      oct: 62
+      nov: 48
+      dec: 35
+
+  - id: "LasVegas"
+    name: "Las Vegas"
+    metar_station: "KLAS"
+    nws_office: "VEF"
+    latitude: 36.1699
+    longitude: -115.1398
+    timezone: "America/Los_Angeles"
+    kalshi_series: "KXHIGHLV"
+    historical_avg_high:
+      jan: 58
+      feb: 63
+      mar: 71
+      apr: 79
+      may: 90
+      jun: 100
+      jul: 105
+      aug: 103
+      sep: 96
+      oct: 82
+      nov: 67
+      dec: 56
+
+# Risk management
+risk:
+  bankroll: 500.00
+  risk_tolerance: 0.25
+  max_single_position_pct: 0.10
+  max_daily_exposure_pct: 0.25
+  max_portfolio_exposure_pct: 0.30
+  min_edge: 0.02
+  min_confidence: 0.55
+  adjacent_brackets: true
+
+# Schedule
+schedule:
+  collect_time: "07:30"
+  predict_time: "07:35"
+  execute_time: "07:45"
+  settle_time: "08:00"
+
+# Notifications (optional)
+notifications:
+  enabled: false
+  discord_webhook: "${DISCORD_WEBHOOK_URL}"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "pavlov.log"
