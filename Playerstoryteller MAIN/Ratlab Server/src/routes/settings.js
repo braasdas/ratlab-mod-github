@@ -57,7 +57,7 @@ router.get('/api/settings/:sessionId', (req, res) => {
 
 // POST Settings (Streamer Access - Protected)
 router.post('/api/settings/:sessionId', requireStreamAuth, async (req, res) => {
-    const { settings, economy, meta } = req.body;
+    const { settings, economy, meta, queueSettings } = req.body;
     const session = req.session; // from middleware
 
     // 1. Update General Settings
@@ -80,7 +80,13 @@ router.post('/api/settings/:sessionId', requireStreamAuth, async (req, res) => {
         }
     }
 
-    // 3. Update Meta (Session props)
+    // 3. Update Queue Settings (live field is session.queue.settings)
+    if (queueSettings && session.queue) {
+        if (queueSettings.voteDuration !== undefined) session.queue.settings.voteDuration = queueSettings.voteDuration;
+        if (queueSettings.autoExecute !== undefined) session.queue.settings.autoExecute = queueSettings.autoExecute;
+    }
+
+    // 4. Update Meta (Session props)
     if (meta) {
         if (meta.isPublic !== undefined) session.isPublic = meta.isPublic;
         if (meta.interactionPassword !== undefined) session.interactionPassword = meta.interactionPassword;
@@ -100,7 +106,7 @@ router.post('/api/settings/:sessionId', requireStreamAuth, async (req, res) => {
                 isPublic: session.isPublic,
                 interactionPassword: session.interactionPassword
             },
-            queueSettings: session.queueSettings || {}
+            queueSettings: session.queue ? session.queue.settings : {}
         });
     }
 
@@ -123,12 +129,19 @@ router.post('/api/settings/:sessionId/validate', (req, res) => {
 
     const session = sessionStore.getSession(sessionId);
     if (!session) {
+        // List active sessions to help diagnose mismatches
+        const activeIds = Array.from(sessionStore.gameSessions.keys());
+        log('warn', `[Validate] Session "${sessionId}" not found. Active sessions: [${activeIds.join(', ')}]`);
         return res.status(404).json({ valid: false, message: 'Session not found' });
     }
 
     if (session.streamKey === streamKey) {
         res.json({ valid: true });
     } else {
+        log('warn', `[Validate] Key mismatch for session "${sessionId}". ` +
+            `Provided key length: ${streamKey ? streamKey.length : 0}, ` +
+            `Session key length: ${session.streamKey ? session.streamKey.length : 0}, ` +
+            `Match: ${session.streamKey === streamKey}`);
         res.status(403).json({ valid: false, message: 'Invalid key' });
     }
 });

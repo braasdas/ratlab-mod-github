@@ -70,11 +70,19 @@ namespace PlayerStoryteller
                 case "tameAnimal": return settings.enableTameAnimal;
                 case "spawnAnimal": return settings.enableSpawnAnimal;
                 case "goodEvent": return settings.enableGoodEvent;
+                case "psychicSoothe": return settings.enablePsychicSoothe;
+                case "ambrosiaSprout": return settings.enableAmbrosiaSprout;
+                case "farmAnimalsWanderIn": return settings.enableFarmAnimalsWanderIn;
+                case "thrumboPasses": return settings.enableThrumboPasses;
+                case "aurora": return settings.enableAurora;
+                case "herdMigration": return settings.enableHerdMigration;
+                case "wildManWandersIn": return settings.enableWildManWandersIn;
                 case "weatherClear": return settings.enableWeatherClear;
                 case "weatherRain": return settings.enableWeatherRain;
                 case "weatherFog": return settings.enableWeatherFog;
                 case "weatherSnow": return settings.enableWeatherSnow;
                 case "weatherThunderstorm": return settings.enableWeatherThunderstorm;
+                case "volcanicWinter": return settings.enableVolcanicWinter;
                 case "raid": return settings.enableRaid;
                 case "manhunter": return settings.enableManhunter;
                 case "madAnimal": return settings.enableMadAnimal;
@@ -86,9 +94,20 @@ namespace PlayerStoryteller
                 case "tornado": return settings.enableTornado;
                 case "lightning": return settings.enableLightning;
                 case "randomEvent": return settings.enableRandomEvent;
+                case "ransomDemand": return settings.enableRansomDemand;
+                case "infestation": return settings.enableInfestation;
+                case "mechShip": return settings.enableMechShip;
+                case "psychicDrone": return settings.enablePsychicDrone;
+                case "shortCircuit": return settings.enableShortCircuit;
+                case "cropBlight": return settings.enableCropBlight;
+                case "alphabeavers": return settings.enableAlphabeavers;
                 case "sendLetter": return settings.enableSendLetter;
                 case "ping": return settings.enablePing;
-                default: return true; // Allow unknown actions by default
+                default:
+                    // DLC actions (dlcLaborers, dlcTribute, etc.) and expanded weather variants
+                    // (weatherVomit, weatherHeatWave, etc.) are guarded inside DLCHelper / WeatherEventHelper
+                    // by DLC-active checks and don't have individual toggles. Allow them here.
+                    return true;
             }
         }
 

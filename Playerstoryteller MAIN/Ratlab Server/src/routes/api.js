@@ -426,7 +426,8 @@ module.exports = (io, definitionManager) => {
                     log('warn', `[SECURITY] Hijack attempt on session ${sessionId}`);
                     return res.status(403).json({ error: 'Invalid stream key' });
                 }
-                sessionStore.updateSession(sessionId, { interactionPassword, isPublic });
+                // Propagate stream key if session was created before key was generated
+                sessionStore.updateSession(sessionId, { interactionPassword, isPublic, streamKey });
             }
 
             // Handle Screenshot buffer
@@ -548,50 +549,6 @@ module.exports = (io, definitionManager) => {
                 activeDlcs: session.gameState ? session.gameState.active_dlcs : null
             }
         });
-    });
-
-    // POST /api/settings/:sessionId
-    router.post('/api/settings/:sessionId', (req, res) => {
-        const { sessionId } = req.params;
-        const streamKey = req.headers['x-stream-key'];
-        const session = sessionStore.getSession(sessionId);
-
-        if (!session) return res.status(404).json({ error: 'Session not found' });
-        if (session.streamKey && session.streamKey !== streamKey) {
-            return res.status(403).json({ error: 'Invalid stream key' });
-        }
-
-        const { settings, economy, meta, queueSettings } = req.body;
-
-        if (settings) {
-            // Deep merge or replace settings
-            if (settings.fastDataInterval) session.settings.fastDataInterval = settings.fastDataInterval;
-            if (settings.slowDataInterval) session.settings.slowDataInterval = settings.slowDataInterval;
-            if (settings.staticDataInterval) session.settings.staticDataInterval = settings.staticDataInterval;
-            if (settings.enableLiveScreen !== undefined) session.settings.enableLiveScreen = settings.enableLiveScreen;
-            if (settings.maxActionsPerMinute) session.settings.maxActionsPerMinute = settings.maxActionsPerMinute;
-            if (settings.actions) session.settings.actions = { ...session.settings.actions, ...settings.actions };
-        }
-
-        if (economy) {
-            if (economy.coinRate) session.economy.coinRate = economy.coinRate;
-            if (economy.actionCosts) session.economy.actionCosts = { ...session.economy.actionCosts, ...economy.actionCosts };
-
-            // Notify viewers of price changes
-            io.to(sessionId).emit('economy-config-update', { actionCosts: session.economy.actionCosts });
-        }
-
-        if (queueSettings && session.queue) {
-            if (queueSettings.voteDuration !== undefined) session.queue.settings.voteDuration = queueSettings.voteDuration;
-            if (queueSettings.autoExecute !== undefined) session.queue.settings.autoExecute = queueSettings.autoExecute;
-        }
-
-        if (meta) {
-            if (meta.isPublic !== undefined) session.isPublic = meta.isPublic;
-            if (meta.interactionPassword !== undefined) session.interactionPassword = meta.interactionPassword;
-        }
-
-        res.json({ success: true });
     });
 
     // POST /api/settings/:sessionId/validate

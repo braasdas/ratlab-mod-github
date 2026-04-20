@@ -296,17 +296,7 @@ class SessionStore extends EventEmitter {
                     dlc_orbital_trader: true,
                     dlc_orbital_debris: true,
                     dlc_mechanoid_signal: true,
-                    
-                    // Communication
-                    solar_flare: true,
-                    eclipse: true,
-                    toxic_fallout: true,
-                    flashstorm: true,
-                    meteor: true,
-                    tornado: true,
-                    lightning: true,
-                    random_event: true,
-                    
+
                     // Communication
                     send_letter: true,
                     ping: true
@@ -354,10 +344,11 @@ class SessionStore extends EventEmitter {
                 }
             }
 
-            // Queue settings
-            if (persistedSettings.queueSettings) {
-                session.queueSettings = {
-                    ...session.queueSettings,
+            // Queue settings — merge into session.queue.settings (the actual field that's read),
+            // NOT session.queueSettings (which nothing reads and was a silent data-loss bug).
+            if (persistedSettings.queueSettings && session.queue) {
+                session.queue.settings = {
+                    ...session.queue.settings,
                     ...persistedSettings.queueSettings
                 };
             }
@@ -381,8 +372,8 @@ class SessionStore extends EventEmitter {
         // Update other fields
         if (updates.isPublic !== undefined) session.isPublic = updates.isPublic;
         
-        if (updates.streamKey !== undefined) {
-            // Clean up old key if it changed
+        if (updates.streamKey) {
+            // Clean up old key mapping if it changed
             if (session.streamKey && session.streamKey !== updates.streamKey) {
                 this.streamKeyToSessionId.delete(session.streamKey);
             }
@@ -446,11 +437,14 @@ class SessionStore extends EventEmitter {
 
     cleanupInactiveSessions() {
         const now = new Date();
+        // 5 min timeout tolerates streamer pauses (RimWorld mod coroutines use
+        // WaitForSeconds which stops advancing while the game is paused)
+        const INACTIVITY_TIMEOUT_SEC = 300;
         for (const [sessionId, session] of this.gameSessions.entries()) {
             const timeDiff = (now - session.lastHeartbeat) / 1000;
-            if (timeDiff > 30) {
+            if (timeDiff > INACTIVITY_TIMEOUT_SEC) {
                 console.log(`[Store] Removing inactive session: ${sessionId} (no updates for ${Math.round(timeDiff)}s)`);
-                
+
                 // Remove all players from this session (logic moved from server.js)
                 session.players.forEach(playerId => {
                     this.viewers.delete(playerId);

@@ -5,6 +5,15 @@ const { PORT, allowedOrigins } = require('./src/config/config');
 const log = require('./src/utils/logger');
 const sessionStore = require('./src/store/sessionStore');
 
+// Process-level error handlers — prevent a single unhandled error from killing
+// the process and disconnecting every active streamer at once.
+process.on('uncaughtException', (err) => {
+    log('error', '[FATAL] Uncaught Exception:', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+    log('error', '[FATAL] Unhandled Promise Rejection:', reason && reason.stack ? reason.stack : reason);
+});
+
 // Services & App
 const startModServer = require('./src/services/modServer');
 const setupSocketIO = require('./src/services/socketio');

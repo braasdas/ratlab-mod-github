@@ -65,14 +65,14 @@
                 <p class="text-rat-text-dim text-sm mt-2">Authenticate to access controller settings</p>
             </div>
 
-            <form id="login-form" class="space-y-6">
+            <form id="login-form" class="space-y-6" autocomplete="off">
                 <div>
                     <label class="block text-xs font-mono text-rat-text-dim mb-2 uppercase">Session ID</label>
-                    <input type="text" id="session-id-input" class="w-full bg-rat-black border border-rat-border rounded p-3 text-white focus:border-rat-green outline-none font-mono" placeholder="e.g. default-session or GUID">
+                    <input type="text" id="session-id-input" autocomplete="off" class="w-full bg-rat-black border border-rat-border rounded p-3 text-white focus:border-rat-green outline-none font-mono" placeholder="e.g. default-session or GUID">
                 </div>
                 <div>
                     <label class="block text-xs font-mono text-rat-text-dim mb-2 uppercase">Stream Key</label>
-                    <input type="password" id="stream-key-input" class="w-full bg-rat-black border border-rat-border rounded p-3 text-white focus:border-rat-green outline-none font-mono" placeholder="••••••••••••">
+                    <input type="password" id="stream-key-input" autocomplete="off" class="w-full bg-rat-black border border-rat-border rounded p-3 text-white focus:border-rat-green outline-none font-mono" placeholder="••••••••••••">
                 </div>
                 <div id="login-error" class="hidden text-rat-red text-xs font-mono text-center bg-rat-red/10 p-2 rounded border border-rat-red/20">
                     Authentication Failed

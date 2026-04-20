@@ -139,7 +139,14 @@ loginForm.addEventListener('submit', async (e) => {
             loginError.classList.remove('hidden');
         }
     } catch (err) {
-        loginError.innerText = 'Connection Error';
+        if (err.message && err.message.startsWith('SESSION_MISMATCH:')) {
+            // Auto-fix: the key is valid but the session ID was wrong
+            const correctSession = err.message.split(':')[1];
+            sessionIdInput.value = correctSession;
+            loginError.innerText = `Session ID corrected to "${correctSession}" — click login again`;
+        } else {
+            loginError.innerText = err.message || 'Connection Error';
+        }
         loginError.classList.remove('hidden');
         console.error(err);
     } finally {
@@ -362,13 +369,28 @@ navBtns.forEach(btn => {
 // --- API FUNCTIONS ---
 
 async function validateCredentials(sess, key) {
+    console.log(`[Dashboard] Validating: session="${sess}" (${sess.length} chars), key length=${key.length}`);
     const res = await fetch(`/api/settings/${encodeURIComponent(sess)}/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ streamKey: key })
     });
-    if (res.status === 404) throw new Error('Session not found');
     const data = await res.json();
+    console.log(`[Dashboard] Server responded: ${res.status}`, data);
+    if (res.status === 404) {
+        // Session not found - try to find the right one by stream key
+        const lookup = await fetch('/api/streamer/get-active-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ streamKey: key })
+        });
+        if (lookup.ok) {
+            const found = await lookup.json();
+            console.log(`[Dashboard] Found correct session: "${found.sessionId}"`);
+            throw new Error(`SESSION_MISMATCH:${found.sessionId}`);
+        }
+        throw new Error('Session not found. Is the game running?');
+    }
     return data.valid;
 }
 

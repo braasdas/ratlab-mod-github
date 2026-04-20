@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const url = require('url');
 const sessionStore = require('../store/sessionStore');
+const settingsPersistence = require('../services/settingsPersistence');
 const log = require('../utils/logger');
 const { MOD_PORT } = require('../config/config');
 
@@ -38,26 +39,38 @@ function startModServer(io) {
             let session = sessionStore.getSession(sessionId);
 
             if (!session) {
-                log('info', `[WS Mod] New game session started: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
+                log('info', `[WS Mod] New session: "${sessionId}" (${sessionId.length} chars, ${isPublic ? 'PUBLIC' : 'PRIVATE'}, key=${streamKey ? streamKey.length + 'chars' : 'NONE'})`);
                 session = await sessionStore.createSession(sessionId, {
                     streamKey, interactionPassword, isPublic
                 });
                 // Broadcast new session list
                 broadcastSessionList(io);
             } else {
-            // SECURITY CHECK
+            // SECURITY CHECK: only reject if session already has a key AND it doesn't match
             if (session.streamKey && session.streamKey !== streamKey) {
                 log('warn', `[WS Mod] Hijack attempt on session ${sessionId}`);
                 ws.close();
                 return;
             }
-                // Update session details
+                // Update session details (include streamKey to backfill if session was created with empty key)
                 log('info', `[WS Mod] Updating session: ${sessionId} (${isPublic ? 'PUBLIC' : 'PRIVATE'})`);
-                sessionStore.updateSession(sessionId, {
-                    interactionPassword,
+
+                // Load persisted settings to avoid overwriting dashboard-saved values
+                const persistedSettings = await settingsPersistence.loadSettings(streamKey || session.streamKey);
+
+                const updateData = {
                     isPublic,
-                    streamKey // Ensure map is updated
-                });
+                    streamKey
+                };
+
+                // Use persisted password if available, otherwise use what mod sent
+                if (persistedSettings && persistedSettings.meta && persistedSettings.meta.interactionPassword !== undefined) {
+                    updateData.interactionPassword = persistedSettings.meta.interactionPassword;
+                } else {
+                    updateData.interactionPassword = interactionPassword;
+                }
+
+                sessionStore.updateSession(sessionId, updateData);
                 // Broadcast updated session list (e.g. status change)
                 broadcastSessionList(io);
             }

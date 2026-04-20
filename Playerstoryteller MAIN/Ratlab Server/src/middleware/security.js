@@ -6,6 +6,21 @@ const log = require('../utils/logger');
 const actionRateLimits = new Map();
 const updateRateLimits = new Map();
 
+// Periodic cleanup — without this the Maps grow unbounded (one entry per unique
+// IP / session for the server's entire uptime). Runs every 5 minutes and evicts
+// any entry whose window is more than 10 minutes stale.
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const RATE_LIMIT_ENTRY_TTL_MS = 10 * 60 * 1000;
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, limit] of actionRateLimits) {
+        if (now - limit.windowStart > RATE_LIMIT_ENTRY_TTL_MS) actionRateLimits.delete(key);
+    }
+    for (const [key, limit] of updateRateLimits) {
+        if (now - limit.windowStart > RATE_LIMIT_ENTRY_TTL_MS) updateRateLimits.delete(key);
+    }
+}, RATE_LIMIT_CLEANUP_INTERVAL_MS).unref();
+
 // CORS Middleware Configuration
 const corsMiddleware = cors({
     origin: function(origin, callback) {

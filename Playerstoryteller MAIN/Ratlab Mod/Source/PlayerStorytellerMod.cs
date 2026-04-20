@@ -327,6 +327,13 @@ namespace PlayerStoryteller
 
         public static void SendStreamingUpdateAsync(byte[] screenshot, int length, string gameState)
         {
+            // Ensure secret key exists before any connection attempt
+            if (string.IsNullOrEmpty(settings.secretKey))
+            {
+                settings.secretKey = GeneratePrivateStreamId();
+                settings.Write();
+            }
+
             string serverUrl = GetServerUrl();
             string currentSessionId = GetSessionId();
 
@@ -334,9 +341,9 @@ namespace PlayerStoryteller
             if (lastServerUrl != serverUrl && wsClient != null)
             {
                 Log.Message($"[Player Storyteller] Server URL changed from {lastServerUrl} to {serverUrl}. Reconnecting...");
-                wsClient = null; 
+                wsClient = null;
             }
-            
+
             // If Session ID changed (e.g. switched Public/Private), reset client
             if (lastSessionId != currentSessionId && wsClient != null)
             {
@@ -634,6 +641,8 @@ namespace PlayerStoryteller
                 }
 
                 // Add headers
+                string sessionId = GetSessionId();
+                request.Headers.Add("session-id", sessionId);
                 request.Headers.Add("is-public", settings.isPublicStream.ToString().ToLower());
                 request.Headers.Add("x-stream-key", settings.secretKey);
                 if (!string.IsNullOrEmpty(settings.interactionPassword))
@@ -643,6 +652,7 @@ namespace PlayerStoryteller
 
                 bool success = await SendWithRetriesAsync(request, "update");
 
+                bool shouldShowDialog = false;
                 lock (connectionLock)
                 {
                     if (success)
@@ -655,26 +665,45 @@ namespace PlayerStoryteller
                         if (consecutiveFailures >= 3 && !connectionPaused)
                         {
                             connectionPaused = true;
-                            ShowConnectionFailureDialog();
+                            shouldShowDialog = true;
                         }
                     }
+                }
+
+                // Dialog must be shown on the main thread — async continuations here
+                // may run on a thread pool thread, and Find.WindowStack.Add is not thread-safe.
+                if (shouldShowDialog)
+                {
+                    LongEventHandler.ExecuteWhenFinished(ShowConnectionFailureDialog);
                 }
             }
             catch (Exception ex)
             {
                 Log.Error($"[Player Storyteller] Error in SendUpdateToServerAsync: {ex}");
 
+                bool shouldShowDialog = false;
                 lock (connectionLock)
                 {
                     consecutiveFailures++;
                     if (consecutiveFailures >= 3 && !connectionPaused)
                     {
                         connectionPaused = true;
-                        ShowConnectionFailureDialog();
+                        shouldShowDialog = true;
                     }
+                }
+
+                if (shouldShowDialog)
+                {
+                    LongEventHandler.ExecuteWhenFinished(ShowConnectionFailureDialog);
                 }
             }
         }
+
+        /// <summary>
+        /// Public accessor for generating a new stream key.
+        /// Used by SetupWizard to ensure key exists before first connection.
+        /// </summary>
+        public static string GenerateStreamKey() => GeneratePrivateStreamId();
 
         private static string GeneratePrivateStreamId()
         {
@@ -1235,6 +1264,7 @@ namespace PlayerStoryteller
             Scribe_Values.Look(ref hasAcceptedPrivacyNotice, "hasAcceptedPrivacyNotice", false);
             Scribe_Values.Look(ref hasCompletedSetupWizard, "hasCompletedSetupWizard", false);
             Scribe_Values.Look(ref streamingQuality, "streamingQuality", "low");
+            Scribe_Values.Look(ref colonyName, "colonyName", "");
 
             // Handle encryption/decryption of sensitive data
             if (Scribe.mode == LoadSaveMode.Saving)

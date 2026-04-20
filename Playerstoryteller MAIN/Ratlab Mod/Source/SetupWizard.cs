@@ -451,6 +451,12 @@ namespace PlayerStoryteller
             var settings = PlayerStorytellerMod.settings;
             if (settings == null) return;
 
+            // Ensure secret key exists before anything else
+            if (string.IsNullOrEmpty(settings.secretKey))
+            {
+                settings.secretKey = PlayerStorytellerMod.GenerateStreamKey();
+            }
+
             // Apply quality
             settings.streamingQuality = selectedQuality;
 

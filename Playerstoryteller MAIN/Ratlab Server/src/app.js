@@ -13,8 +13,10 @@ function createApp() {
     app.use(decompressMiddleware);
 
     // 3. Standard Body Parsers
-    app.use(express.json({ limit: '500mb' }));
-    app.use(express.urlencoded({ extended: true, limit: '500mb' }));
+    // Limit is sized for largest expected payload (JPEG map renders ~2-5MB, gamestate JSON <200KB).
+    // 25MB provides comfortable headroom without making the server a memory-exhaustion DoS target.
+    app.use(express.json({ limit: '25mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
     // Global JSON Error Handler (Prevents crashes on bad payloads)
     app.use((err, req, res, next) => {
