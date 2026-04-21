@@ -73,10 +73,23 @@ router.post('/api/settings/:sessionId', requireStreamAuth, async (req, res) => {
     }
 
     // 2. Update Economy
+    // Reject NaN/negative values — a single bad coinRate poisons every viewer's
+    // balance via `profile.coins += NaN` in the 10s tick (NaN <= 0 is false, so
+    // the early-return guard doesn't catch it).
     if (economy) {
-        if (economy.coinRate !== undefined) session.economy.coinRate = parseInt(economy.coinRate);
+        if (economy.coinRate !== undefined) {
+            const rate = parseInt(economy.coinRate);
+            if (Number.isFinite(rate) && rate >= 0) {
+                session.economy.coinRate = rate;
+            }
+        }
         if (economy.actionCosts) {
-            session.economy.actionCosts = { ...session.economy.actionCosts, ...economy.actionCosts };
+            const clean = {};
+            for (const [action, cost] of Object.entries(economy.actionCosts)) {
+                const n = parseInt(cost);
+                if (Number.isFinite(n) && n >= 0) clean[action] = n;
+            }
+            session.economy.actionCosts = { ...session.economy.actionCosts, ...clean };
         }
     }
 
@@ -110,12 +123,15 @@ router.post('/api/settings/:sessionId', requireStreamAuth, async (req, res) => {
         });
     }
 
-    // Broadcast updates to viewers
+    // Broadcast updates to viewers. disabledActions is derived from merged
+    // session state, not the request body — otherwise a partial update would
+    // drop every action the current request didn't mention.
     if (economy || settings) {
+        const sessionActions = session.settings.actions || {};
         io.to(req.params.sessionId).emit('economy-config-update', {
             actionCosts: session.economy.actionCosts,
             coinRate: session.economy.coinRate,
-            disabledActions: settings?.actions ? Object.keys(settings.actions).filter(key => settings.actions[key] === false) : []
+            disabledActions: Object.keys(sessionActions).filter(key => sessionActions[key] === false)
         });
     }
 

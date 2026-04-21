@@ -32,10 +32,11 @@ class EconomyManager {
                 }
             });
             
-            // Update coins
-            const coinsPerTick = session.economy.coinRate / 6; // 10s is 1/6th of a minute
-
-            if (coinsPerTick <= 0) return;
+            // Update coins. NaN poisons balances silently because `NaN <= 0` is
+            // false, so the guard below would let `profile.coins += NaN` run.
+            const rate = Number(session.economy.coinRate);
+            if (!Number.isFinite(rate) || rate <= 0) return;
+            const coinsPerTick = rate / 6; // 10s is 1/6th of a minute
 
             activeUsernames.forEach(username => {
                 let profile = session.economy.viewers.get(username);
